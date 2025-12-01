@@ -4,9 +4,9 @@
 
 ****************************************************************************/
 
-#define _WINDOWS
 #include <windows.h>
-#include <port1632.h>
+#include <windowsx.h>
+#include "port1632.h"
 #include <htmlhelp.h>   // for HtmlHelp()
 #include <commctrl.h>   // for fusion classes.
 
@@ -71,9 +71,8 @@ extern INT  cBoxVisit;
 
 INT dxWindow;
 INT dyWindow;
-INT dypCaption;
-INT dypMenu;
 INT dypAdjust;
+INT dxFrameExtra;
 
 
 INT idRadCurr = 0;
@@ -957,55 +956,67 @@ INT OurGetSystemMetrics( INT nIndex )
 
 VOID AdjustWindow(INT fAdjust)
 {
-	REGISTER t;
+	REGISTER INT t;
 	RECT rect;
-    BOOL bDiffLevel = FALSE;
-    RECT rectGame, rectHelp;
+	BOOL bDiffLevel = FALSE;
+	RECT rectGame, rectHelp;
+	BOOL fMenuVisible = FMenuOn() && hMenu;
+	RECT desiredRect = {0};
+	DWORD dwStyle;
+	DWORD dwExStyle;
+	INT localFrameExtra;
+	INT menuExtra = 0;
 
 	// an extra check
 	if (!hwndMain)
 		return;
 
-	dypAdjust = dypCaption;
-
-	if (FMenuOn())
-        {
-        // dypMenu is initialized to GetSystemMetrics(SM_CYMENU) + 1,
-        // which is the height of one menu line
-        dypAdjust += dypMenu;
-
-        // If the menu extends on two lines (because of the large-size
-        // font the user has chosen for the menu), increase the size
-        // of the window.
-
-        // The two menus : "Game" and "Help" are on the same line, if
-        // their enclosing rectangles top match. In that case, we don't
-        // need to extend the window size.
-        // If the tops do not match, that means they are on two lines.
-        // In that case, extend the size of the window by size of
-        // one menu line.
-       
-        if (hMenu && GetMenuItemRect(hwndMain, hMenu, 0, &rectGame) &&
-                GetMenuItemRect(hwndMain, hMenu, 1, &rectHelp))
-            {
-            if (rectGame.top != rectHelp.top)
-                {
-                dypAdjust += dypMenu;
-                bDiffLevel = TRUE;
-                }
-            }
-        }
-
 	dxWindow = dxBlk * xBoxMac + dxGridOff + dxRightSpace;
 	dyWindow = dyBlk * yBoxMac + dyGridOff + dyBottomSpace;
 
-	if ((t = Preferences.xWindow+dxWindow - OurGetSystemMetrics(SM_CXSCREEN)) > 0)
+	if (fMenuVisible && GetMenuItemRect(hwndMain, hMenu, 0, &rectGame) &&
+			GetMenuItemRect(hwndMain, hMenu, 1, &rectHelp))
+		{
+		if (rectGame.top != rectHelp.top)
+			{
+			menuExtra = dypMenu;
+			bDiffLevel = TRUE;
+			}
+		}
+
+	desiredRect.left = 0;
+	desiredRect.top = 0;
+	desiredRect.right = dxWindow;
+	desiredRect.bottom = dyWindow;
+	dwStyle = (DWORD)GetWindowLongPtr(hwndMain, GWL_STYLE);
+	dwExStyle = (DWORD)GetWindowLongPtr(hwndMain, GWL_EXSTYLE);
+	localFrameExtra = dxpBorder;
+
+	if (AdjustWindowRectEx(&desiredRect, dwStyle, fMenuVisible, dwExStyle))
+		{
+		int cxTotal = desiredRect.right - desiredRect.left;
+		int cyTotal = desiredRect.bottom - desiredRect.top;
+		localFrameExtra = max(0, cxTotal - dxWindow);
+		dypAdjust = max(0, cyTotal - dyWindow);
+		}
+	else
+        {
+        dypAdjust = dypCaption;
+        if (fMenuVisible)
+            dypAdjust += dypMenu;
+        }
+
+	dypAdjust += menuExtra;
+
+	dxFrameExtra = localFrameExtra;
+
+	if ((t = Preferences.xWindow + dxWindow + dxFrameExtra - OurGetSystemMetrics(SM_CXSCREEN)) > 0)
 		{
 		fAdjust |= fResize;
 		Preferences.xWindow -= t;
 		}
 
-	if ((t = Preferences.yWindow+dyWindow - OurGetSystemMetrics(SM_CYSCREEN)) > 0)
+	if ((t = Preferences.yWindow + dyWindow + dypAdjust - OurGetSystemMetrics(SM_CYSCREEN)) > 0)
 		{
 		fAdjust |= fResize;
 		Preferences.yWindow -= t;
@@ -1013,23 +1024,23 @@ VOID AdjustWindow(INT fAdjust)
 
     if (!bInitMinimized)
         {
-    	if (fAdjust & fResize)
-    		{
-    		MoveWindow(hwndMain, Preferences.xWindow, Preferences.yWindow,
-    			dxWindow+dxpBorder, dyWindow + dypAdjust, fTrue);
-    		}
+	if (fAdjust & fResize)
+		{
+		MoveWindow(hwndMain, Preferences.xWindow, Preferences.yWindow,
+			dxWindow + dxFrameExtra, dyWindow + dypAdjust, fTrue);
+		}
 
         // after the window is adjusted, the "Game" and "Help" may move to the
         // same line creating extra space at the bottom. so check again!
 
-        if (bDiffLevel && hMenu && GetMenuItemRect(hwndMain, hMenu, 0, &rectGame) &&
+		if (bDiffLevel && fMenuVisible && GetMenuItemRect(hwndMain, hMenu, 0, &rectGame) &&
                 GetMenuItemRect(hwndMain, hMenu, 1, &rectHelp))
             {
             if (rectGame.top == rectHelp.top)
                 {
                 dypAdjust -= dypMenu;
-    		    MoveWindow(hwndMain, Preferences.xWindow, Preferences.yWindow,
-    			    dxWindow+dxpBorder, dyWindow + dypAdjust, fTrue);
+	    	    MoveWindow(hwndMain, Preferences.xWindow, Preferences.yWindow,
+	    		    dxWindow + dxFrameExtra, dyWindow + dypAdjust, fTrue);
                 }
             }
        

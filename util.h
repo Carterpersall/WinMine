@@ -2,7 +2,9 @@
 /* util.h */
 /**********/
 
+#ifndef ARRAYSIZE
 #define ARRAYSIZE(x) (sizeof(x) / sizeof(x[0]))
+#endif
 
 VOID InitConst(VOID);
 VOID LoadSz(WORD, TCHAR *, DWORD);

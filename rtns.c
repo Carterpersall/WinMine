@@ -2,9 +2,8 @@
 /* mine.c */
 /**********/
 
-#define  _WINDOWS
 #include <windows.h>
-#include <port1632.h>
+#include "port1632.h"
 
 #include "res.h"
 #include "main.h"
@@ -107,7 +106,7 @@ VOID ChangeBlk(INT x, INT y, INT iBlk)
 
 VOID ClearField(VOID)
 {
-        REGISTER i;
+        REGISTER INT i;
 
         for (i = cBlkMax; i-- != 0; )                   /* zero all of data */
                 rgBlk[i] = (CHAR) iBlkBlankUp;
