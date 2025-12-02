@@ -1,8 +1,8 @@
 use core::ffi::c_int;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 
-use windows_sys::core::{w, PCWSTR};
-use windows_sys::Win32::Foundation::{BOOL, HWND, FALSE, TRUE};
+use windows_sys::core::{BOOL, PCWSTR, w};
+use windows_sys::Win32::Foundation::{HWND, FALSE, TRUE};
 use windows_sys::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, NUMCOLORS};
 use windows_sys::Win32::System::Registry::{RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_DWORD, REG_SZ};
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
@@ -27,7 +27,7 @@ pub const WGAME_EXPERT: c_int = 2;
 pub const FMENU_ALWAYS_ON: c_int = 0;
 pub const FMENU_ON: c_int = 2;
 
-const SZ_WINMINE_REG: PCWSTR = w!("Software\\Microsoft\\winmine");
+pub const SZ_WINMINE_REG: PCWSTR = w!("Software\\Microsoft\\winmine");
 
 // Registry value names, ordered to match the legacy iszPref constants.
 const PREF_STRINGS: [PCWSTR; ISZ_PREF_MAX] = [
@@ -83,7 +83,7 @@ extern "C" {
 pub static mut fUpdateIni: BOOL = FALSE;
 
 #[no_mangle]
-pub static mut g_hReg: HKEY = 0;
+pub static mut g_hReg: HKEY = std::ptr::null_mut();
 
 #[no_mangle]
 pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
@@ -91,7 +91,7 @@ pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
 #[no_mangle]
 pub unsafe extern "C" fn ReadInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
     let handle = g_hReg;
-    if handle == 0 {
+    if handle.is_null() {
         return val_default;
     }
 
@@ -125,7 +125,7 @@ pub unsafe extern "C" fn ReadSz(isz_pref: c_int, sz_ret: *mut u16) {
     }
 
     let handle = g_hReg;
-    if handle == 0 {
+    if handle.is_null() {
         copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
         return;
     }
@@ -156,7 +156,7 @@ pub unsafe extern "C" fn ReadSz(isz_pref: c_int, sz_ret: *mut u16) {
 #[no_mangle]
 pub unsafe extern "C" fn ReadPreferences() {
     let mut disposition = 0u32;
-    let mut key: HKEY = 0;
+    let mut key: HKEY = std::ptr::null_mut();
 
     // Open (or create) the WinMine registry hive; if it fails we keep defaults.
     if RegCreateKeyExW(
@@ -207,12 +207,12 @@ pub unsafe extern "C" fn ReadPreferences() {
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
     let desktop: HWND = GetDesktopWindow();
     let hdc = GetDC(desktop);
-    let default_color = if hdc != 0 && GetDeviceCaps(hdc, NUMCOLORS as i32) != 2 {
+    let default_color = if !hdc.is_null() && GetDeviceCaps(hdc, NUMCOLORS as i32) != 2 {
         TRUE
     } else {
         FALSE
     };
-    if hdc != 0 {
+    if !hdc.is_null() {
         ReleaseDC(desktop, hdc);
     }
     (*prefs).fColor = bool_to_bool(ReadInt(10, default_color as c_int, 0, 1));
@@ -223,13 +223,13 @@ pub unsafe extern "C" fn ReadPreferences() {
     }
 
     RegCloseKey(g_hReg);
-    g_hReg = 0;
+    g_hReg = std::ptr::null_mut();
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn WritePreferences() {
     let mut disposition = 0u32;
-    let mut key: HKEY = 0;
+    let mut key: HKEY = std::ptr::null_mut();
 
     // Try to reopen the hive with write access; on failure we leave preferences untouched.
     if RegCreateKeyExW(
@@ -272,13 +272,13 @@ pub unsafe extern "C" fn WritePreferences() {
     WriteSz(16, addr_of!((*prefs).szExpert[0]));
 
     RegCloseKey(g_hReg);
-    g_hReg = 0;
+    g_hReg = std::ptr::null_mut();
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn WriteInt(isz_pref: c_int, val: c_int) {
     let handle = g_hReg;
-    if handle == 0 {
+    if handle.is_null() {
         return;
     }
 
@@ -301,7 +301,7 @@ pub unsafe extern "C" fn WriteInt(isz_pref: c_int, val: c_int) {
 #[no_mangle]
 pub unsafe extern "C" fn WriteSz(isz_pref: c_int, sz: *const u16) {
     let handle = g_hReg;
-    if handle == 0 || sz.is_null() {
+    if handle.is_null() || sz.is_null() {
         return;
     }
 

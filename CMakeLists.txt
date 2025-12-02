@@ -7,7 +7,6 @@ set(WINMINE_SOURCES
     winmine.c
     grafix.c
     rtns.c
-    util.c
     res.rc
 )
 

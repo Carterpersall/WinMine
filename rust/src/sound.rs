@@ -61,7 +61,7 @@ fn sound_enabled() -> bool {
 
 fn stop_all_sounds() -> bool {
     // Passing NULL tells PlaySound to purge the current queue.
-    unsafe { PlaySoundW(null(), 0, SND_PURGE) != 0 }
+    unsafe { PlaySoundW(null(), std::ptr::null_mut(), SND_PURGE) != 0 }
 }
 
 fn play_resource_sound(resource_id: u16) {
