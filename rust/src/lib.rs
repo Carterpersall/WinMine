@@ -1,5 +1,6 @@
-#![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
 
-/// Placeholder Rust entry point so the crate produces a static library.
-#[no_mangle]
-pub extern "C" fn winmine_rust_placeholder() {}
+mod sound;
+
+pub use sound::*;

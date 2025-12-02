@@ -8,7 +8,6 @@ set(WINMINE_SOURCES
     grafix.c
     pref.c
     rtns.c
-    sound.c
     util.c
     res.rc
 )
@@ -33,6 +32,9 @@ target_link_libraries(winmine
         shell32
         winmm
         htmlhelp
+        userenv
+        ws2_32
+        ntdll
     advapi32
     gdi32
         comctl32
