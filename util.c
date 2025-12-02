@@ -5,7 +5,6 @@
 #include <windows.h>
 #include <htmlhelp.h>   // for HtmlHelp()
 #include "shellapi.h"   // for ShellAbout
-#include "port1632.h"
 
 #include "main.h"
 #include "res.h"

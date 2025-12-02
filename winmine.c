@@ -6,7 +6,7 @@
 
 #include <windows.h>
 #include <windowsx.h>
-#include "port1632.h"
+#include <stdlib.h>
 #include <htmlhelp.h>   // for HtmlHelp()
 #include <commctrl.h>   // for fusion classes.
 
@@ -18,9 +18,6 @@
 #include "util.h"
 #include "sound.h"
 #include "context.h"
-#include "string.h"
-#include "stdio.h"
-#include "dos.h"
 
 #ifndef WM_ENTERMENULOOP
 #define WM_ENTERMENULOOP 0x0211
@@ -110,8 +107,8 @@ INT_PTR  APIENTRY EnterDlgProc(HWND,  UINT, WPARAM, LPARAM);
 
 /****** W I N  M A I N ******/
 
-MMain(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
-/* { */
+int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
 	MSG msg;
 	HANDLE hAccel;
 

@@ -3,7 +3,7 @@
 /****************/
 
 #include <windows.h>
-#include "port1632.h"
+#include <stdlib.h>
 
 #include "main.h"
 #include "res.h"

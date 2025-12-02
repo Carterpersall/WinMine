@@ -3,7 +3,6 @@
 /***********/
 
 #include <windows.h>
-#include "port1632.h"
 #include <mmsystem.h>
 
 #include "main.h"

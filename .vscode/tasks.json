@@ -3,7 +3,7 @@
     "tasks": [
         {
             "label": "CMake: configure",
-            "type": "shell",
+            "type": "process",
             "command": "cmake",
             "args": [
                 "-S", ".",
@@ -14,7 +14,7 @@
         },
         {
             "label": "CMake: build Debug",
-            "type": "shell",
+            "type": "process",
             "command": "cmake",
             "args": [
                 "--build", "build",

@@ -3,7 +3,6 @@
 /*************/
 
 #include <windows.h>
-#include "port1632.h"
 
 #include "main.h"
 #include "res.h"
@@ -424,7 +423,8 @@ VOID DrawBorder(HDC hDC, INT x1, INT y1, INT x2, INT y2, INT width, INT fNormal)
 
         while (i++ < width)
                 {
-                (VOID)MMoveTo(hDC, x1, --y2);
+                POINT pt;
+                (VOID)MoveToEx(hDC, x1, --y2, &pt);
                 LineTo(hDC, x1++, y1);
                 LineTo(hDC, x2--, y1++);
                 }
@@ -434,7 +434,8 @@ VOID DrawBorder(HDC hDC, INT x1, INT y1, INT x2, INT y2, INT width, INT fNormal)
 
         while (--i)
                 {
-                (VOID)MMoveTo(hDC, x1--,  ++y2);
+                POINT pt;
+                (VOID)MoveToEx(hDC, x1--,  ++y2, &pt);
                 LineTo(hDC, ++x2, y2);
                 LineTo(hDC, x2, --y1);
                 }
