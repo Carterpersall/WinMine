@@ -1,45 +1,22 @@
 use core::ffi::c_int;
 use core::ptr::null;
+
 use windows_sys::Win32::Foundation::HINSTANCE;
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
+
+use crate::pref::{Preferences, FSOUND_OFF, FSOUND_ON};
 
 // Tune identifiers passed in from the legacy C code.
 const TUNE_TICK: c_int = 1;
 const TUNE_WINGAME: c_int = 2;
 const TUNE_LOSEGAME: c_int = 3;
 
-// Preference values that encode the player's sound setting.
-const FSOUND_ON: c_int = 3;
-const FSOUND_OFF: c_int = 2;
-
 // Resource IDs for the embedded .wav assets.
 const ID_TUNE_TICK: u16 = 432;
 const ID_TUNE_WON: u16 = 433;
 const ID_TUNE_LOST: u16 = 434;
 
-const CCH_NAME_MAX: usize = 32;
-
-#[repr(C)]
-pub struct PREF {
-    pub wGameType: u16,
-    pub Mines: c_int,
-    pub Height: c_int,
-    pub Width: c_int,
-    pub xWindow: c_int,
-    pub yWindow: c_int,
-    pub fSound: c_int,
-    pub fMark: i32,
-    pub fTick: i32,
-    pub fMenu: i32,
-    pub fColor: i32,
-    pub rgTime: [c_int; 3],
-    pub szBegin: [u16; CCH_NAME_MAX],
-    pub szInter: [u16; CCH_NAME_MAX],
-    pub szExpert: [u16; CCH_NAME_MAX],
-}
-
 extern "C" {
-    static mut Preferences: PREF;
     static mut hInst: HINSTANCE;
 }
 

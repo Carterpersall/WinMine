@@ -6,7 +6,6 @@ option(WINMINE_ENABLE_RUST "Build the Rust port scaffolding" ON)
 set(WINMINE_SOURCES
     winmine.c
     grafix.c
-    pref.c
     rtns.c
     util.c
     res.rc

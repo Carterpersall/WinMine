@@ -1,0 +1,378 @@
+use core::ffi::c_int;
+use core::ptr::{addr_of, addr_of_mut, null_mut};
+
+use windows_sys::core::{w, PCWSTR};
+use windows_sys::Win32::Foundation::{BOOL, HWND, FALSE, TRUE};
+use windows_sys::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, NUMCOLORS};
+use windows_sys::Win32::System::Registry::{RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_DWORD, REG_SZ};
+use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
+
+use crate::sound::FInitTunes;
+
+pub const CCH_NAME_MAX: usize = 32;
+pub const ISZ_PREF_MAX: usize = 18;
+
+pub const FSOUND_ON: c_int = 3;
+pub const FSOUND_OFF: c_int = 2;
+
+pub const MINHEIGHT: c_int = 9;
+pub const DEFHEIGHT: c_int = 9;
+pub const MINWIDTH: c_int = 9;
+pub const DEFWIDTH: c_int = 9;
+
+pub const WGAME_BEGIN: c_int = 0;
+pub const WGAME_INTER: c_int = 1;
+pub const WGAME_EXPERT: c_int = 2;
+
+pub const FMENU_ALWAYS_ON: c_int = 0;
+pub const FMENU_ON: c_int = 2;
+
+const SZ_WINMINE_REG: PCWSTR = w!("Software\\Microsoft\\winmine");
+
+// Registry value names, ordered to match the legacy iszPref constants.
+const PREF_STRINGS: [PCWSTR; ISZ_PREF_MAX] = [
+    w!("Difficulty"),
+    w!("Mines"),
+    w!("Height"),
+    w!("Width"),
+    w!("Xpos"),
+    w!("Ypos"),
+    w!("Sound"),
+    w!("Mark"),
+    w!("Menu"),
+    w!("Tick"),
+    w!("Color"),
+    w!("Time1"),
+    w!("Name1"),
+    w!("Time2"),
+    w!("Name2"),
+    w!("Time3"),
+    w!("Name3"),
+    w!("AlreadyPlayed"),
+];
+
+// Rust mirror of the PREF struct so we can mutate the shared C globals.
+#[repr(C)]
+pub struct PREF {
+    pub wGameType: u16,
+    pub Mines: c_int,
+    pub Height: c_int,
+    pub Width: c_int,
+    pub xWindow: c_int,
+    pub yWindow: c_int,
+    pub fSound: c_int,
+    pub fMark: BOOL,
+    pub fTick: BOOL,
+    pub fMenu: c_int,
+    pub fColor: BOOL,
+    pub rgTime: [c_int; 3],
+    pub szBegin: [u16; CCH_NAME_MAX],
+    pub szInter: [u16; CCH_NAME_MAX],
+    pub szExpert: [u16; CCH_NAME_MAX],
+}
+
+extern "C" {
+    pub static mut Preferences: PREF;
+    pub static mut xBoxMac: c_int;
+    pub static mut yBoxMac: c_int;
+    pub static mut szDefaultName: [u16; CCH_NAME_MAX];
+}
+
+// Flag consulted by the C UI layer to decide when to persist settings.
+#[no_mangle]
+pub static mut fUpdateIni: BOOL = FALSE;
+
+#[no_mangle]
+pub static mut g_hReg: HKEY = 0;
+
+#[no_mangle]
+pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
+
+#[no_mangle]
+pub unsafe extern "C" fn ReadInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
+    let handle = g_hReg;
+    if handle == 0 {
+        return val_default;
+    }
+
+    let key_name = match pref_name(isz_pref) {
+        Some(name) => name,
+        None => return val_default,
+    };
+
+    let mut value: u32 = 0;
+    let mut size = core::mem::size_of::<u32>() as u32;
+    let status = RegQueryValueExW(
+        handle,
+        key_name,
+        null_mut(),
+        null_mut(),
+        &mut value as *mut u32 as *mut u8,
+        &mut size,
+    );
+
+    if status != 0 {
+        return val_default;
+    }
+
+    clamp_i32(value as c_int, val_min, val_max)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ReadSz(isz_pref: c_int, sz_ret: *mut u16) {
+    if sz_ret.is_null() {
+        return;
+    }
+
+    let handle = g_hReg;
+    if handle == 0 {
+        copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
+        return;
+    }
+
+    let key_name = match pref_name(isz_pref) {
+        Some(name) => name,
+        None => {
+            copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
+            return;
+        }
+    };
+
+    let mut size = (CCH_NAME_MAX * core::mem::size_of::<u16>()) as u32;
+    let status = RegQueryValueExW(
+        handle,
+        key_name,
+        null_mut(),
+        null_mut(),
+        sz_ret as *mut u8,
+        &mut size,
+    );
+
+    if status != 0 {
+        copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ReadPreferences() {
+    let mut disposition = 0u32;
+    let mut key: HKEY = 0;
+
+    // Open (or create) the WinMine registry hive; if it fails we keep defaults.
+    if RegCreateKeyExW(
+        HKEY_CURRENT_USER,
+        SZ_WINMINE_REG,
+        0,
+        null_mut(),
+        0,
+        KEY_READ,
+        null_mut(),
+        &mut key,
+        &mut disposition,
+    ) != 0
+    {
+        return;
+    }
+
+    g_hReg = key;
+
+    let prefs = addr_of_mut!(Preferences);
+
+    let height = ReadInt(2, MINHEIGHT, DEFHEIGHT, 25);
+    yBoxMac = height;
+    (*prefs).Height = height;
+
+    let width = ReadInt(3, MINWIDTH, DEFWIDTH, 30);
+    xBoxMac = width;
+    (*prefs).Width = width;
+
+    (*prefs).wGameType = ReadInt(0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;
+    (*prefs).Mines = ReadInt(1, 10, 10, 999);
+    (*prefs).xWindow = ReadInt(4, 80, 0, 1024);
+    (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
+
+    (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
+    (*prefs).fMark = bool_to_bool(ReadInt(7, TRUE as c_int, 0, 1));
+    (*prefs).fTick = bool_to_bool(ReadInt(9, FALSE as c_int, 0, 1));
+    (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
+
+    (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
+    (*prefs).rgTime[WGAME_INTER as usize] = ReadInt(13, 999, 0, 999);
+    (*prefs).rgTime[WGAME_EXPERT as usize] = ReadInt(15, 999, 0, 999);
+
+    ReadSz(12, addr_of_mut!((*prefs).szBegin[0]));
+    ReadSz(14, addr_of_mut!((*prefs).szInter[0]));
+    ReadSz(16, addr_of_mut!((*prefs).szExpert[0]));
+
+    // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
+    let desktop: HWND = GetDesktopWindow();
+    let hdc = GetDC(desktop);
+    let default_color = if hdc != 0 && GetDeviceCaps(hdc, NUMCOLORS as i32) != 2 {
+        TRUE
+    } else {
+        FALSE
+    };
+    if hdc != 0 {
+        ReleaseDC(desktop, hdc);
+    }
+    (*prefs).fColor = bool_to_bool(ReadInt(10, default_color as c_int, 0, 1));
+
+    // If sound is enabled, verify that the system can actually play the resources.
+    if (*prefs).fSound == FSOUND_ON {
+        (*prefs).fSound = FInitTunes();
+    }
+
+    RegCloseKey(g_hReg);
+    g_hReg = 0;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn WritePreferences() {
+    let mut disposition = 0u32;
+    let mut key: HKEY = 0;
+
+    // Try to reopen the hive with write access; on failure we leave preferences untouched.
+    if RegCreateKeyExW(
+        HKEY_CURRENT_USER,
+        SZ_WINMINE_REG,
+        0,
+        null_mut(),
+        0,
+        KEY_WRITE,
+        null_mut(),
+        &mut key,
+        &mut disposition,
+    ) != 0
+    {
+        return;
+    }
+
+    g_hReg = key;
+
+    let prefs = addr_of!(Preferences);
+
+    WriteInt(0, (*prefs).wGameType as c_int);
+    WriteInt(2, (*prefs).Height);
+    WriteInt(3, (*prefs).Width);
+    WriteInt(1, (*prefs).Mines);
+    WriteInt(7, (*prefs).fMark);
+    WriteInt(17, 1);
+
+    WriteInt(10, (*prefs).fColor);
+    WriteInt(6, (*prefs).fSound);
+    WriteInt(4, (*prefs).xWindow);
+    WriteInt(5, (*prefs).yWindow);
+
+    WriteInt(11, (*prefs).rgTime[WGAME_BEGIN as usize]);
+    WriteInt(13, (*prefs).rgTime[WGAME_INTER as usize]);
+    WriteInt(15, (*prefs).rgTime[WGAME_EXPERT as usize]);
+
+    WriteSz(12, addr_of!((*prefs).szBegin[0]));
+    WriteSz(14, addr_of!((*prefs).szInter[0]));
+    WriteSz(16, addr_of!((*prefs).szExpert[0]));
+
+    RegCloseKey(g_hReg);
+    g_hReg = 0;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn WriteInt(isz_pref: c_int, val: c_int) {
+    let handle = g_hReg;
+    if handle == 0 {
+        return;
+    }
+
+    let key_name = match pref_name(isz_pref) {
+        Some(name) => name,
+        None => return,
+    };
+
+    let data = val as u32;
+    RegSetValueExW(
+        handle,
+        key_name,
+        0,
+        REG_DWORD,
+        &data as *const u32 as *const u8,
+        core::mem::size_of::<u32>() as u32,
+    );
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn WriteSz(isz_pref: c_int, sz: *const u16) {
+    let handle = g_hReg;
+    if handle == 0 || sz.is_null() {
+        return;
+    }
+
+    let key_name = match pref_name(isz_pref) {
+        Some(name) => name,
+        None => return,
+    };
+
+    let len = wide_len(sz) + 1;
+    let byte_len = len * core::mem::size_of::<u16>();
+
+    RegSetValueExW(
+        handle,
+        key_name,
+        0,
+        REG_SZ,
+        sz as *const u8,
+        byte_len as u32,
+    );
+}
+
+fn pref_name(index: c_int) -> Option<PCWSTR> {
+    if index < 0 {
+        return None;
+    }
+    let idx = index as usize;
+    PREF_STRINGS.get(idx).copied()
+}
+
+fn clamp_i32(value: c_int, min: c_int, max: c_int) -> c_int {
+    value.max(min).min(max)
+}
+
+fn bool_to_bool(value: c_int) -> BOOL {
+    if value != 0 {
+        TRUE
+    } else {
+        FALSE
+    }
+}
+
+unsafe fn default_name_ptr() -> *const u16 {
+    addr_of!(szDefaultName[0])
+}
+
+unsafe fn copy_wide_with_capacity(src: *const u16, dst: *mut u16, capacity: usize) {
+    if src.is_null() || dst.is_null() || capacity == 0 {
+        return;
+    }
+
+    let mut i = 0usize;
+    while i + 1 < capacity {
+        let ch = *src.add(i);
+        *dst.add(i) = ch;
+        if ch == 0 {
+            return;
+        }
+        i += 1;
+    }
+
+    *dst.add(capacity - 1) = 0;
+}
+
+unsafe fn wide_len(mut ptr: *const u16) -> usize {
+    if ptr.is_null() {
+        return 0;
+    }
+    let mut len = 0usize;
+    while *ptr != 0 {
+        len += 1;
+        ptr = ptr.add(1);
+    }
+    len
+}
