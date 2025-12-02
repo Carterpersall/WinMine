@@ -1,3 +1,4 @@
+// Quick helpers for the small set of winmm-backed tunes used by the UI.
 use core::ffi::c_int;
 use core::ptr::null;
 

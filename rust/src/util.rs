@@ -111,6 +111,7 @@ fn make_int_resource(id: u16) -> PCWSTR {
 
 #[no_mangle]
 pub unsafe extern "C" fn Rnd(rnd_max: c_int) -> c_int {
+	// Return a pseudo-random number in the [0, rnd_max) range like the C helper did.
 	if rnd_max <= 0 {
 		0
 	} else {
@@ -120,6 +121,7 @@ pub unsafe extern "C" fn Rnd(rnd_max: c_int) -> c_int {
 
 #[no_mangle]
 pub unsafe extern "C" fn ReportErr(id_err: u16) {
+	// Format either a catalog string or the "unknown error" template before showing the dialog.
 	let mut sz_msg = [0u16; CCH_MSG_MAX];
 	let mut sz_title = [0u16; CCH_MSG_MAX];
 
@@ -136,6 +138,7 @@ pub unsafe extern "C" fn ReportErr(id_err: u16) {
 
 #[no_mangle]
 pub unsafe extern "C" fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
+	// Wrapper around LoadString that raises the original fatal error if the resource is missing.
 	if LoadStringW(hInst, id.into(), sz, cch as i32) == 0 {
 		ReportErr(1001);
 	}
@@ -143,6 +146,7 @@ pub unsafe extern "C" fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
 
 #[no_mangle]
 pub unsafe extern "C" fn ReadIniInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
+	// Pull an integer from the legacy .ini file, honoring the same clamp the game always used.
 	if isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
 		return val_default;
 	}
@@ -158,6 +162,7 @@ pub unsafe extern "C" fn ReadIniInt(isz_pref: c_int, val_default: c_int, val_min
 
 #[no_mangle]
 pub unsafe extern "C" fn ReadIniSz(isz_pref: c_int, sz_ret: *mut u16) {
+	// Grab the string from entpack.ini or fall back to the default Hall of Fame name.
 	if sz_ret.is_null() || isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
 		return;
 	}
@@ -179,6 +184,7 @@ pub unsafe extern "C" fn ReadIniSz(isz_pref: c_int, sz_ret: *mut u16) {
 
 #[no_mangle]
 pub unsafe extern "C" fn InitConst() {
+	// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
 	srand((GetTickCount() & 0xFFFF) as c_uint);
 
 	LoadSz(ID_GAMENAME as u16, addr_of_mut!(szClass[0]), CCH_NAME_MAX as u32);
@@ -259,11 +265,13 @@ pub unsafe extern "C" fn InitConst() {
 
 #[no_mangle]
 pub unsafe extern "C" fn CheckEm(idm: u16, f_check: BOOL) {
+	// Maintain the old menu checkmark toggles (e.g. question marks, sound).
 	CheckMenuItem(hMenu, idm.into(), if f_check != 0 { MF_CHECKED } else { MF_UNCHECKED });
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn SetMenuBar(f_active: c_int) {
+	// Persist the menu visibility preference, refresh accelerator state, and resize the window.
 	(*prefs_mut()).fMenu = f_active;
 	FixMenus();
 
@@ -274,6 +282,7 @@ pub unsafe extern "C" fn SetMenuBar(f_active: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn DoAbout() {
+	// Show the stock About box with the localized title and credit strings.
 	let mut sz_version = [0u16; CCH_MSG_MAX];
 	let mut sz_credit = [0u16; CCH_MSG_MAX];
 
@@ -290,6 +299,7 @@ pub unsafe extern "C" fn DoAbout() {
 
 #[no_mangle]
 pub unsafe extern "C" fn DoHelp(w_command: u16, l_param: u32) {
+	// htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
 	let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
 	if (w_command as u32) != (HELP_HELPONHELP as u32) {
@@ -321,6 +331,7 @@ pub unsafe extern "C" fn DoHelp(w_command: u16, l_param: u32) {
 
 #[no_mangle]
 pub unsafe extern "C" fn GetDlgInt(h_dlg: HWND, dlg_id: c_int, num_lo: c_int, num_hi: c_int) -> c_int {
+	// Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
 	let mut success = 0i32;
 	let value = GetDlgItemInt(h_dlg, dlg_id, &mut success, FALSE);
 	let value = value as c_int;

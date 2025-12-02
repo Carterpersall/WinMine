@@ -62,10 +62,12 @@ const ID_BMP_BUTTON: u16 = 430;
 const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n\0";
 const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n\0";
 
+// Cached offsets into each sprite sheet within its DIB.
 static mut RG_DIB_OFF: [c_int; I_BLK_MAX] = [0; I_BLK_MAX];
 static mut RG_DIB_LED_OFF: [c_int; I_LED_MAX] = [0; I_LED_MAX];
 static mut RG_DIB_BUTTON_OFF: [c_int; I_BUTTON_MAX] = [0; I_BUTTON_MAX];
 
+// Resource handles and locked pointers for the block, LED, and button bitmaps.
 static mut H_RES_BLKS: HGLOBAL = null_mut();
 static mut H_RES_LED: HGLOBAL = null_mut();
 static mut H_RES_BUTTON: HGLOBAL = null_mut();
@@ -76,6 +78,7 @@ static mut LP_DIB_BUTTON: *const u8 = null();
 
 static mut H_GRAY_PEN: HPEN = null_mut();
 
+// Per-cell memory DIBs so repeated blits avoid calling SetDIBitsToDevice each time.
 static mut MEM_BLK_DC: [HDC; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
 static mut MEM_BLK_BITMAP: [HBITMAP; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
 
@@ -90,6 +93,7 @@ fn color_enabled() -> bool {
 
 #[no_mangle]
 pub unsafe extern "C" fn FInitLocal() -> BOOL {
+    // Load the sprite resources and reset the minefield before gameplay starts.
     if FLoadBitmaps() == 0 {
         return 0;
     }
@@ -100,6 +104,7 @@ pub unsafe extern "C" fn FInitLocal() -> BOOL {
 
 #[no_mangle]
 pub unsafe extern "C" fn FLoadBitmaps() -> BOOL {
+    // Wrapper retained for compatibility with the original export table.
     if !load_bitmaps_impl() {
         return 0;
     }
@@ -108,6 +113,7 @@ pub unsafe extern "C" fn FLoadBitmaps() -> BOOL {
 
 #[no_mangle]
 pub unsafe extern "C" fn FreeBitmaps() {
+    // Tear down cached pens, handles, and scratch DCs when leaving the app.
     if !H_GRAY_PEN.is_null() {
         DeleteObject(H_GRAY_PEN as _);
         H_GRAY_PEN = null_mut();
@@ -135,12 +141,14 @@ pub unsafe extern "C" fn FreeBitmaps() {
 
 #[no_mangle]
 pub unsafe extern "C" fn CleanUp() {
+    // Matching the C code, graphics cleanup also silences any outstanding audio.
     FreeBitmaps();
     EndTunes();
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawBlk(hdc: HDC, x: c_int, y: c_int) {
+    // Bit-blit a single cell sprite using the precalculated offsets.
     BitBlt(
         hdc,
         (x << 4) + (DX_GRID_OFF - DX_BLK),
@@ -156,6 +164,7 @@ pub unsafe extern "C" fn DrawBlk(hdc: HDC, x: c_int, y: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn DisplayBlk(x: c_int, y: c_int) {
+    // Convenience wrapper that repaints one tile directly to the main window.
     let hdc = GetDC(hwndMain);
     if !hdc.is_null() {
         DrawBlk(hdc, x, y);
@@ -165,6 +174,7 @@ pub unsafe extern "C" fn DisplayBlk(x: c_int, y: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawGrid(hdc: HDC) {
+    // Rebuild the visible grid by iterating over the current rgBlk contents.
     let mut dy = DY_GRID_OFF;
     for y in 1..=yBoxMac {
         let mut dx = DX_GRID_OFF;
@@ -197,6 +207,7 @@ pub unsafe extern "C" fn DisplayGrid() {
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawLed(hdc: HDC, x: c_int, i_led: c_int) {
+    // LED digits stay as packed DIBs, so we blast them straight from the resource.
     SetDIBitsToDevice(
         hdc,
         x,
@@ -215,6 +226,7 @@ pub unsafe extern "C" fn DrawLed(hdc: HDC, x: c_int, i_led: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawBombCount(hdc: HDC) {
+    // Match the C logic: handle negatives, honor RTL mirroring, then paint three digits.
     let layout = GetLayout(hdc);
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT_RTL) != 0;
     if mirrored {
@@ -247,6 +259,7 @@ pub unsafe extern "C" fn DisplayBombCount() {
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawTime(hdc: HDC) {
+    // The timer uses the same mirroring trick as the bomb counter.
     let layout = GetLayout(hdc);
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT_RTL) != 0;
     if mirrored {
@@ -275,6 +288,7 @@ pub unsafe extern "C" fn DisplayTime() {
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawButton(hdc: HDC, i_button: c_int) {
+    // Center the face button and pull the requested state from the button sheet.
     let x = (dxWindow - DX_BUTTON) >> 1;
     SetDIBitsToDevice(
         hdc,
@@ -303,6 +317,7 @@ pub unsafe extern "C" fn DisplayButton(i_button: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn SetThePen(hdc: HDC, f_normal: c_int) {
+    // Reproduce the old pen combos: even values use the gray pen, odd values use white.
     if (f_normal & 1) != 0 {
         SetROP2(hdc, R2_WHITE);
     } else {
@@ -324,6 +339,7 @@ pub unsafe extern "C" fn DrawBorder(
     f_normal: c_int,
 ) {
     let mut i = 0;
+    // Draw the raised or sunken beveled rectangle one pixel at a time, just like the Win16 code.
     SetThePen(hdc, f_normal);
 
     while i < width {
@@ -355,6 +371,7 @@ pub unsafe extern "C" fn DrawBorder(
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawBackground(hdc: HDC) {
+    // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
     let mut x = dxWindow - 1;
     let mut y = dyWindow - 1;
     DrawBorder(hdc, 0, 0, x, y, 3, 1);
@@ -385,6 +402,7 @@ pub unsafe extern "C" fn DrawBackground(hdc: HDC) {
 
 #[no_mangle]
 pub unsafe extern "C" fn DrawScreen(hdc: HDC) {
+    // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
     DrawBombCount(hdc);
     DrawButton(hdc, iButtonCur);
@@ -403,6 +421,7 @@ pub unsafe extern "C" fn DisplayScreen() {
 
 fn load_bitmaps_impl() -> bool {
     unsafe {
+        // Grab each bitmap resource (color or mono variant) and keep it locked for lifetime of the process.
         H_RES_BLKS = load_bitmap_resource(ID_BMP_BLOCKS);
         H_RES_LED = load_bitmap_resource(ID_BMP_LED);
         H_RES_BUTTON = load_bitmap_resource(ID_BMP_BUTTON);
@@ -434,26 +453,27 @@ fn load_bitmaps_impl() -> bool {
         let cb_blk = cb_bitmap(DX_BLK, DY_BLK);
         #[allow(clippy::needless_range_loop)]
         for i in 0..I_BLK_MAX {
-                RG_DIB_OFF[i] = header + (i as c_int) * cb_blk;
-            }
+            RG_DIB_OFF[i] = header + (i as c_int) * cb_blk;
+        }
 
         let cb_led = cb_bitmap(DX_LED, DY_LED);
         #[allow(clippy::needless_range_loop)]
         for i in 0..I_LED_MAX {
-                RG_DIB_LED_OFF[i] = header + (i as c_int) * cb_led;
-            }
+            RG_DIB_LED_OFF[i] = header + (i as c_int) * cb_led;
+        }
 
         let cb_button = cb_bitmap(DX_BUTTON, DY_BUTTON);
         #[allow(clippy::needless_range_loop)]
         for i in 0..I_BUTTON_MAX {
-                RG_DIB_BUTTON_OFF[i] = header + (i as c_int) * cb_button;
-            }
+            RG_DIB_BUTTON_OFF[i] = header + (i as c_int) * cb_button;
+        }
 
         let hdc = GetDC(hwndMain);
         if hdc.is_null() {
             return false;
         }
 
+        // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
         for i in 0..I_BLK_MAX {
             MEM_BLK_DC[i] = CreateCompatibleDC(hdc);
             if MEM_BLK_DC[i].is_null() {
@@ -492,6 +512,7 @@ fn load_bitmaps_impl() -> bool {
 unsafe fn load_bitmap_resource(id: u16) -> HGLOBAL {
     let offset = if color_enabled() { 0 } else { 1 };
     let resource_id = id + offset;
+    // Colorless devices load the grayscale resource IDs immediately following the color ones.
     let res: HRSRC = FindResourceW(hInst, make_int_resource(resource_id), RT_BITMAP);
     if res.is_null() {
         return null_mut();
@@ -505,6 +526,7 @@ fn dib_header_size() -> c_int {
 }
 
 fn cb_bitmap(x: c_int, y: c_int) -> c_int {
+    // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
     let mut bits = x;
     if color_enabled() {
         bits *= 4;
@@ -516,6 +538,7 @@ fn cb_bitmap(x: c_int, y: c_int) -> c_int {
 fn block_bits(i: c_int) -> *const c_void {
     unsafe {
         let idx = clamp_index(i, I_BLK_MAX);
+        // Each offset already points past the BITMAPINFOHEADER to the raw pixel data.
         LP_DIB_BLKS.add(RG_DIB_OFF[idx] as usize) as *const c_void
     }
 }
@@ -541,7 +564,7 @@ fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
 fn block_dc(x: c_int, y: c_int) -> HDC {
     unsafe {
         let idx = block_sprite_index(x, y);
-            if idx < I_BLK_MAX {
+        if idx < I_BLK_MAX {
             MEM_BLK_DC[idx]
         } else {
             null_mut()
@@ -551,6 +574,7 @@ fn block_dc(x: c_int, y: c_int) -> HDC {
 
 fn block_sprite_index(x: c_int, y: c_int) -> usize {
     unsafe {
+        // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
         let offset = ((y as isize) << 5) + x as isize;
         let ptr = addr_of_mut!(rgBlk).cast::<i8>();
         let value = *ptr.offset(offset) as i32;

@@ -1,3 +1,4 @@
+// Registry-backed preference helpers mirrored from pref.c.
 use core::ffi::c_int;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 
@@ -90,6 +91,7 @@ pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
 
 #[no_mangle]
 pub unsafe extern "C" fn ReadInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
+    // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
     let handle = g_hReg;
     if handle.is_null() {
         return val_default;
@@ -120,6 +122,7 @@ pub unsafe extern "C" fn ReadInt(isz_pref: c_int, val_default: c_int, val_min: c
 
 #[no_mangle]
 pub unsafe extern "C" fn ReadSz(isz_pref: c_int, sz_ret: *mut u16) {
+    // Pull a high-score name (or similar) from the hive, falling back to the default string.
     if sz_ret.is_null() {
         return;
     }
@@ -155,6 +158,7 @@ pub unsafe extern "C" fn ReadSz(isz_pref: c_int, sz_ret: *mut u16) {
 
 #[no_mangle]
 pub unsafe extern "C" fn ReadPreferences() {
+    // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
     let mut disposition = 0u32;
     let mut key: HKEY = std::ptr::null_mut();
 
@@ -228,6 +232,7 @@ pub unsafe extern "C" fn ReadPreferences() {
 
 #[no_mangle]
 pub unsafe extern "C" fn WritePreferences() {
+    // Persist the current PREF struct back to the registry, mirroring the Win32 version.
     let mut disposition = 0u32;
     let mut key: HKEY = std::ptr::null_mut();
 
@@ -251,6 +256,7 @@ pub unsafe extern "C" fn WritePreferences() {
 
     let prefs = addr_of!(Preferences);
 
+    // Persist the difficulty, board dimensions, and flags exactly as the original did.
     WriteInt(0, (*prefs).wGameType as c_int);
     WriteInt(2, (*prefs).Height);
     WriteInt(3, (*prefs).Width);
@@ -277,6 +283,7 @@ pub unsafe extern "C" fn WritePreferences() {
 
 #[no_mangle]
 pub unsafe extern "C" fn WriteInt(isz_pref: c_int, val: c_int) {
+    // Simple DWORD setter used by both the registry migration and the dialog code.
     let handle = g_hReg;
     if handle.is_null() {
         return;
@@ -300,6 +307,7 @@ pub unsafe extern "C" fn WriteInt(isz_pref: c_int, val: c_int) {
 
 #[no_mangle]
 pub unsafe extern "C" fn WriteSz(isz_pref: c_int, sz: *const u16) {
+    // Stores zero-terminated UTF-16 values such as player names.
     let handle = g_hReg;
     if handle.is_null() || sz.is_null() {
         return;
