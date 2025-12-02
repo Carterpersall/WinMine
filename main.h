@@ -1,14 +1,5 @@
 /* MINE HEADER FILE */
 
-#ifdef DEBUG
-#define CHEAT
-#endif
-
-#ifdef BETA_VERSION
-#define NOSERVER
-#define EXPIRE
-#endif
-
 #define FAST
 
 /*** Standard Stuff ***/

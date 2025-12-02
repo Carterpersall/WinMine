@@ -72,22 +72,8 @@ extern INT fStatus;
 
 /* Return TRUE if player won the game */
 
-#if 0
-
-BOOL fCheckWin(VOID)
-{
-        if (cBombLeft)
-                return (fFalse);
-        else
-                return ((cBoxVisit + cBombStart) == (xBoxMac*yBoxMac));
-
-}
-
-#else
 
 #define fCheckWin()     (cBoxVisit == cBoxVisitMac)
-
-#endif
 
 
 

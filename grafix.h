@@ -30,12 +30,7 @@
 
 /*** Macros ***/
 
-#ifdef DEBUG
-
-//-protect-#define Oops(szMsg)
-//	MessageBox(NULL, szMsg, "Oops", MB_OK | MB_ICONHAND)
-
-#else
+#ifndef DEBUG
 #define Oops(szMsg)
 #endif
 

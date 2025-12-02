@@ -119,58 +119,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLi
     bInitMinimized = (nCmdShow == SW_SHOWMINNOACTIVE) ||
                      (nCmdShow == SW_SHOWMINIMIZED) ;
 
-#ifdef WIN16
-	if (hPrevInstance)
-		{
-		HWND hWnd = FindWindow(szClass, NULL);
-		hWnd = GetLastActivePopup(hWnd);
-		BringWindowToTop(hWnd);
-		if (!bInitMinimized && IsIconic(hWnd))
-			SendMessage(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0L);
-		return fFalse;
-		}
-#endif
-
-#ifdef NOSERVER		/*** Not in final release ***/
-	{
-	TCHAR  szFile[256];
-
-	GetModuleFileName(hInst, szFile, 250);
-
-	if (szFile[0] > TEXT('C'))
-		{
-		szFile[0] = TEXT('X');
-		if (!lstrcmp(szFile, TEXT("X:\\WINGAMES\\WINMINE\\WINMINE.EXE")))
-			{
-			MessageBox(GetFocus(),
-				TEXT("Please copy winmine.exe and aboutwep.dll to your machine and run it from there."),
-				TEXT("NO NO NO NO NO"),
-				MB_OK);
-			return fFalse;
-			}
-		}
-	}
-#endif
-
-
-#ifdef EXPIRE			/*** Not in final release ***/
-	{
-	struct dosdate_t ddt;
-
-	_dos_getdate(&ddt);
-
-	if ((ddt.month + ddt.year*12) > (9 + 1990*12))
-		{
-		MessageBox(GetFocus(),
-			TEXT("This game has expired. Please obtain an official copy from the Windows Entertainment Package."),
-			TEXT("SORRY"),
-			MB_OK);
-		return fFalse;
-		}
-	}
-#endif
-
-
 	{
 	WNDCLASS  wc;
 	INITCOMMONCONTROLSEX icc;   // common control registration.
@@ -531,6 +479,7 @@ LRESULT  APIENTRY MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
 #endif
 		case VK_F4:
 			if (FSoundSwitchable())
+				{
 				if (FSoundOn())
 					{
 					EndTunes();
@@ -538,6 +487,7 @@ LRESULT  APIENTRY MainWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPa
 					}
 				else
 					Preferences.fSound = FInitTunes();
+				}
 			break;
 
 		case VK_F5:
@@ -688,10 +638,7 @@ LFixTimeOut:
 		break;
 
 	case WM_TIMER:
-#ifdef CHEAT
-		if (!fLocalPause)
-#endif
-			DoTimer();
+		DoTimer();
 		return 0;
 
 	case WM_ENTERMENULOOP:

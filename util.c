@@ -13,9 +13,7 @@
 #include "sound.h"
 #include "rtns.h"
 #include "string.h"
-#include "stdio.h"
 #include "stdlib.h"
-#include "dos.h"
 
 extern INT dypBorder;
 extern INT dxpBorder;
