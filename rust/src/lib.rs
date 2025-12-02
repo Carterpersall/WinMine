@@ -6,8 +6,4 @@ mod pref;
 mod grafix;
 mod sound;
 mod util;
-
-pub use pref::*;
-pub use grafix::*;
-pub use sound::*;
-pub use util::*;
+mod rtns;

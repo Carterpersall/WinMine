@@ -5,7 +5,6 @@ option(WINMINE_ENABLE_RUST "Build the Rust port scaffolding" ON)
 
 set(WINMINE_SOURCES
     winmine.c
-    rtns.c
     res.rc
 )
 
