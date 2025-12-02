@@ -1,0 +1,16 @@
+[package]
+name = "winmine-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "winmine_rust"
+crate-type = ["staticlib"]
+
+[profile.dev]
+incremental = true
+
+[profile.release]
+lto = true
+codegen-units = 1
