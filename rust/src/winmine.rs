@@ -291,8 +291,7 @@ unsafe fn register_main_window_class() -> bool {
     RegisterClassW(&wc) != 0
 }
 
-#[no_mangle]
-pub unsafe extern "system" fn WinMain(
+pub unsafe fn run_winmine(
     h_instance: HINSTANCE,
     _h_prev_instance: HINSTANCE,
     _lp_cmd_line: PSTR,

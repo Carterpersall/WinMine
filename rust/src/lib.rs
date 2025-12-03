@@ -9,3 +9,5 @@ mod sound;
 mod util;
 mod rtns;
 mod winmine;
+
+pub use winmine::run_winmine;

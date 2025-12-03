@@ -6,7 +6,10 @@ publish = false
 
 [lib]
 name = "winmine_rust"
-crate-type = ["staticlib"]
+
+[[bin]]
+name = "winmine"
+path = "src/main.rs"
 
 [profile.dev]
 incremental = true
@@ -33,3 +36,6 @@ windows-sys = { version = "0.61.2", features = [
 	"Win32_UI_Input_KeyboardAndMouse",
 	"Win32_UI_Shell",
 ] }
+
+[build-dependencies]
+embed-resource = "2.4"
