@@ -1,9 +1,9 @@
-use core::ffi::{c_int, c_uint};
+use core::ffi::c_int;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::core::{w, BOOL, PCSTR, PCWSTR};
-use windows_sys::Win32::Foundation::{HINSTANCE, HWND, TRUE, FALSE};
+use windows_sys::Win32::Foundation::{HWND, TRUE, FALSE};
 use windows_sys::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, HDC, NUMCOLORS};
 use windows_sys::Win32::System::WindowsProgramming::{GetPrivateProfileIntW, GetPrivateProfileStringW};
 use windows_sys::Win32::System::Registry::{RegCloseKey, RegCreateKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ};
@@ -14,36 +14,23 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 	CheckMenuItem, GetDesktopWindow, GetDlgItemInt, GetSystemMetrics, LoadIconW, LoadStringW, MessageBoxW, HMENU,
 	SetMenu, wsprintfW, HELP_HELPONHELP, MF_CHECKED, MF_UNCHECKED, SM_CXBORDER, SM_CYCAPTION, SM_CYBORDER, SM_CYMENU,
 };
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::pref::{
 	self, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX, MINHEIGHT, MINWIDTH,
 	PREF, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
-use crate::pref::{Preferences, ReadInt, WritePreferences, g_hReg, rgszPref};
+use crate::pref::{ReadInt, WritePreferences, g_hReg, rgszPref};
+use crate::rtns::Preferences;
 use crate::sound::FInitTunes;
+use crate::globals::{dypBorder, dxpBorder, dypCaption, dypMenu, hInst, hMenu, hwndMain, szClass, szDefaultName, szTime};
+use crate::winmine::{AdjustWindow, FixMenus};
 
-extern "C" {
-	static mut dypBorder: c_int;
-	static mut dxpBorder: c_int;
-	static mut dypCaption: c_int;
-	static mut dypMenu: c_int;
+const RNG_MULTIPLIER: u32 = 1_103_515_245;
+const RNG_INCREMENT: u32 = 12_345;
+const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
 
-	static mut szClass: [u16; CCH_NAME_MAX];
-	static mut szTime: [u16; CCH_NAME_MAX];
-	static mut szDefaultName: [u16; CCH_NAME_MAX];
-
-	static mut hInst: HINSTANCE;
-	static mut hwndMain: HWND;
-	static mut hMenu: HMENU;
-
-	fn FixMenus();
-	fn AdjustWindow(flags: c_int);
-}
-
-extern "C" {
-	fn rand() -> c_int;
-	fn srand(seed: c_uint);
-}
+static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
 
 const ID_GAMENAME: u32 = 1;
 const ID_MSG_SEC: u32 = 7;
@@ -81,6 +68,24 @@ const FMENU_FLAG_OFF: c_int = 0x01;
 
 const SZ_INI_FILE: PCWSTR = w!("entpack.ini");
 
+fn seed_rng(seed: u32) {
+	let value = if seed == 0 { RNG_DEFAULT_SEED } else { seed };
+	RNG_STATE.store(value, Ordering::Relaxed);
+}
+
+fn next_rand() -> c_int {
+	let mut current = RNG_STATE.load(Ordering::Relaxed);
+	loop {
+		let next = current
+			.wrapping_mul(RNG_MULTIPLIER)
+			.wrapping_add(RNG_INCREMENT);
+		match RNG_STATE.compare_exchange(current, next, Ordering::Relaxed, Ordering::Relaxed) {
+			Ok(_) => return ((next >> 16) & 0x7FFF) as c_int,
+			Err(actual) => current = actual,
+		}
+	}
+}
+
 #[inline]
 unsafe fn prefs_mut() -> *mut PREF {
 	addr_of_mut!(Preferences)
@@ -109,18 +114,17 @@ fn make_int_resource(id: u16) -> PCWSTR {
 	id as usize as *const u16
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn Rnd(rnd_max: c_int) -> c_int {
+pub fn Rnd(rnd_max: c_int) -> c_int {
 	// Return a pseudo-random number in the [0, rnd_max) range like the C helper did.
 	if rnd_max <= 0 {
 		0
 	} else {
-		rand() % rnd_max
+		next_rand() % rnd_max
 	}
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn ReportErr(id_err: u16) {
+
+pub unsafe fn ReportErr(id_err: u16) {
 	// Format either a catalog string or the "unknown error" template before showing the dialog.
 	let mut sz_msg = [0u16; CCH_MSG_MAX];
 	let mut sz_title = [0u16; CCH_MSG_MAX];
@@ -136,16 +140,16 @@ pub unsafe extern "C" fn ReportErr(id_err: u16) {
 	MessageBoxW(std::ptr::null_mut(), sz_msg.as_ptr(), sz_title.as_ptr(), 0x0000_0010);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
+
+pub unsafe fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
 	// Wrapper around LoadString that raises the original fatal error if the resource is missing.
 	if LoadStringW(hInst, id.into(), sz, cch as i32) == 0 {
 		ReportErr(1001);
 	}
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn ReadIniInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
+
+pub unsafe fn ReadIniInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
 	// Pull an integer from the legacy .ini file, honoring the same clamp the game always used.
 	if isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
 		return val_default;
@@ -160,8 +164,8 @@ pub unsafe extern "C" fn ReadIniInt(isz_pref: c_int, val_default: c_int, val_min
 	clamp(value, val_min, val_max)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn ReadIniSz(isz_pref: c_int, sz_ret: *mut u16) {
+
+pub unsafe fn ReadIniSz(isz_pref: c_int, sz_ret: *mut u16) {
 	// Grab the string from entpack.ini or fall back to the default Hall of Fame name.
 	if sz_ret.is_null() || isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
 		return;
@@ -182,10 +186,10 @@ pub unsafe extern "C" fn ReadIniSz(isz_pref: c_int, sz_ret: *mut u16) {
 	);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn InitConst() {
+
+pub unsafe fn InitConst() {
 	// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
-	srand((GetTickCount() & 0xFFFF) as c_uint);
+	seed_rng((GetTickCount() & 0xFFFF) as u32);
 
 	LoadSz(ID_GAMENAME as u16, addr_of_mut!(szClass[0]), CCH_NAME_MAX as u32);
 	LoadSz(ID_MSG_SEC as u16, addr_of_mut!(szTime[0]), CCH_NAME_MAX as u32);
@@ -263,14 +267,14 @@ pub unsafe extern "C" fn InitConst() {
 	WritePreferences();
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn CheckEm(idm: u16, f_check: BOOL) {
+
+pub unsafe fn CheckEm(idm: u16, f_check: BOOL) {
 	// Maintain the old menu checkmark toggles (e.g. question marks, sound).
 	CheckMenuItem(hMenu, idm.into(), if f_check != 0 { MF_CHECKED } else { MF_UNCHECKED });
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn SetMenuBar(f_active: c_int) {
+
+pub unsafe fn SetMenuBar(f_active: c_int) {
 	// Persist the menu visibility preference, refresh accelerator state, and resize the window.
 	(*prefs_mut()).fMenu = f_active;
 	FixMenus();
@@ -280,8 +284,8 @@ pub unsafe extern "C" fn SetMenuBar(f_active: c_int) {
 	AdjustWindow(F_RESIZE);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoAbout() {
+
+pub unsafe fn DoAbout() {
 	// Show the stock About box with the localized title and credit strings.
 	let mut sz_version = [0u16; CCH_MSG_MAX];
 	let mut sz_credit = [0u16; CCH_MSG_MAX];
@@ -297,8 +301,8 @@ pub unsafe extern "C" fn DoAbout() {
 	);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoHelp(w_command: u16, l_param: u32) {
+
+pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
 	// htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
 	let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
@@ -329,8 +333,8 @@ pub unsafe extern "C" fn DoHelp(w_command: u16, l_param: u32) {
 	HtmlHelpA(GetDesktopWindow(), buffer.as_ptr() as PCSTR, l_param, 0);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn GetDlgInt(h_dlg: HWND, dlg_id: c_int, num_lo: c_int, num_hi: c_int) -> c_int {
+
+pub unsafe fn GetDlgInt(h_dlg: HWND, dlg_id: c_int, num_lo: c_int, num_hi: c_int) -> c_int {
 	// Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
 	let mut success = 0i32;
 	let value = GetDlgItemInt(h_dlg, dlg_id, &mut success, FALSE);

@@ -2,13 +2,15 @@ use core::cmp::{max, min};
 use core::ffi::c_int;
 
 use windows_sys::core::BOOL;
-use windows_sys::Win32::Foundation::{HWND, TRUE, FALSE};
+use windows_sys::Win32::Foundation::{TRUE, FALSE};
 use windows_sys::Win32::UI::WindowsAndMessaging::SetTimer;
 
 use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
 use crate::pref::{PREF, CCH_NAME_MAX};
 use crate::sound::{EndTunes, PlayTune};
 use crate::util::{ReportErr, Rnd};
+use crate::globals::{fBlock, fStatus, hwndMain};
+use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
 
 const I_BLK_BLANK: c_int = 0;
 const I_BLK_GUESS_DOWN: c_int = 9;
@@ -49,7 +51,7 @@ const F_DEMO: c_int = 0x10;
 const F_RESIZE: c_int = 0x02;
 const F_DISPLAY: c_int = 0x04;
 
-#[no_mangle]
+
 pub static mut Preferences: PREF = PREF {
 	wGameType: 0,
 	Mines: 0,
@@ -68,42 +70,32 @@ pub static mut Preferences: PREF = PREF {
 	szExpert: [0; CCH_NAME_MAX],
 };
 
-#[no_mangle]
+
 pub static mut xBoxMac: c_int = 0;
-#[no_mangle]
+
 pub static mut yBoxMac: c_int = 0;
 
-#[no_mangle]
+
 pub static mut iButtonCur: c_int = I_BUTTON_HAPPY;
-#[no_mangle]
+
 pub static mut cBombLeft: c_int = 0;
-#[no_mangle]
+
 pub static mut cSec: c_int = 0;
-#[no_mangle]
+
 pub static mut cBoxVisit: c_int = 0;
 
-#[no_mangle]
+
 pub static mut xCur: c_int = -1;
-#[no_mangle]
+
 pub static mut yCur: c_int = -1;
 
-#[no_mangle]
+
 pub static mut rgBlk: [i8; C_BLK_MAX] = [I_BLK_BLANK_UP as i8; C_BLK_MAX];
 
 static mut CBOMB_START: c_int = 0;
 static mut CBOX_VISIT_MAC: c_int = 0;
 static mut F_TIMER: BOOL = FALSE;
 static mut F_OLD_TIMER_STATUS: BOOL = FALSE;
-
-extern "C" {
-	static mut hwndMain: HWND;
-	static mut fBlock: BOOL;
-	static mut fStatus: c_int;
-
-	fn AdjustWindow(flags: c_int);
-	fn DoEnterName();
-	fn DoDisplayBest();
-}
 
 fn bool_from_bool32(value: BOOL) -> bool {
 	value != 0
@@ -502,8 +494,8 @@ fn in_range_step(x: c_int, y: c_int) -> bool {
 	f_in_range(x, y) && !is_visit(x, y) && !guessed_bomb(x, y)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn ClearField() {
+
+pub unsafe fn ClearField() {
 	// Reset every cell to blank-up and rebuild the sentinel border.
 	#[allow(clippy::needless_range_loop)]
 	for idx in 0..C_BLK_MAX {
@@ -520,8 +512,8 @@ pub unsafe extern "C" fn ClearField() {
 	}
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoTimer() {
+
+pub unsafe fn DoTimer() {
 	if F_TIMER != FALSE && cSec < 999 {
 		cSec += 1;
 		display_time();
@@ -529,8 +521,8 @@ pub unsafe extern "C" fn DoTimer() {
 	}
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn StartGame() {
+
+pub unsafe fn StartGame() {
 	// Reset globals, randomize bombs, and resize the window if the board changed.
 	F_TIMER = FALSE;
 
@@ -574,8 +566,8 @@ pub unsafe extern "C" fn StartGame() {
 	AdjustWindow(f_adjust);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn TrackMouse(x_new: c_int, y_new: c_int) {
+
+pub unsafe fn TrackMouse(x_new: c_int, y_new: c_int) {
 	// Provide the classic pressed-square feedback during mouse drags.
 	if x_new == xCur && y_new == yCur {
 		return;
@@ -646,14 +638,14 @@ pub unsafe extern "C" fn TrackMouse(x_new: c_int, y_new: c_int) {
 	}
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn MakeGuess(x: c_int, y: c_int) {
+
+pub unsafe fn MakeGuess(x: c_int, y: c_int) {
 	// Toggle through flag/question mark states and update the bomb counter.
 	make_guess_internal(x, y);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoButton1Up() {
+
+pub unsafe fn DoButton1Up() {
 	// Handle a left-button release: start the timer, then either chord or step.
 	if f_in_range(xCur, yCur) {
 		if cBoxVisit == 0 && cSec == 0 {
@@ -681,8 +673,8 @@ pub unsafe extern "C" fn DoButton1Up() {
 	display_button(iButtonCur);
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn PauseGame() {
+
+pub unsafe fn PauseGame() {
 	// Pause by silencing audio, remembering timer state, and setting the flag.
 	stop_all_audio();
 
@@ -696,8 +688,8 @@ pub unsafe extern "C" fn PauseGame() {
 	set_status_pause();
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn ResumeGame() {
+
+pub unsafe fn ResumeGame() {
 	// Resume from pause by restoring the timer state and clearing the flag.
 	if status_play() {
 		F_TIMER = F_OLD_TIMER_STATUS;
@@ -705,8 +697,8 @@ pub unsafe extern "C" fn ResumeGame() {
 	clr_status_pause();
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn UpdateBombCount(bomb_adjust: c_int) {
+
+pub unsafe fn UpdateBombCount(bomb_adjust: c_int) {
 	// Entry point used by the C UI to keep the bomb LEDs in sync.
 	update_bomb_count_internal(bomb_adjust);
 }

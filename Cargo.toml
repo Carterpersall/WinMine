@@ -1,15 +1,8 @@
 [package]
-name = "winmine-rust"
+name = "winmine"
 version = "0.1.0"
 edition = "2021"
 publish = false
-
-[lib]
-name = "winmine_rust"
-
-[[bin]]
-name = "winmine"
-path = "src/main.rs"
 
 [profile.dev]
 incremental = true

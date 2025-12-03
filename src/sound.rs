@@ -2,10 +2,11 @@
 use core::ffi::c_int;
 use core::ptr::null;
 
-use windows_sys::Win32::Foundation::HINSTANCE;
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 
-use crate::pref::{Preferences, FSOUND_OFF, FSOUND_ON};
+use crate::pref::{FSOUND_OFF, FSOUND_ON};
+use crate::rtns::Preferences;
+use crate::globals::hInst;
 
 // Tune identifiers passed in from the legacy C code.
 const TUNE_TICK: c_int = 1;
@@ -17,12 +18,7 @@ const ID_TUNE_TICK: u16 = 432;
 const ID_TUNE_WON: u16 = 433;
 const ID_TUNE_LOST: u16 = 434;
 
-extern "C" {
-    static mut hInst: HINSTANCE;
-}
-
-#[no_mangle]
-pub extern "C" fn FInitTunes() -> c_int {
+pub fn FInitTunes() -> c_int {
     // Attempt to stop any playing sounds; if the API fails we assume the
     // machine cannot play audio and disable sound effects in preferences.
     if stop_all_sounds() {
@@ -32,16 +28,14 @@ pub extern "C" fn FInitTunes() -> c_int {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn EndTunes() {
+pub fn EndTunes() {
     // When exiting, purge the playback queue if the feature is active.
     if sound_enabled() {
         let _ = stop_all_sounds();
     }
 }
 
-#[no_mangle]
-pub extern "C" fn PlayTune(tune: c_int) {
+pub fn PlayTune(tune: c_int) {
     // Honor the user's preference before attempting to play any sound.
     if !sound_enabled() {
         return;

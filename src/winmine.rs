@@ -24,21 +24,30 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEMOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSCOMMAND, WM_TIMER, WM_WINDOWPOSCHANGED,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GWL_STYLE, HACCEL, HICON, HELP_CONTEXT, HELP_CONTEXTMENU, HELP_HELPONHELP, HELP_INDEX, HELP_WM_HELP,
-    HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG, PM_REMOVE, SC_CLOSE, SC_MINIMIZE, SC_RESTORE, SM_CXSCREEN,
-    SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN, SW_HIDE, SW_SHOWNORMAL, SW_SHOWMINIMIZED,
-    SW_SHOWMINNOACTIVE, WS_CAPTION, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, wsprintfW,
+    GWL_EXSTYLE, GWL_STYLE, HACCEL, HELP_CONTEXT, HELP_CONTEXTMENU, HELP_HELPONHELP, HELP_INDEX, HELP_WM_HELP, HMENU,
+    IDCANCEL, IDC_ARROW, IDOK, MSG, PM_REMOVE, SC_CLOSE, SC_MINIMIZE, SC_RESTORE, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
+    SM_CYSCREEN, SM_CYVIRTUALSCREEN, SW_HIDE, SW_SHOWNORMAL, SW_SHOWMINIMIZED, SW_SHOWMINNOACTIVE, WS_CAPTION,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, wsprintfW,
 };
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
 
 use crate::grafix::{CleanUp, DisplayButton, DisplayScreen, DrawScreen, FInitLocal, FreeBitmaps, FLoadBitmaps};
 use crate::pref::{
-    fUpdateIni, Preferences, ReadPreferences, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER, WritePreferences, CCH_NAME_MAX,
+    fUpdateIni, ReadPreferences, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER, WritePreferences, CCH_NAME_MAX,
     FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH,
 };
-use crate::rtns::{DoButton1Up, DoTimer, MakeGuess, PauseGame, ResumeGame, StartGame, TrackMouse};
+use crate::rtns::{
+    DoButton1Up, DoTimer, MakeGuess, PauseGame, Preferences, ResumeGame, StartGame, TrackMouse, iButtonCur, xBoxMac,
+    xCur, yBoxMac, yCur,
+};
+#[cfg(not(debug_assertions))]
+use crate::rtns::rgBlk;
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar};
+use crate::globals::{
+    bInitMinimized, dypAdjust, dypCaption, dypMenu, dxFrameExtra, dxWindow, dxpBorder, dyWindow, fButton1Down, fBlock,
+    fIgnoreClick, fLocalPause, fStatus, hIconMain, hInst, hMenu, hwndMain, szClass, szDefaultName, szTime,
+};
 
 const ID_MENU: u16 = 500;
 const ID_MENU_ACCEL: u16 = 501;
@@ -197,36 +206,6 @@ struct HelpInfo {
 }
 
 type DialogProc = Option<unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> isize>;
-
-extern "C" {
-    static mut hInst: HINSTANCE;
-    static mut hwndMain: HWND;
-    static mut hMenu: HMENU;
-    static mut dxWindow: c_int;
-    static mut dyWindow: c_int;
-    static mut dypAdjust: c_int;
-    static mut dxFrameExtra: c_int;
-    static mut bInitMinimized: BOOL;
-    static mut dxpBorder: c_int;
-    static mut dypMenu: c_int;
-    static mut dypCaption: c_int;
-    static mut xBoxMac: c_int;
-    static mut yBoxMac: c_int;
-    static mut szClass: [u16; CCH_NAME_MAX];
-    static mut szTime: [u16; CCH_NAME_MAX];
-    static mut szDefaultName: [u16; CCH_NAME_MAX];
-    static mut iButtonCur: c_int;
-    static mut xCur: c_int;
-    static mut yCur: c_int;
-    static mut fButton1Down: BOOL;
-    static mut fBlock: BOOL;
-    static mut fIgnoreClick: BOOL;
-    static mut fLocalPause: BOOL;
-    static mut fStatus: c_int;
-    #[cfg(not(debug_assertions))]
-    static mut rgBlk: [i8; C_BLK_MAX];
-    static mut hIconMain: HICON;
-}
 
 extern "system" {
     fn UpdateWindow(h_wnd: HWND) -> BOOL;
@@ -690,7 +669,7 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
         yCur = y_box_from_ypos(hiword(l_param));
         if in_range(xCur, yCur) {
             let hdc = GetDC(NULL_HWND);
-            if hdc != 0 {
+            if hdc != null_mut() {
                 let color = if cell_is_bomb(xCur, yCur) { COLOR_BLACK } else { COLOR_WHITE };
                 SetPixel(hdc, 0, 0, color);
                 ReleaseDC(NULL_HWND, hdc);
@@ -702,7 +681,7 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
 #[cfg(debug_assertions)]
 unsafe fn handle_xyzzys_mouse(_w_param: WPARAM, _l_param: LPARAM) {}
 
-#[no_mangle]
+
 pub unsafe extern "system" fn MainWndProc(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     match message {
         WM_WINDOWPOSCHANGED => handle_window_pos_changed(l_param),
@@ -775,8 +754,8 @@ pub unsafe extern "system" fn MainWndProc(h_wnd: HWND, message: u32, w_param: WP
     DefWindowProcW(h_wnd, message, w_param, l_param)
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn FixMenus() {
+
+pub unsafe fn FixMenus() {
     // Keep the menu checkmarks synchronized with the current difficulty/option flags.
     let game = Preferences.wGameType;
     CheckEm(IDM_BEGIN, bool_to_bool(game == WGAME_BEGIN as u16));
@@ -789,8 +768,8 @@ pub unsafe extern "C" fn FixMenus() {
     CheckEm(IDM_SOUND, int_to_bool(Preferences.fSound));
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoPref() {
+
+pub unsafe fn DoPref() {
     // Launch the custom game dialog, then treat the result as a "Custom" board.
     show_dialog(ID_DLG_PREF, Some(PrefDlgProc));
 
@@ -800,21 +779,21 @@ pub unsafe extern "C" fn DoPref() {
     StartGame();
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoEnterName() {
+
+pub unsafe fn DoEnterName() {
     // Show the high-score entry dialog and mark preferences dirty.
     show_dialog(ID_DLG_ENTER, Some(EnterDlgProc));
     fUpdateIni = TRUE;
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn DoDisplayBest() {
+
+pub unsafe fn DoDisplayBest() {
     // Present the high-score list dialog as-is; no post-processing required here.
     show_dialog(ID_DLG_BEST, Some(BestDlgProc));
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn FLocalButton(l_param: LPARAM) -> BOOL {
+
+pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
     // Handle clicks on the smiley face button while providing the pressed animation.
     let mut msg: MSG = core::mem::zeroed();
 
@@ -868,7 +847,7 @@ pub unsafe extern "C" fn FLocalButton(l_param: LPARAM) -> BOOL {
     }
 }
 
-#[no_mangle]
+
 pub unsafe extern "system" fn PrefDlgProc(h_dlg: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> isize {
     // Custom game dialog mirroring the legacy behavior and help wiring.
     match message {
@@ -906,7 +885,7 @@ pub unsafe extern "system" fn PrefDlgProc(h_dlg: HWND, message: u32, w_param: WP
     FALSE as isize
 }
 
-#[no_mangle]
+
 pub unsafe extern "system" fn BestDlgProc(h_dlg: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> isize {
     // High-score dialog with reset + context help support.
     match message {
@@ -946,7 +925,7 @@ pub unsafe extern "system" fn BestDlgProc(h_dlg: HWND, message: u32, w_param: WP
     FALSE as isize
 }
 
-#[no_mangle]
+
 pub unsafe extern "system" fn EnterDlgProc(h_dlg: HWND, message: u32, w_param: WPARAM, _l_param: LPARAM) -> isize {
     // Name entry dialog shown when a player beats a high score.
     match message {
@@ -980,8 +959,8 @@ pub unsafe extern "system" fn EnterDlgProc(h_dlg: HWND, message: u32, w_param: W
     FALSE as isize
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn AdjustWindow(mut f_adjust: c_int) {
+
+pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     // Recompute the main window rectangle whenever the board or menu state changes.
     if hwndMain == NULL_HWND {
         return;
