@@ -2,6 +2,7 @@ use core::cmp::{max, min};
 use core::ffi::c_int;
 use core::mem;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
+use core::sync::atomic::Ordering;
 
 use windows_sys::core::{w, BOOL, PCWSTR, PSTR};
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
@@ -310,7 +311,7 @@ pub unsafe fn run_winmine(
     hInst = h_instance;
     InitConst();
 
-    bInitMinimized = bool_to_bool(initial_minimized_state(n_cmd_show));
+    bInitMinimized.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
 
     init_common_controls();
     hIconMain = LoadIconW(hInst, make_int_resource(ID_ICON_MAIN));
@@ -324,15 +325,20 @@ pub unsafe fn run_winmine(
 
     ReadPreferences();
 
+    let dx_window = dxWindow.load(Ordering::Relaxed);
+    let dy_window = dyWindow.load(Ordering::Relaxed);
+    let dxp_border = dxpBorder.load(Ordering::Relaxed);
+    let dyp_adjust = dypAdjust.load(Ordering::Relaxed);
+
     hwndMain = CreateWindowExW(
         0,
         class_name_ptr(),
         class_name_ptr(),
         WINDOW_STYLE,
-        Preferences.xWindow - dxpBorder,
-        Preferences.yWindow - dypAdjust,
-        dxWindow + dxpBorder,
-        dyWindow + dypAdjust,
+        Preferences.xWindow - dxp_border,
+        Preferences.yWindow - dyp_adjust,
+        dx_window + dxp_border,
+        dy_window + dyp_adjust,
         NULL_HWND,
         NULL_HMENU,
         hInst,
@@ -357,7 +363,7 @@ pub unsafe fn run_winmine(
     ShowWindow(hwndMain, SW_SHOWNORMAL);
     UpdateWindow(hwndMain);
 
-    bInitMinimized = FALSE;
+    bInitMinimized.store(false, Ordering::Relaxed);
 
     let mut msg: MSG = mem::zeroed();
     loop {
@@ -374,7 +380,7 @@ pub unsafe fn run_winmine(
 
     CleanUp();
 
-    if fUpdateIni != FALSE {
+    if fUpdateIni.load(Ordering::Relaxed) {
         WritePreferences();
     }
 
@@ -389,44 +395,44 @@ fn y_box_from_ypos(y: c_int) -> c_int {
     (y - (DY_GRID_OFF - DY_BLK)) >> 4
 }
 
-unsafe fn status_icon() -> bool {
-    (fStatus & F_ICON) != 0
+fn status_icon() -> bool {
+    fStatus.load(Ordering::Relaxed) & F_ICON != 0
 }
 
-unsafe fn status_play() -> bool {
-    (fStatus & F_PLAY) != 0
+fn status_play() -> bool {
+    fStatus.load(Ordering::Relaxed) & F_PLAY != 0
 }
 
-unsafe fn set_status_pause() {
-    fStatus |= F_PAUSE;
+fn set_status_pause() {
+    fStatus.fetch_or(F_PAUSE, Ordering::Relaxed);
 }
 
-unsafe fn clr_status_pause() {
-    fStatus &= !F_PAUSE;
+fn clr_status_pause() {
+    fStatus.fetch_and(!F_PAUSE, Ordering::Relaxed);
 }
 
-unsafe fn set_status_icon() {
-    fStatus |= F_ICON;
+fn set_status_icon() {
+    fStatus.fetch_or(F_ICON, Ordering::Relaxed);
 }
 
-unsafe fn clr_status_icon() {
-    fStatus &= !F_ICON;
+fn clr_status_icon() {
+    fStatus.fetch_and(!F_ICON, Ordering::Relaxed);
 }
 
-unsafe fn set_block_flag(active: bool) {
-    fBlock = bool_to_bool(active);
+fn set_block_flag(active: bool) {
+    fBlock.store(active, Ordering::Relaxed);
 }
 
 unsafe fn begin_primary_button_drag(h_wnd: HWND) {
     SetCapture(h_wnd);
-    fButton1Down = TRUE;
-    xCur = -1;
-    yCur = -1;
+    fButton1Down.store(true, Ordering::Relaxed);
+    xCur.store(-1, Ordering::Relaxed);
+    yCur.store(-1, Ordering::Relaxed);
     DisplayButton(I_BUTTON_CAUTION);
 }
 
 unsafe fn finish_primary_button_drag() {
-    fButton1Down = FALSE;
+    fButton1Down.store(false, Ordering::Relaxed);
     ReleaseCapture();
     if status_play() {
         DoButton1Up();
@@ -436,7 +442,7 @@ unsafe fn finish_primary_button_drag() {
 }
 
 unsafe fn handle_mouse_move(w_param: WPARAM, l_param: LPARAM) {
-    if fButton1Down != FALSE {
+    if fButton1Down.load(Ordering::Relaxed) {
         if status_play() {
             TrackMouse(
                 x_box_from_xpos(loword(l_param)),
@@ -459,7 +465,7 @@ unsafe fn handle_rbutton_down(h_wnd: HWND, w_param: WPARAM, l_param: LPARAM) -> 
         return None;
     }
 
-    if fButton1Down != FALSE {
+    if fButton1Down.load(Ordering::Relaxed) {
         TrackMouse(-3, -3);
         set_block_flag(true);
         PostMessageW(hwndMain, WM_MOUSEMOVE, w_param, l_param);
@@ -586,23 +592,18 @@ unsafe fn handle_syscommand(w_param: WPARAM) {
             clr_status_pause();
             clr_status_icon();
             ResumeGame();
-            fIgnoreClick = FALSE;
+            fIgnoreClick.store(false, Ordering::Relaxed);
         }
         _ => {}
     }
 }
 
-unsafe fn handle_ignore_click() -> bool {
-    if fIgnoreClick != FALSE {
-        fIgnoreClick = FALSE;
-        true
-    } else {
-        false
-    }
+fn handle_ignore_click() -> bool {
+    fIgnoreClick.swap(false, Ordering::Relaxed)
 }
 
-unsafe fn local_pause() -> bool {
-    fLocalPause != FALSE
+fn local_pause() -> bool {
+    fLocalPause.load(Ordering::Relaxed)
 }
 
 fn menu_switchable() -> bool {
@@ -618,7 +619,7 @@ fn sound_on() -> bool {
 }
 
 unsafe fn update_menu_from_preferences() {
-    fUpdateIni = TRUE;
+    fUpdateIni.store(true, Ordering::Relaxed);
     SetMenuBar(Preferences.fMenu);
 }
 
@@ -636,7 +637,9 @@ fn get_activate_state(w_param: WPARAM) -> u16 {
 
 #[cfg(not(debug_assertions))]
 unsafe fn in_range(x: c_int, y: c_int) -> bool {
-    x > 0 && y > 0 && x <= xBoxMac && y <= yBoxMac
+    let x_max = xBoxMac.load(Ordering::Relaxed);
+    let y_max = yBoxMac.load(Ordering::Relaxed);
+    x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
 #[cfg(not(debug_assertions))]
@@ -702,12 +705,14 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
 
     let control_down = (w_param & MK_CONTROL_FLAG) != 0;
     if (I_XYZZY == CCH_XYZZY && control_down) || I_XYZZY > CCH_XYZZY {
-        xCur = x_box_from_xpos(loword(l_param));
-        yCur = y_box_from_ypos(hiword(l_param));
-        if in_range(xCur, yCur) {
+        let x_pos = x_box_from_xpos(loword(l_param));
+        let y_pos = y_box_from_ypos(hiword(l_param));
+        xCur.store(x_pos, Ordering::Relaxed);
+        yCur.store(y_pos, Ordering::Relaxed);
+        if in_range(x_pos, y_pos) {
             let hdc = GetDC(NULL_HWND);
             if hdc != null_mut() {
-                let color = if cell_is_bomb(xCur, yCur) {
+                let color = if cell_is_bomb(x_pos, y_pos) {
                     COLOR_BLACK
                 } else {
                     COLOR_WHITE
@@ -766,7 +771,7 @@ pub unsafe extern "system" fn MainWndProc(
         }
         WM_MOUSEMOVE => handle_mouse_move(w_param, l_param),
         WM_RBUTTONUP | WM_MBUTTONUP | WM_LBUTTONUP => {
-            if fButton1Down != FALSE {
+            if fButton1Down.load(Ordering::Relaxed) {
                 finish_primary_button_drag();
             }
         }
@@ -777,15 +782,15 @@ pub unsafe extern "system" fn MainWndProc(
         }
         WM_ACTIVATE => {
             if get_activate_state(w_param) == WA_CLICKACTIVE {
-                fIgnoreClick = TRUE;
+                fIgnoreClick.store(true, Ordering::Relaxed);
             }
         }
         WM_TIMER => {
             DoTimer();
             return 0;
         }
-        WM_ENTERMENULOOP => fLocalPause = TRUE,
-        WM_EXITMENULOOP => fLocalPause = FALSE,
+        WM_ENTERMENULOOP => fLocalPause.store(true, Ordering::Relaxed),
+        WM_EXITMENULOOP => fLocalPause.store(false, Ordering::Relaxed),
         WM_PAINT => {
             let mut paint: PAINTSTRUCT = mem::zeroed();
             let hdc = BeginPaint(h_wnd, &mut paint);
@@ -818,14 +823,14 @@ pub unsafe fn DoPref() {
 
     Preferences.wGameType = WGAME_OTHER;
     FixMenus();
-    fUpdateIni = TRUE;
+    fUpdateIni.store(true, Ordering::Relaxed);
     StartGame();
 }
 
 pub unsafe fn DoEnterName() {
     // Show the high-score entry dialog and mark preferences dirty.
     show_dialog(ID_DLG_ENTER, Some(EnterDlgProc));
-    fUpdateIni = TRUE;
+    fUpdateIni.store(true, Ordering::Relaxed);
 }
 
 pub unsafe fn DoDisplayBest() {
@@ -840,8 +845,9 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
     msg.pt.x = loword(l_param);
     msg.pt.y = hiword(l_param);
 
+    let dx_window = dxWindow.load(Ordering::Relaxed);
     let mut rc = RECT {
-        left: (dxWindow - DX_BUTTON) >> 1,
+        left: (dx_window - DX_BUTTON) >> 1,
         top: DY_TOP_LED,
         right: 0,
         bottom: 0,
@@ -863,8 +869,8 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
             match msg.message {
                 WM_LBUTTONUP => {
                     if pressed && PtInRect(&rc, msg.pt) != 0 {
-                        iButtonCur = I_BUTTON_HAPPY;
-                        DisplayButton(iButtonCur);
+                        iButtonCur.store(I_BUTTON_HAPPY, Ordering::Relaxed);
+                        DisplayButton(I_BUTTON_HAPPY);
                         StartGame();
                     }
                     ReleaseCapture();
@@ -878,7 +884,7 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
                         }
                     } else if pressed {
                         pressed = false;
-                        DisplayButton(iButtonCur);
+                        DisplayButton(iButtonCur.load(Ordering::Relaxed));
                     }
                 }
                 _ => {}
@@ -949,7 +955,7 @@ pub unsafe extern "system" fn BestDlgProc(
                 copy_from_default(name_ptr_for_game_mut(WGAME_BEGIN));
                 copy_from_default(name_ptr_for_game_mut(WGAME_INTER));
                 copy_from_default(name_ptr_for_game_mut(WGAME_EXPERT));
-                fUpdateIni = TRUE;
+                fUpdateIni.store(true, Ordering::Relaxed);
                 reset_best_dialog(h_dlg);
                 return TRUE as isize;
             }
@@ -1017,8 +1023,12 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
         return;
     }
 
-    dxWindow = DX_BLK * xBoxMac + DX_GRID_OFF + DX_RIGHT_SPACE;
-    dyWindow = DY_BLK * yBoxMac + DY_GRID_OFF + DY_BOTTOM_SPACE;
+    let x_boxes = xBoxMac.load(Ordering::Relaxed);
+    let y_boxes = yBoxMac.load(Ordering::Relaxed);
+    let dx_window = DX_BLK * x_boxes + DX_GRID_OFF + DX_RIGHT_SPACE;
+    let dy_window = DY_BLK * y_boxes + DY_GRID_OFF + DY_BOTTOM_SPACE;
+    dxWindow.store(dx_window, Ordering::Relaxed);
+    dyWindow.store(dy_window, Ordering::Relaxed);
 
     let menu_visible = menu_is_visible();
     let mut rect_game = RECT {
@@ -1041,18 +1051,19 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
         && rect_game.top != rect_help.top
     {
         diff_level = true;
-        menu_extra = dypMenu;
+        menu_extra = dypMenu.load(Ordering::Relaxed);
     }
 
     let mut desired = RECT {
         left: 0,
         top: 0,
-        right: dxWindow,
-        bottom: dyWindow,
+        right: dx_window,
+        bottom: dy_window,
     };
     let dw_style = GetWindowLongPtrW(hwndMain, GWL_STYLE) as u32;
     let dw_ex_style = GetWindowLongPtrW(hwndMain, GWL_EXSTYLE) as u32;
-    let mut frame_extra = dxpBorder;
+    let mut frame_extra = dxpBorder.load(Ordering::Relaxed);
+    let mut dyp_adjust;
     if AdjustWindowRectEx(
         &mut desired,
         dw_style,
@@ -1062,38 +1073,39 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     {
         let cx_total = desired.right - desired.left;
         let cy_total = desired.bottom - desired.top;
-        frame_extra = max(0, cx_total - dxWindow);
-        dypAdjust = max(0, cy_total - dyWindow);
+        frame_extra = max(0, cx_total - dx_window);
+        dyp_adjust = max(0, cy_total - dy_window);
     } else {
-        dypAdjust = dypCaption;
+        dyp_adjust = dypCaption.load(Ordering::Relaxed);
         if menu_visible {
-            dypAdjust += dypMenu;
+            dyp_adjust += dypMenu.load(Ordering::Relaxed);
         }
     }
 
-    dypAdjust += menu_extra;
-    dxFrameExtra = frame_extra;
+    dyp_adjust += menu_extra;
+    dypAdjust.store(dyp_adjust, Ordering::Relaxed);
+    dxFrameExtra.store(frame_extra, Ordering::Relaxed);
 
     let mut excess =
-        Preferences.xWindow + dxWindow + dxFrameExtra - our_get_system_metrics(SM_CXSCREEN);
+        Preferences.xWindow + dx_window + frame_extra - our_get_system_metrics(SM_CXSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.xWindow -= excess;
     }
-    excess = Preferences.yWindow + dyWindow + dypAdjust - our_get_system_metrics(SM_CYSCREEN);
+    excess = Preferences.yWindow + dy_window + dyp_adjust - our_get_system_metrics(SM_CYSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.yWindow -= excess;
     }
 
-    if bInitMinimized == FALSE {
+    if !bInitMinimized.load(Ordering::Relaxed) {
         if (f_adjust & F_RESIZE) != 0 {
             MoveWindow(
                 hwndMain,
                 Preferences.xWindow,
                 Preferences.yWindow,
-                dxWindow + dxFrameExtra,
-                dyWindow + dypAdjust,
+                dx_window + frame_extra,
+                dy_window + dyp_adjust,
                 TRUE,
             );
         }
@@ -1104,13 +1116,14 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
             && GetMenuItemRect(hwndMain, hMenu, 1, &mut rect_help) != 0
             && rect_game.top == rect_help.top
         {
-            dypAdjust -= dypMenu;
+            dyp_adjust -= dypMenu.load(Ordering::Relaxed);
+            dypAdjust.store(dyp_adjust, Ordering::Relaxed);
             MoveWindow(
                 hwndMain,
                 Preferences.xWindow,
                 Preferences.yWindow,
-                dxWindow + dxFrameExtra,
-                dyWindow + dypAdjust,
+                dx_window + frame_extra,
+                dy_window + dyp_adjust,
                 TRUE,
             );
         }
@@ -1119,8 +1132,8 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
             let rect = RECT {
                 left: 0,
                 top: 0,
-                right: dxWindow,
-                bottom: dyWindow,
+                right: dx_window,
+                bottom: dy_window,
             };
             InvalidateRect(hwndMain, &rect, TRUE);
         }

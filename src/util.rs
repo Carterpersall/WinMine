@@ -235,10 +235,10 @@ pub unsafe fn InitConst() {
         CCH_NAME_MAX as u32,
     );
 
-    dypCaption = GetSystemMetrics(SM_CYCAPTION) + 1;
-    dypMenu = GetSystemMetrics(SM_CYMENU) + 1;
-    dypBorder = GetSystemMetrics(SM_CYBORDER) + 1;
-    dxpBorder = GetSystemMetrics(SM_CXBORDER) + 1;
+    dypCaption.store(GetSystemMetrics(SM_CYCAPTION) + 1, Ordering::Relaxed);
+    dypMenu.store(GetSystemMetrics(SM_CYMENU) + 1, Ordering::Relaxed);
+    dypBorder.store(GetSystemMetrics(SM_CYBORDER) + 1, Ordering::Relaxed);
+    dxpBorder.store(GetSystemMetrics(SM_CXBORDER) + 1, Ordering::Relaxed);
 
     let mut disposition = 0u32;
     let mut key: HKEY = std::ptr::null_mut();

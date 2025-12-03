@@ -1,6 +1,7 @@
 // Registry-backed preference helpers mirrored from pref.c.
 use core::ffi::c_int;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::core::{w, BOOL, PCWSTR};
 use windows_sys::Win32::Foundation::{FALSE, HWND, TRUE};
@@ -78,7 +79,7 @@ pub struct Pref {
 }
 
 // Flag consulted by the C UI layer to decide when to persist settings.
-pub static mut fUpdateIni: BOOL = FALSE;
+pub static fUpdateIni: AtomicBool = AtomicBool::new(false);
 
 pub static mut g_hReg: HKEY = std::ptr::null_mut();
 
@@ -179,11 +180,11 @@ pub unsafe fn ReadPreferences() {
     let prefs = addr_of_mut!(Preferences);
 
     let height = ReadInt(2, MINHEIGHT, DEFHEIGHT, 25);
-    yBoxMac = height;
+    yBoxMac.store(height, Ordering::Relaxed);
     (*prefs).Height = height;
 
     let width = ReadInt(3, MINWIDTH, DEFWIDTH, 30);
-    xBoxMac = width;
+    xBoxMac.store(width, Ordering::Relaxed);
     (*prefs).Width = width;
 
     (*prefs).wGameType = ReadInt(0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;

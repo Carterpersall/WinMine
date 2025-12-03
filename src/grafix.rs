@@ -1,6 +1,7 @@
 use core::ffi::{c_int, c_void};
 use core::mem::size_of;
 use core::ptr::{addr_of_mut, null, null_mut};
+use core::sync::atomic::Ordering::Relaxed;
 
 use windows_sys::core::{BOOL, PCSTR, PCWSTR};
 use windows_sys::Win32::Foundation::{HGLOBAL, HRSRC};
@@ -68,7 +69,7 @@ static mut MEM_BLK_DC: [HDC; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
 static mut MEM_BLK_BITMAP: [HBITMAP; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
 
 #[inline]
-unsafe fn prefs_ptr() -> *mut Pref {
+fn prefs_ptr() -> *mut Pref {
     addr_of_mut!(Preferences)
 }
 
@@ -121,9 +122,9 @@ pub unsafe fn FreeBitmaps() {
     }
 }
 
-pub unsafe fn CleanUp() {
+pub fn CleanUp() {
     // Matching the C code, graphics cleanup also silences any outstanding audio.
-    FreeBitmaps();
+    unsafe { FreeBitmaps() };
     EndTunes();
 }
 
@@ -153,10 +154,12 @@ pub unsafe fn DisplayBlk(x: c_int, y: c_int) {
 
 pub unsafe fn DrawGrid(hdc: HDC) {
     // Rebuild the visible grid by iterating over the current rgBlk contents.
+    let y_max = yBoxMac.load(Relaxed);
+    let x_max = xBoxMac.load(Relaxed);
     let mut dy = DY_GRID_OFF;
-    for y in 1..=yBoxMac {
+    for y in 1..=y_max {
         let mut dx = DX_GRID_OFF;
-        for x in 1..=xBoxMac {
+        for x in 1..=x_max {
             BitBlt(hdc, dx, dy, DX_BLK, DY_BLK, block_dc(x, y), 0, 0, SRCCOPY);
             dx += DX_BLK;
         }
@@ -198,10 +201,11 @@ pub unsafe fn DrawBombCount(hdc: HDC) {
         SetLayout(hdc, 0);
     }
 
-    let (i_led, c_bombs) = if cBombLeft < 0 {
-        (11, (-cBombLeft) % 100)
+    let bombs = cBombLeft.load(Relaxed);
+    let (i_led, c_bombs) = if bombs < 0 {
+        (11, (-bombs) % 100)
     } else {
-        (cBombLeft / 100, cBombLeft % 100)
+        (bombs / 100, bombs % 100)
     };
 
     DrawLed(hdc, DX_LEFT_BOMB, i_led);
@@ -229,21 +233,23 @@ pub unsafe fn DrawTime(hdc: HDC) {
         SetLayout(hdc, 0);
     }
 
-    let mut time = cSec;
+    let mut time = cSec.load(Relaxed);
+    let dx_window = dxWindow.load(Relaxed);
+    let border = dxpBorder.load(Relaxed);
     DrawLed(
         hdc,
-        dxWindow - (DX_RIGHT_TIME + 3 * DX_LED + dxpBorder),
+        dx_window - (DX_RIGHT_TIME + 3 * DX_LED + border),
         time / 100,
     );
     time %= 100;
     DrawLed(
         hdc,
-        dxWindow - (DX_RIGHT_TIME + 2 * DX_LED + dxpBorder),
+        dx_window - (DX_RIGHT_TIME + 2 * DX_LED + border),
         time / 10,
     );
     DrawLed(
         hdc,
-        dxWindow - (DX_RIGHT_TIME + DX_LED + dxpBorder),
+        dx_window - (DX_RIGHT_TIME + DX_LED + border),
         time % 10,
     );
 
@@ -262,7 +268,8 @@ pub unsafe fn DisplayTime() {
 
 pub unsafe fn DrawButton(hdc: HDC, i_button: c_int) {
     // Center the face button and pull the requested state from the button sheet.
-    let x = (dxWindow - DX_BUTTON) >> 1;
+    let dx_window = dxWindow.load(Relaxed);
+    let x = (dx_window - DX_BUTTON) >> 1;
     SetDIBitsToDevice(
         hdc,
         x,
@@ -341,8 +348,11 @@ pub unsafe fn DrawBorder(
 
 pub unsafe fn DrawBackground(hdc: HDC) {
     // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
-    let mut x = dxWindow - 1;
-    let mut y = dyWindow - 1;
+    let dx_window = dxWindow.load(Relaxed);
+    let dy_window = dyWindow.load(Relaxed);
+    let border = dxpBorder.load(Relaxed);
+    let mut x = dx_window - 1;
+    let mut y = dy_window - 1;
     DrawBorder(hdc, 0, 0, x, y, 3, 1);
 
     x -= DX_RIGHT_SPACE - 3;
@@ -362,10 +372,10 @@ pub unsafe fn DrawBackground(hdc: HDC) {
     y = DY_TOP_LED + DY_LED;
     DrawBorder(hdc, DX_LEFT_BOMB - 1, DY_TOP_LED - 1, x, y, 1, 0);
 
-    x = dxWindow - (DX_RIGHT_TIME + 3 * DX_LED + dxpBorder + 1);
+    x = dx_window - (DX_RIGHT_TIME + 3 * DX_LED + border + 1);
     DrawBorder(hdc, x, DY_TOP_LED - 1, x + (DX_LED * 3 + 1), y, 1, 0);
 
-    x = ((dxWindow - DX_BUTTON) >> 1) - 1;
+    x = ((dx_window - DX_BUTTON) >> 1) - 1;
     DrawBorder(
         hdc,
         x,
@@ -381,7 +391,7 @@ pub unsafe fn DrawScreen(hdc: HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
     DrawBombCount(hdc);
-    DrawButton(hdc, iButtonCur);
+    DrawButton(hdc, iButtonCur.load(Relaxed));
     DrawTime(hdc);
     DrawGrid(hdc);
 }
