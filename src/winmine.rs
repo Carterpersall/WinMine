@@ -2,11 +2,10 @@ use core::cmp::{max, min};
 use core::ffi::c_int;
 use core::mem;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicI32, Ordering};
 
 use windows_sys::core::{w, BOOL, PCWSTR, PSTR};
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
-#[cfg(not(debug_assertions))]
 use windows_sys::Win32::Foundation::COLORREF;
 use windows_sys::Win32::Foundation::{
     FALSE, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, TRUE, WPARAM,
@@ -16,7 +15,6 @@ use windows_sys::Win32::Graphics::Gdi::{
     BeginPaint, EndPaint, GetStockObject, InvalidateRect, MapWindowPoints, PtInRect, HBRUSH,
     PAINTSTRUCT,
 };
-#[cfg(not(debug_assertions))]
 use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, SetPixel};
 use windows_sys::Win32::UI::Controls::{
     InitCommonControlsEx, ICC_ANIMATE_CLASS, ICC_BAR_CLASSES, ICC_COOL_CLASSES, ICC_HOTKEY_CLASS,
@@ -58,7 +56,6 @@ use crate::pref::{
     fUpdateIni, ReadPreferences, WritePreferences, CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON,
     FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
-#[cfg(not(debug_assertions))]
 use crate::rtns::rgBlk;
 use crate::rtns::{
     iButtonCur, xBoxMac, xCur, yBoxMac, yCur, DoButton1Up, DoTimer, MakeGuess, PauseGame,
@@ -158,7 +155,6 @@ const MK_LBUTTON: WPARAM = 0x0001;
 const MK_RBUTTON: WPARAM = 0x0002;
 const MK_SHIFT_FLAG: WPARAM = 0x0004;
 const MK_CHORD_MASK: WPARAM = MK_SHIFT_FLAG | MK_RBUTTON;
-#[cfg(not(debug_assertions))]
 const MK_CONTROL_FLAG: WPARAM = 0x0008;
 
 const VK_F4_CODE: u32 = VK_F4 as u32;
@@ -166,15 +162,10 @@ const VK_F5_CODE: u32 = VK_F5 as u32;
 const VK_F6_CODE: u32 = VK_F6 as u32;
 const VK_SHIFT_CODE: u32 = VK_SHIFT as u32;
 
-#[cfg(not(debug_assertions))]
 const C_BLK_MAX: usize = 27 * 32;
-#[cfg(not(debug_assertions))]
 const BOARD_INDEX_SHIFT: usize = 5;
-#[cfg(not(debug_assertions))]
 const MASK_BOMB: u8 = 0x80;
-#[cfg(not(debug_assertions))]
 const COLOR_BLACK: COLORREF = 0x0000_0000;
-#[cfg(not(debug_assertions))]
 const COLOR_WHITE: COLORREF = 0x00FF_FFFF;
 
 const HELP_FILE: PCWSTR = w!("winmine.hlp");
@@ -635,20 +626,17 @@ fn get_activate_state(w_param: WPARAM) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
-#[cfg(not(debug_assertions))]
 unsafe fn in_range(x: c_int, y: c_int) -> bool {
     let x_max = xBoxMac.load(Ordering::Relaxed);
     let y_max = yBoxMac.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
-#[cfg(not(debug_assertions))]
 unsafe fn board_index(x: c_int, y: c_int) -> usize {
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     offset.max(0) as usize
 }
 
-#[cfg(not(debug_assertions))]
 unsafe fn cell_is_bomb(x: c_int, y: c_int) -> bool {
     if !in_range(x, y) {
         return false;
@@ -660,11 +648,8 @@ unsafe fn cell_is_bomb(x: c_int, y: c_int) -> bool {
     (rgBlk[idx] as u8 & MASK_BOMB) != 0
 }
 
-#[cfg(not(debug_assertions))]
 const CCH_XYZZY: c_int = 5;
-#[cfg(not(debug_assertions))]
-static mut I_XYZZY: c_int = 0;
-#[cfg(not(debug_assertions))]
+static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 const XYZZY_SEQUENCE: [u16; 5] = [
     b'X' as u16,
     b'Y' as u16,
@@ -673,45 +658,39 @@ const XYZZY_SEQUENCE: [u16; 5] = [
     b'Y' as u16,
 ];
 
-#[cfg(not(debug_assertions))]
 unsafe fn handle_xyzzys_shift() {
-    if I_XYZZY >= CCH_XYZZY {
-        I_XYZZY ^= 20;
+    if I_XYZZY.load(Ordering::Relaxed) >= CCH_XYZZY {
+        I_XYZZY.fetch_xor(20, Ordering::Relaxed);
     }
 }
 
-#[cfg(debug_assertions)]
-unsafe fn handle_xyzzys_shift() {}
-
-#[cfg(not(debug_assertions))]
 unsafe fn handle_xyzzys_default_key(w_param: WPARAM) {
-    if I_XYZZY < CCH_XYZZY {
-        if XYZZY_SEQUENCE[I_XYZZY as usize] == (w_param & 0xFFFF) as u16 {
-            I_XYZZY += 1;
+    let current = I_XYZZY.load(Ordering::Relaxed);
+    if current < CCH_XYZZY {
+        let expected = XYZZY_SEQUENCE[current as usize];
+        if expected == (w_param & 0xFFFF) as u16 {
+            I_XYZZY.store(current + 1, Ordering::Relaxed);
         } else {
-            I_XYZZY = 0;
+            I_XYZZY.store(0, Ordering::Relaxed);
         }
     }
 }
 
-#[cfg(debug_assertions)]
-unsafe fn handle_xyzzys_default_key(_w_param: WPARAM) {}
-
-#[cfg(not(debug_assertions))]
 unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
-    if I_XYZZY == 0 {
+    let state = I_XYZZY.load(Ordering::Relaxed);
+    if state == 0 {
         return;
     }
 
     let control_down = (w_param & MK_CONTROL_FLAG) != 0;
-    if (I_XYZZY == CCH_XYZZY && control_down) || I_XYZZY > CCH_XYZZY {
+    if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
         let x_pos = x_box_from_xpos(loword(l_param));
         let y_pos = y_box_from_ypos(hiword(l_param));
         xCur.store(x_pos, Ordering::Relaxed);
         yCur.store(y_pos, Ordering::Relaxed);
         if in_range(x_pos, y_pos) {
             let hdc = GetDC(NULL_HWND);
-            if hdc != null_mut() {
+            if !hdc.is_null() {
                 let color = if cell_is_bomb(x_pos, y_pos) {
                     COLOR_BLACK
                 } else {
@@ -723,9 +702,6 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
         }
     }
 }
-
-#[cfg(debug_assertions)]
-unsafe fn handle_xyzzys_mouse(_w_param: WPARAM, _l_param: LPARAM) {}
 
 pub unsafe extern "system" fn MainWndProc(
     h_wnd: HWND,
