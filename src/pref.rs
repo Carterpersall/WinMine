@@ -2,15 +2,18 @@
 use core::ffi::c_int;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 
-use windows_sys::core::{BOOL, PCWSTR, w};
-use windows_sys::Win32::Foundation::{HWND, FALSE, TRUE};
+use windows_sys::core::{w, BOOL, PCWSTR};
+use windows_sys::Win32::Foundation::{FALSE, HWND, TRUE};
 use windows_sys::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, NUMCOLORS};
-use windows_sys::Win32::System::Registry::{RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ, KEY_WRITE, REG_DWORD, REG_SZ};
+use windows_sys::Win32::System::Registry::{
+    RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
+    KEY_READ, KEY_WRITE, REG_DWORD, REG_SZ,
+};
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
 
-use crate::sound::FInitTunes;
 use crate::globals::szDefaultName;
-use crate::rtns::{Preferences, xBoxMac, yBoxMac};
+use crate::rtns::{xBoxMac, yBoxMac, Preferences};
+use crate::sound::FInitTunes;
 
 pub const CCH_NAME_MAX: usize = 32;
 pub const ISZ_PREF_MAX: usize = 18;
@@ -80,7 +83,12 @@ pub static mut fUpdateIni: BOOL = FALSE;
 pub static mut g_hReg: HKEY = std::ptr::null_mut();
 
 pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
-pub unsafe fn ReadInt(isz_pref: c_int, val_default: c_int, val_min: c_int, val_max: c_int) -> c_int {
+pub unsafe fn ReadInt(
+    isz_pref: c_int,
+    val_default: c_int,
+    val_min: c_int,
+    val_max: c_int,
+) -> c_int {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
     let handle = g_hReg;
     if handle.is_null() {

@@ -3,12 +3,12 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(non_upper_case_globals)]
 
-mod pref;
 mod globals;
 mod grafix;
+mod pref;
+mod rtns;
 mod sound;
 mod util;
-mod rtns;
 mod winmine;
 
 pub use winmine::run_winmine;

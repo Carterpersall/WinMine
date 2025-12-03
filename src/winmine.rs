@@ -4,50 +4,67 @@ use core::mem;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 
 use windows_sys::core::{w, BOOL, PCWSTR, PSTR};
-use windows_sys::Win32::Foundation::{HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM, TRUE, FALSE};
+use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
 #[cfg(not(debug_assertions))]
 use windows_sys::Win32::Foundation::COLORREF;
-use windows_sys::Win32::Graphics::Gdi::{BeginPaint, EndPaint, GetStockObject, InvalidateRect, MapWindowPoints, PAINTSTRUCT, PtInRect, HBRUSH};
+use windows_sys::Win32::Foundation::{
+    FALSE, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, TRUE, WPARAM,
+};
+use windows_sys::Win32::Graphics::Gdi::LTGRAY_BRUSH;
+use windows_sys::Win32::Graphics::Gdi::{
+    BeginPaint, EndPaint, GetStockObject, InvalidateRect, MapWindowPoints, PtInRect, HBRUSH,
+    PAINTSTRUCT,
+};
 #[cfg(not(debug_assertions))]
 use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, SetPixel};
-use windows_sys::Win32::Graphics::Gdi::LTGRAY_BRUSH;
-use windows_sys::Win32::UI::Controls::{InitCommonControlsEx, ICC_ANIMATE_CLASS, ICC_BAR_CLASSES, ICC_COOL_CLASSES, ICC_HOTKEY_CLASS, ICC_LISTVIEW_CLASSES, ICC_PAGESCROLLER_CLASS, ICC_PROGRESS_CLASS, ICC_TAB_CLASSES, ICC_UPDOWN_CLASS, ICC_USEREX_CLASSES, INITCOMMONCONTROLSEX};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, VK_F4, VK_F5, VK_F6, VK_SHIFT};
+use windows_sys::Win32::UI::Controls::{
+    InitCommonControlsEx, ICC_ANIMATE_CLASS, ICC_BAR_CLASSES, ICC_COOL_CLASSES, ICC_HOTKEY_CLASS,
+    ICC_LISTVIEW_CLASSES, ICC_PAGESCROLLER_CLASS, ICC_PROGRESS_CLASS, ICC_TAB_CLASSES,
+    ICC_UPDOWN_CLASS, ICC_USEREX_CLASSES, INITCOMMONCONTROLSEX,
+};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    ReleaseCapture, SetCapture, VK_F4, VK_F5, VK_F6, VK_SHIFT,
+};
 use windows_sys::Win32::UI::Shell::WinHelpW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DialogBoxParamW, DispatchMessageW, EndDialog, GetDlgItem,
-    GetDlgItemTextW, GetMenuItemRect, GetMessageW, GetSystemMetrics, GetWindowLongPtrW, KillTimer, LoadAcceleratorsW,
-    LoadCursorW, LoadIconW, LoadMenuW, MoveWindow, PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW,
-    SendMessageW, SetDlgItemInt, SetDlgItemTextW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOWPOS,
-    WNDCLASSW, WM_ACTIVATE, WM_COMMAND, WM_CONTEXTMENU, WM_DESTROY, WM_ENTERMENULOOP, WM_EXITMENULOOP, WM_HELP,
-    WM_INITDIALOG, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEFIRST, WM_MOUSELAST,
-    WM_MOUSEMOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSCOMMAND, WM_TIMER, WM_WINDOWPOSCHANGED,
+    wsprintfW, GWL_EXSTYLE, GWL_STYLE, HACCEL, HELP_CONTEXT, HELP_CONTEXTMENU, HELP_HELPONHELP,
+    HELP_INDEX, HELP_WM_HELP, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG, PM_REMOVE, SC_CLOSE,
+    SC_MINIMIZE, SC_RESTORE, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
+    SW_HIDE, SW_SHOWMINIMIZED, SW_SHOWMINNOACTIVE, SW_SHOWNORMAL, WS_CAPTION, WS_MINIMIZEBOX,
+    WS_OVERLAPPED, WS_SYSMENU,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GWL_STYLE, HACCEL, HELP_CONTEXT, HELP_CONTEXTMENU, HELP_HELPONHELP, HELP_INDEX, HELP_WM_HELP, HMENU,
-    IDCANCEL, IDC_ARROW, IDOK, MSG, PM_REMOVE, SC_CLOSE, SC_MINIMIZE, SC_RESTORE, SM_CXSCREEN, SM_CXVIRTUALSCREEN,
-    SM_CYSCREEN, SM_CYVIRTUALSCREEN, SW_HIDE, SW_SHOWNORMAL, SW_SHOWMINIMIZED, SW_SHOWMINNOACTIVE, WS_CAPTION,
-    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, wsprintfW,
+    AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DialogBoxParamW, DispatchMessageW,
+    EndDialog, GetDlgItem, GetDlgItemTextW, GetMenuItemRect, GetMessageW, GetSystemMetrics,
+    GetWindowLongPtrW, KillTimer, LoadAcceleratorsW, LoadCursorW, LoadIconW, LoadMenuW, MoveWindow,
+    PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, SetDlgItemInt,
+    SetDlgItemTextW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOWPOS, WM_ACTIVATE,
+    WM_COMMAND, WM_CONTEXTMENU, WM_DESTROY, WM_ENTERMENULOOP, WM_EXITMENULOOP, WM_HELP,
+    WM_INITDIALOG, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP,
+    WM_MOUSEFIRST, WM_MOUSELAST, WM_MOUSEMOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SYSCOMMAND, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW,
 };
-use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
 
-use crate::grafix::{CleanUp, DisplayButton, DisplayScreen, DrawScreen, FInitLocal, FreeBitmaps, FLoadBitmaps};
-use crate::pref::{
-    fUpdateIni, ReadPreferences, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER, WritePreferences, CCH_NAME_MAX,
-    FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH,
+use crate::globals::{
+    bInitMinimized, dxFrameExtra, dxWindow, dxpBorder, dyWindow, dypAdjust, dypCaption, dypMenu,
+    fBlock, fButton1Down, fIgnoreClick, fLocalPause, fStatus, hIconMain, hInst, hMenu, hwndMain,
+    szClass, szDefaultName, szTime,
 };
-use crate::rtns::{
-    DoButton1Up, DoTimer, MakeGuess, PauseGame, Preferences, ResumeGame, StartGame, TrackMouse, iButtonCur, xBoxMac,
-    xCur, yBoxMac, yCur,
+use crate::grafix::{
+    CleanUp, DisplayButton, DisplayScreen, DrawScreen, FInitLocal, FLoadBitmaps, FreeBitmaps,
+};
+use crate::pref::{
+    fUpdateIni, ReadPreferences, WritePreferences, CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON,
+    FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
 #[cfg(not(debug_assertions))]
 use crate::rtns::rgBlk;
+use crate::rtns::{
+    iButtonCur, xBoxMac, xCur, yBoxMac, yCur, DoButton1Up, DoTimer, MakeGuess, PauseGame,
+    Preferences, ResumeGame, StartGame, TrackMouse,
+};
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar};
-use crate::globals::{
-    bInitMinimized, dypAdjust, dypCaption, dypMenu, dxFrameExtra, dxWindow, dxpBorder, dyWindow, fButton1Down, fBlock,
-    fIgnoreClick, fLocalPause, fStatus, hIconMain, hInst, hMenu, hwndMain, szClass, szDefaultName, szTime,
-};
 
 const ID_MENU: u16 = 500;
 const ID_MENU_ACCEL: u16 = 501;
@@ -126,11 +143,7 @@ const F_DISPLAY: c_int = 0x04;
 
 const WINDOW_STYLE: u32 = WS_OVERLAPPED | WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU;
 
-const LEVEL_DATA: [[c_int; 3]; 3] = [
-    [10, MINHEIGHT, MINWIDTH],
-    [40, 16, 16],
-    [99, 16, 30],
-];
+const LEVEL_DATA: [[c_int; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
 const F_PLAY: c_int = 0x01;
 const F_PAUSE: c_int = 0x02;
@@ -166,27 +179,45 @@ const COLOR_WHITE: COLORREF = 0x00FF_FFFF;
 const HELP_FILE: PCWSTR = w!("winmine.hlp");
 
 const PREF_HELP_IDS: [u32; 14] = [
-    ID_EDIT_HEIGHT as u32,	IDH_PREF_EDIT_HEIGHT,
-    ID_EDIT_WIDTH as u32,	IDH_PREF_EDIT_WIDTH,
-    ID_EDIT_MINES as u32,	IDH_PREF_EDIT_MINES,
-    ID_TXT_HEIGHT as u32,	IDH_PREF_EDIT_HEIGHT,
-    ID_TXT_WIDTH as u32,	IDH_PREF_EDIT_WIDTH,
-    ID_TXT_MINES as u32,	IDH_PREF_EDIT_MINES,
-    0,	0,
+    ID_EDIT_HEIGHT as u32,
+    IDH_PREF_EDIT_HEIGHT,
+    ID_EDIT_WIDTH as u32,
+    IDH_PREF_EDIT_WIDTH,
+    ID_EDIT_MINES as u32,
+    IDH_PREF_EDIT_MINES,
+    ID_TXT_HEIGHT as u32,
+    IDH_PREF_EDIT_HEIGHT,
+    ID_TXT_WIDTH as u32,
+    IDH_PREF_EDIT_WIDTH,
+    ID_TXT_MINES as u32,
+    IDH_PREF_EDIT_MINES,
+    0,
+    0,
 ];
 
 const BEST_HELP_IDS: [u32; 22] = [
-    ID_BTN_RESET as u32,	IDH_BEST_BTN_RESET,
-    ID_STEXT1 as u32,	IDH_STEXT,
-    ID_STEXT2 as u32,	IDH_STEXT,
-    ID_STEXT3 as u32,	IDH_STEXT,
-    ID_TIME_BEGIN as u32,	IDH_STEXT,
-    ID_TIME_INTER as u32,	IDH_STEXT,
-    ID_TIME_EXPERT as u32,	IDH_STEXT,
-    ID_NAME_BEGIN as u32,	IDH_STEXT,
-    ID_NAME_INTER as u32,	IDH_STEXT,
-    ID_NAME_EXPERT as u32,	IDH_STEXT,
-    0,	0,
+    ID_BTN_RESET as u32,
+    IDH_BEST_BTN_RESET,
+    ID_STEXT1 as u32,
+    IDH_STEXT,
+    ID_STEXT2 as u32,
+    IDH_STEXT,
+    ID_STEXT3 as u32,
+    IDH_STEXT,
+    ID_TIME_BEGIN as u32,
+    IDH_STEXT,
+    ID_TIME_INTER as u32,
+    IDH_STEXT,
+    ID_TIME_EXPERT as u32,
+    IDH_STEXT,
+    ID_NAME_BEGIN as u32,
+    IDH_STEXT,
+    ID_NAME_INTER as u32,
+    IDH_STEXT,
+    ID_NAME_EXPERT as u32,
+    IDH_STEXT,
+    0,
+    0,
 ];
 
 const EM_SETLIMITTEXT: u32 = 0x00C5;
@@ -509,7 +540,7 @@ unsafe fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
 
 unsafe fn handle_keydown(w_param: WPARAM) {
     match w_param as u32 {
-            VK_F4_CODE => {
+        VK_F4_CODE => {
             if sound_switchable() {
                 if sound_on() {
                     EndTunes();
@@ -519,17 +550,17 @@ unsafe fn handle_keydown(w_param: WPARAM) {
                 }
             }
         }
-            VK_F5_CODE => {
+        VK_F5_CODE => {
             if menu_switchable() {
                 SetMenuBar(FMENU_OFF);
             }
         }
-            VK_F6_CODE => {
+        VK_F6_CODE => {
             if menu_switchable() {
                 SetMenuBar(FMENU_ON);
             }
         }
-            VK_SHIFT_CODE => handle_xyzzys_shift(),
+        VK_SHIFT_CODE => handle_xyzzys_shift(),
         _ => handle_xyzzys_default_key(w_param),
     }
 }
@@ -631,7 +662,13 @@ const CCH_XYZZY: c_int = 5;
 #[cfg(not(debug_assertions))]
 static mut I_XYZZY: c_int = 0;
 #[cfg(not(debug_assertions))]
-const XYZZY_SEQUENCE: [u16; 5] = [b'X' as u16, b'Y' as u16, b'Z' as u16, b'Z' as u16, b'Y' as u16];
+const XYZZY_SEQUENCE: [u16; 5] = [
+    b'X' as u16,
+    b'Y' as u16,
+    b'Z' as u16,
+    b'Z' as u16,
+    b'Y' as u16,
+];
 
 #[cfg(not(debug_assertions))]
 unsafe fn handle_xyzzys_shift() {
@@ -670,7 +707,11 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
         if in_range(xCur, yCur) {
             let hdc = GetDC(NULL_HWND);
             if hdc != null_mut() {
-                let color = if cell_is_bomb(xCur, yCur) { COLOR_BLACK } else { COLOR_WHITE };
+                let color = if cell_is_bomb(xCur, yCur) {
+                    COLOR_BLACK
+                } else {
+                    COLOR_WHITE
+                };
                 SetPixel(hdc, 0, 0, color);
                 ReleaseDC(NULL_HWND, hdc);
             }
@@ -681,8 +722,12 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
 #[cfg(debug_assertions)]
 unsafe fn handle_xyzzys_mouse(_w_param: WPARAM, _l_param: LPARAM) {}
 
-
-pub unsafe extern "system" fn MainWndProc(h_wnd: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+pub unsafe extern "system" fn MainWndProc(
+    h_wnd: HWND,
+    message: u32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
     match message {
         WM_WINDOWPOSCHANGED => handle_window_pos_changed(l_param),
         WM_SYSCOMMAND => handle_syscommand(w_param),
@@ -754,7 +799,6 @@ pub unsafe extern "system" fn MainWndProc(h_wnd: HWND, message: u32, w_param: WP
     DefWindowProcW(h_wnd, message, w_param, l_param)
 }
 
-
 pub unsafe fn FixMenus() {
     // Keep the menu checkmarks synchronized with the current difficulty/option flags.
     let game = Preferences.wGameType;
@@ -768,7 +812,6 @@ pub unsafe fn FixMenus() {
     CheckEm(IDM_SOUND, int_to_bool(Preferences.fSound));
 }
 
-
 pub unsafe fn DoPref() {
     // Launch the custom game dialog, then treat the result as a "Custom" board.
     show_dialog(ID_DLG_PREF, Some(PrefDlgProc));
@@ -779,19 +822,16 @@ pub unsafe fn DoPref() {
     StartGame();
 }
 
-
 pub unsafe fn DoEnterName() {
     // Show the high-score entry dialog and mark preferences dirty.
     show_dialog(ID_DLG_ENTER, Some(EnterDlgProc));
     fUpdateIni = TRUE;
 }
 
-
 pub unsafe fn DoDisplayBest() {
     // Present the high-score list dialog as-is; no post-processing required here.
     show_dialog(ID_DLG_BEST, Some(BestDlgProc));
 }
-
 
 pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
     // Handle clicks on the smiley face button while providing the pressed animation.
@@ -847,8 +887,12 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
     }
 }
 
-
-pub unsafe extern "system" fn PrefDlgProc(h_dlg: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> isize {
+pub unsafe extern "system" fn PrefDlgProc(
+    h_dlg: HWND,
+    message: u32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> isize {
     // Custom game dialog mirroring the legacy behavior and help wiring.
     match message {
         WM_INITDIALOG => {
@@ -885,8 +929,12 @@ pub unsafe extern "system" fn PrefDlgProc(h_dlg: HWND, message: u32, w_param: WP
     FALSE as isize
 }
 
-
-pub unsafe extern "system" fn BestDlgProc(h_dlg: HWND, message: u32, w_param: WPARAM, l_param: LPARAM) -> isize {
+pub unsafe extern "system" fn BestDlgProc(
+    h_dlg: HWND,
+    message: u32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> isize {
     // High-score dialog with reset + context help support.
     match message {
         WM_INITDIALOG => {
@@ -925,8 +973,12 @@ pub unsafe extern "system" fn BestDlgProc(h_dlg: HWND, message: u32, w_param: WP
     FALSE as isize
 }
 
-
-pub unsafe extern "system" fn EnterDlgProc(h_dlg: HWND, message: u32, w_param: WPARAM, _l_param: LPARAM) -> isize {
+pub unsafe extern "system" fn EnterDlgProc(
+    h_dlg: HWND,
+    message: u32,
+    w_param: WPARAM,
+    _l_param: LPARAM,
+) -> isize {
     // Name entry dialog shown when a player beats a high score.
     match message {
         WM_INITDIALOG => {
@@ -959,7 +1011,6 @@ pub unsafe extern "system" fn EnterDlgProc(h_dlg: HWND, message: u32, w_param: W
     FALSE as isize
 }
 
-
 pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     // Recompute the main window rectangle whenever the board or menu state changes.
     if hwndMain == NULL_HWND {
@@ -970,8 +1021,18 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     dyWindow = DY_BLK * yBoxMac + DY_GRID_OFF + DY_BOTTOM_SPACE;
 
     let menu_visible = menu_is_visible();
-    let mut rect_game = RECT { left: 0, top: 0, right: 0, bottom: 0 };
-    let mut rect_help = RECT { left: 0, top: 0, right: 0, bottom: 0 };
+    let mut rect_game = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    let mut rect_help = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
     let mut menu_extra = 0;
     let mut diff_level = false;
     if menu_visible
@@ -992,7 +1053,13 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     let dw_style = GetWindowLongPtrW(hwndMain, GWL_STYLE) as u32;
     let dw_ex_style = GetWindowLongPtrW(hwndMain, GWL_EXSTYLE) as u32;
     let mut frame_extra = dxpBorder;
-    if AdjustWindowRectEx(&mut desired, dw_style, bool_to_bool(menu_visible) as BOOL, dw_ex_style) != 0 {
+    if AdjustWindowRectEx(
+        &mut desired,
+        dw_style,
+        bool_to_bool(menu_visible) as BOOL,
+        dw_ex_style,
+    ) != 0
+    {
         let cx_total = desired.right - desired.left;
         let cy_total = desired.bottom - desired.top;
         frame_extra = max(0, cx_total - dxWindow);
@@ -1007,7 +1074,8 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     dypAdjust += menu_extra;
     dxFrameExtra = frame_extra;
 
-    let mut excess = Preferences.xWindow + dxWindow + dxFrameExtra - our_get_system_metrics(SM_CXSCREEN);
+    let mut excess =
+        Preferences.xWindow + dxWindow + dxFrameExtra - our_get_system_metrics(SM_CXSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.xWindow -= excess;
@@ -1048,7 +1116,12 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
         }
 
         if (f_adjust & F_DISPLAY) != 0 {
-            let rect = RECT { left: 0, top: 0, right: dxWindow, bottom: dyWindow };
+            let rect = RECT {
+                left: 0,
+                top: 0,
+                right: dxWindow,
+                bottom: dyWindow,
+            };
             InvalidateRect(hwndMain, &rect, TRUE);
         }
     }
@@ -1159,7 +1232,12 @@ unsafe fn apply_help_from_info(l_param: LPARAM, ids: &[u32]) -> bool {
         return false;
     }
     let info = &*(l_param as *const HelpInfo);
-    WinHelpW(info.hItemHandle, HELP_FILE, HELP_WM_HELP, ids.as_ptr() as usize);
+    WinHelpW(
+        info.hItemHandle,
+        HELP_FILE,
+        HELP_WM_HELP,
+        ids.as_ptr() as usize,
+    );
     true
 }
 

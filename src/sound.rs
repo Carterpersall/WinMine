@@ -4,9 +4,9 @@ use core::ptr::null;
 
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 
+use crate::globals::hInst;
 use crate::pref::{FSOUND_OFF, FSOUND_ON};
 use crate::rtns::Preferences;
-use crate::globals::hInst;
 
 // Tune identifiers passed in from the legacy C code.
 const TUNE_TICK: c_int = 1;
