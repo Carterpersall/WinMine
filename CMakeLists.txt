@@ -4,9 +4,12 @@ project(winmine LANGUAGES C RC)
 option(WINMINE_ENABLE_RUST "Build the Rust port scaffolding" ON)
 
 set(WINMINE_SOURCES
-    winmine.c
     res.rc
 )
+
+set(WINMINE_STUB ${CMAKE_CURRENT_BINARY_DIR}/winmine_stub.c)
+file(WRITE ${WINMINE_STUB} "int __winmine_stub_reference = 0;\n")
+list(APPEND WINMINE_SOURCES ${WINMINE_STUB})
 
 add_executable(winmine WIN32 ${WINMINE_SOURCES})
 
