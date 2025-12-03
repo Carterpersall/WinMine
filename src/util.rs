@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::pref::{
 	self, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX, MINHEIGHT, MINWIDTH,
-	PREF, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
+	Pref, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
 use crate::pref::{ReadInt, WritePreferences, g_hReg, rgszPref};
 use crate::rtns::Preferences;
@@ -87,12 +87,12 @@ fn next_rand() -> c_int {
 }
 
 #[inline]
-unsafe fn prefs_mut() -> *mut PREF {
+unsafe fn prefs_mut() -> *mut Pref {
 	addr_of_mut!(Preferences)
 }
 
 #[inline]
-unsafe fn prefs_ref() -> *const PREF {
+unsafe fn prefs_ref() -> *const Pref {
 	addr_of!(Preferences)
 }
 

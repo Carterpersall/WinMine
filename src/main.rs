@@ -1,3 +1,4 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use core::ffi::c_int;

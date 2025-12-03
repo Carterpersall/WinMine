@@ -14,7 +14,7 @@ use windows_sys::Win32::System::Diagnostics::Debug::OutputDebugStringA;
 use windows_sys::Win32::System::LibraryLoader::{FindResourceW, LoadResource, LockResource};
 use windows_sys::Win32::UI::WindowsAndMessaging::RT_BITMAP;
 
-use crate::pref::PREF;
+use crate::pref::Pref;
 use crate::rtns::{ClearField, Preferences, cBombLeft, cSec, iButtonCur, rgBlk, xBoxMac, yBoxMac};
 use crate::sound::EndTunes;
 use crate::globals::{dxWindow, dxpBorder, dyWindow, hInst, hwndMain};
@@ -38,7 +38,6 @@ const DX_RIGHT_TIME: c_int = DX_RIGHT_SPACE + 5;
 const I_BLK_MAX: usize = 16;
 const I_LED_MAX: usize = 12;
 const I_BUTTON_MAX: usize = 5;
-const C_BLK_MAX: usize = 27 * 32;
 const MASK_DATA: i32 = 0x1F;
 
 const ID_BMP_BLOCKS: u16 = 410;
@@ -69,7 +68,7 @@ static mut MEM_BLK_DC: [HDC; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
 static mut MEM_BLK_BITMAP: [HBITMAP; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
 
 #[inline]
-unsafe fn prefs_ptr() -> *mut PREF {
+unsafe fn prefs_ptr() -> *mut Pref {
     addr_of_mut!(Preferences)
 }
 

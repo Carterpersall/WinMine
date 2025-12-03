@@ -6,7 +6,7 @@ use windows_sys::Win32::Foundation::{TRUE, FALSE};
 use windows_sys::Win32::UI::WindowsAndMessaging::SetTimer;
 
 use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
-use crate::pref::{PREF, CCH_NAME_MAX};
+use crate::pref::{Pref, CCH_NAME_MAX};
 use crate::sound::{EndTunes, PlayTune};
 use crate::util::{ReportErr, Rnd};
 use crate::globals::{fBlock, fStatus, hwndMain};
@@ -52,7 +52,7 @@ const F_RESIZE: c_int = 0x02;
 const F_DISPLAY: c_int = 0x04;
 
 
-pub static mut Preferences: PREF = PREF {
+pub static mut Preferences: Pref = Pref {
 	wGameType: 0,
 	Mines: 0,
 	Height: 0,
@@ -82,7 +82,7 @@ pub static mut cBombLeft: c_int = 0;
 
 pub static mut cSec: c_int = 0;
 
-pub static mut cBoxVisit: c_int = 0;
+pub static mut C_BOX_VISIT: c_int = 0;
 
 
 pub static mut xCur: c_int = -1;
@@ -195,7 +195,7 @@ fn block_data(x: c_int, y: c_int) -> c_int {
 }
 
 fn check_win() -> bool {
-	unsafe { cBoxVisit == CBOX_VISIT_MAC }
+	unsafe { C_BOX_VISIT == CBOX_VISIT_MAC }
 }
 
 fn display_block(x: c_int, y: c_int) {
@@ -310,7 +310,7 @@ fn step_xy(queue: &mut [(c_int, c_int); I_STEP_MAX], tail: &mut usize, x: c_int,
 			return;
 		}
 
-		cBoxVisit += 1;
+		C_BOX_VISIT += 1;
 		let bombs = count_bombs(x, y);
 		blk = MASK_VISIT | (bombs as u8 & MASK_DATA);
 		rgBlk[idx] = blk as i8;
@@ -373,7 +373,7 @@ fn step_square(x: c_int, y: c_int) {
 	// Handle a user click on a single square (first-click safety included).
 	unsafe {
 		if is_bomb(x, y) {
-			if cBoxVisit == 0 {
+			if C_BOX_VISIT == 0 {
 				for y_t in 1..yBoxMac {
 					for x_t in 1..xBoxMac {
 						if !is_bomb(x_t, y_t) {
@@ -557,7 +557,7 @@ pub unsafe fn StartGame() {
 
 	cSec = 0;
 	cBombLeft = CBOMB_START;
-	cBoxVisit = 0;
+	C_BOX_VISIT = 0;
 	CBOX_VISIT_MAC = (xBoxMac * yBoxMac) - cBombLeft;
 	set_status_play();
 
@@ -648,7 +648,7 @@ pub unsafe fn MakeGuess(x: c_int, y: c_int) {
 pub unsafe fn DoButton1Up() {
 	// Handle a left-button release: start the timer, then either chord or step.
 	if f_in_range(xCur, yCur) {
-		if cBoxVisit == 0 && cSec == 0 {
+		if C_BOX_VISIT == 0 && cSec == 0 {
 			play_tune(TUNE_TICK);
 			cSec = 1;
 			display_time();
@@ -696,10 +696,3 @@ pub unsafe fn ResumeGame() {
 	}
 	clr_status_pause();
 }
-
-
-pub unsafe fn UpdateBombCount(bomb_adjust: c_int) {
-	// Entry point used by the C UI to keep the bomb LEDs in sync.
-	update_bomb_count_internal(bomb_adjust);
-}
-

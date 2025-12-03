@@ -56,7 +56,7 @@ const PREF_STRINGS: [PCWSTR; ISZ_PREF_MAX] = [
 
 // Rust mirror of the PREF struct so we can mutate the shared C globals.
 #[repr(C)]
-pub struct PREF {
+pub struct Pref {
     pub wGameType: u16,
     pub Mines: c_int,
     pub Height: c_int,
