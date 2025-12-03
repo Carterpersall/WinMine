@@ -1,4 +1,4 @@
-use core::ffi::{c_int, c_void};
+use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::{addr_of_mut, null, null_mut};
 use core::sync::atomic::Ordering::Relaxed;
@@ -20,21 +20,21 @@ use crate::pref::Pref;
 use crate::rtns::{cBombLeft, cSec, iButtonCur, rgBlk, xBoxMac, yBoxMac, ClearField, Preferences};
 use crate::sound::EndTunes;
 
-const DX_BLK: c_int = 16;
-const DY_BLK: c_int = 16;
-const DX_LED: c_int = 13;
-const DY_LED: c_int = 23;
-const DX_BUTTON: c_int = 24;
-const DY_BUTTON: c_int = 24;
-const DX_LEFT_SPACE: c_int = 12;
-const DX_RIGHT_SPACE: c_int = 12;
-const DY_TOP_SPACE: c_int = 12;
-const DY_BOTTOM_SPACE: c_int = 12;
-const DX_GRID_OFF: c_int = DX_LEFT_SPACE;
-const DY_TOP_LED: c_int = DY_TOP_SPACE + 4;
-const DY_GRID_OFF: c_int = DY_TOP_LED + DY_LED + 16;
-const DX_LEFT_BOMB: c_int = DX_LEFT_SPACE + 5;
-const DX_RIGHT_TIME: c_int = DX_RIGHT_SPACE + 5;
+const DX_BLK: i32 = 16;
+const DY_BLK: i32 = 16;
+const DX_LED: i32 = 13;
+const DY_LED: i32 = 23;
+const DX_BUTTON: i32 = 24;
+const DY_BUTTON: i32 = 24;
+const DX_LEFT_SPACE: i32 = 12;
+const DX_RIGHT_SPACE: i32 = 12;
+const DY_TOP_SPACE: i32 = 12;
+const DY_BOTTOM_SPACE: i32 = 12;
+const DX_GRID_OFF: i32 = DX_LEFT_SPACE;
+const DY_TOP_LED: i32 = DY_TOP_SPACE + 4;
+const DY_GRID_OFF: i32 = DY_TOP_LED + DY_LED + 16;
+const DX_LEFT_BOMB: i32 = DX_LEFT_SPACE + 5;
+const DX_RIGHT_TIME: i32 = DX_RIGHT_SPACE + 5;
 
 const I_BLK_MAX: usize = 16;
 const I_LED_MAX: usize = 12;
@@ -49,9 +49,9 @@ const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n\0";
 const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n\0";
 
 // Cached offsets into each sprite sheet within its DIB.
-static mut RG_DIB_OFF: [c_int; I_BLK_MAX] = [0; I_BLK_MAX];
-static mut RG_DIB_LED_OFF: [c_int; I_LED_MAX] = [0; I_LED_MAX];
-static mut RG_DIB_BUTTON_OFF: [c_int; I_BUTTON_MAX] = [0; I_BUTTON_MAX];
+static mut RG_DIB_OFF: [i32; I_BLK_MAX] = [0; I_BLK_MAX];
+static mut RG_DIB_LED_OFF: [i32; I_LED_MAX] = [0; I_LED_MAX];
+static mut RG_DIB_BUTTON_OFF: [i32; I_BUTTON_MAX] = [0; I_BUTTON_MAX];
 
 // Resource handles and locked pointers for the block, LED, and button bitmaps.
 static mut H_RES_BLKS: HGLOBAL = null_mut();
@@ -128,7 +128,7 @@ pub fn CleanUp() {
     EndTunes();
 }
 
-pub unsafe fn DrawBlk(hdc: HDC, x: c_int, y: c_int) {
+pub unsafe fn DrawBlk(hdc: HDC, x: i32, y: i32) {
     // Bit-blit a single cell sprite using the precalculated offsets.
     BitBlt(
         hdc,
@@ -143,7 +143,7 @@ pub unsafe fn DrawBlk(hdc: HDC, x: c_int, y: c_int) {
     );
 }
 
-pub unsafe fn DisplayBlk(x: c_int, y: c_int) {
+pub unsafe fn DisplayBlk(x: i32, y: i32) {
     // Convenience wrapper that repaints one tile directly to the main window.
     let hdc = GetDC(hwndMain);
     if !hdc.is_null() {
@@ -175,7 +175,7 @@ pub unsafe fn DisplayGrid() {
     }
 }
 
-pub unsafe fn DrawLed(hdc: HDC, x: c_int, i_led: c_int) {
+pub unsafe fn DrawLed(hdc: HDC, x: i32, i_led: i32) {
     // LED digits stay as packed DIBs, so we blast them straight from the resource.
     SetDIBitsToDevice(
         hdc,
@@ -266,7 +266,7 @@ pub unsafe fn DisplayTime() {
     }
 }
 
-pub unsafe fn DrawButton(hdc: HDC, i_button: c_int) {
+pub unsafe fn DrawButton(hdc: HDC, i_button: i32) {
     // Center the face button and pull the requested state from the button sheet.
     let dx_window = dxWindow.load(Relaxed);
     let x = (dx_window - DX_BUTTON) >> 1;
@@ -286,7 +286,7 @@ pub unsafe fn DrawButton(hdc: HDC, i_button: c_int) {
     );
 }
 
-pub unsafe fn DisplayButton(i_button: c_int) {
+pub unsafe fn DisplayButton(i_button: i32) {
     let hdc = GetDC(hwndMain);
     if !hdc.is_null() {
         DrawButton(hdc, i_button);
@@ -294,7 +294,7 @@ pub unsafe fn DisplayButton(i_button: c_int) {
     }
 }
 
-pub unsafe fn SetThePen(hdc: HDC, f_normal: c_int) {
+pub unsafe fn SetThePen(hdc: HDC, f_normal: i32) {
     // Reproduce the old pen combos: even values use the gray pen, odd values use white.
     if (f_normal & 1) != 0 {
         SetROP2(hdc, R2_WHITE);
@@ -308,12 +308,12 @@ pub unsafe fn SetThePen(hdc: HDC, f_normal: c_int) {
 
 pub unsafe fn DrawBorder(
     hdc: HDC,
-    mut x1: c_int,
-    mut y1: c_int,
-    mut x2: c_int,
-    mut y2: c_int,
-    width: c_int,
-    f_normal: c_int,
+    mut x1: i32,
+    mut y1: i32,
+    mut x2: i32,
+    mut y2: i32,
+    width: i32,
+    f_normal: i32,
 ) {
     let mut i = 0;
     // Draw the raised or sunken beveled rectangle one pixel at a time, just like the Win16 code.
@@ -438,19 +438,19 @@ fn load_bitmaps_impl() -> bool {
         let cb_blk = cb_bitmap(DX_BLK, DY_BLK);
         #[allow(clippy::needless_range_loop)]
         for i in 0..I_BLK_MAX {
-            RG_DIB_OFF[i] = header + (i as c_int) * cb_blk;
+            RG_DIB_OFF[i] = header + (i as i32) * cb_blk;
         }
 
         let cb_led = cb_bitmap(DX_LED, DY_LED);
         #[allow(clippy::needless_range_loop)]
         for i in 0..I_LED_MAX {
-            RG_DIB_LED_OFF[i] = header + (i as c_int) * cb_led;
+            RG_DIB_LED_OFF[i] = header + (i as i32) * cb_led;
         }
 
         let cb_button = cb_bitmap(DX_BUTTON, DY_BUTTON);
         #[allow(clippy::needless_range_loop)]
         for i in 0..I_BUTTON_MAX {
-            RG_DIB_BUTTON_OFF[i] = header + (i as c_int) * cb_button;
+            RG_DIB_BUTTON_OFF[i] = header + (i as i32) * cb_button;
         }
 
         let hdc = GetDC(hwndMain);
@@ -482,7 +482,7 @@ fn load_bitmaps_impl() -> bool {
                     0,
                     0,
                     DY_BLK as u32,
-                    block_bits(i as c_int),
+                    block_bits(i as i32),
                     dib_info(LP_DIB_BLKS),
                     DIB_RGB_COLORS,
                 );
@@ -505,12 +505,12 @@ unsafe fn load_bitmap_resource(id: u16) -> HGLOBAL {
     LoadResource(hInst, res)
 }
 
-fn dib_header_size() -> c_int {
+fn dib_header_size() -> i32 {
     let palette_entries = if color_enabled() { 16 } else { 2 };
-    (size_of::<BITMAPINFOHEADER>() + (palette_entries as usize) * 4) as c_int
+    (size_of::<BITMAPINFOHEADER>() + (palette_entries as usize) * 4) as i32
 }
 
-fn cb_bitmap(x: c_int, y: c_int) -> c_int {
+fn cb_bitmap(x: i32, y: i32) -> i32 {
     // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
     let mut bits = x;
     if color_enabled() {
@@ -520,7 +520,7 @@ fn cb_bitmap(x: c_int, y: c_int) -> c_int {
     y * stride
 }
 
-fn block_bits(i: c_int) -> *const c_void {
+fn block_bits(i: i32) -> *const c_void {
     unsafe {
         let idx = clamp_index(i, I_BLK_MAX);
         // Each offset already points past the BITMAPINFOHEADER to the raw pixel data.
@@ -528,14 +528,14 @@ fn block_bits(i: c_int) -> *const c_void {
     }
 }
 
-fn led_bits(i: c_int) -> *const c_void {
+fn led_bits(i: i32) -> *const c_void {
     unsafe {
         let idx = clamp_index(i, I_LED_MAX);
         LP_DIB_LED.add(RG_DIB_LED_OFF[idx] as usize) as *const c_void
     }
 }
 
-fn button_bits(i: c_int) -> *const c_void {
+fn button_bits(i: i32) -> *const c_void {
     unsafe {
         let idx = clamp_index(i, I_BUTTON_MAX);
         LP_DIB_BUTTON.add(RG_DIB_BUTTON_OFF[idx] as usize) as *const c_void
@@ -546,7 +546,7 @@ fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
     ptr as *const BITMAPINFO
 }
 
-fn block_dc(x: c_int, y: c_int) -> HDC {
+fn block_dc(x: i32, y: i32) -> HDC {
     unsafe {
         let idx = block_sprite_index(x, y);
         if idx < I_BLK_MAX {
@@ -557,7 +557,7 @@ fn block_dc(x: c_int, y: c_int) -> HDC {
     }
 }
 
-fn block_sprite_index(x: c_int, y: c_int) -> usize {
+fn block_sprite_index(x: i32, y: i32) -> usize {
     unsafe {
         // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
         let offset = ((y as isize) << 5) + x as isize;
@@ -575,7 +575,7 @@ fn make_int_resource(id: u16) -> PCWSTR {
     id as usize as *const u16
 }
 
-fn clamp_index(value: c_int, max: usize) -> usize {
+fn clamp_index(value: i32, max: usize) -> usize {
     if value <= 0 {
         0
     } else {

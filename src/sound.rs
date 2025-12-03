@@ -1,5 +1,4 @@
 // Quick helpers for the small set of winmm-backed tunes used by the UI.
-use core::ffi::c_int;
 use core::ptr::null;
 
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
@@ -9,16 +8,16 @@ use crate::pref::{FSOUND_OFF, FSOUND_ON};
 use crate::rtns::Preferences;
 
 // Tune identifiers passed in from the legacy C code.
-const TUNE_TICK: c_int = 1;
-const TUNE_WINGAME: c_int = 2;
-const TUNE_LOSEGAME: c_int = 3;
+const TUNE_TICK: i32 = 1;
+const TUNE_WINGAME: i32 = 2;
+const TUNE_LOSEGAME: i32 = 3;
 
 // Resource IDs for the embedded .wav assets.
 const ID_TUNE_TICK: u16 = 432;
 const ID_TUNE_WON: u16 = 433;
 const ID_TUNE_LOST: u16 = 434;
 
-pub fn FInitTunes() -> c_int {
+pub fn FInitTunes() -> i32 {
     // Attempt to stop any playing sounds; if the API fails we assume the
     // machine cannot play audio and disable sound effects in preferences.
     if stop_all_sounds() {
@@ -35,7 +34,7 @@ pub fn EndTunes() {
     }
 }
 
-pub fn PlayTune(tune: c_int) {
+pub fn PlayTune(tune: i32) {
     // Honor the user's preference before attempting to play any sound.
     if !sound_enabled() {
         return;

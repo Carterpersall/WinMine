@@ -1,4 +1,3 @@
-use core::ffi::c_int;
 use core::ptr::null_mut;
 use core::sync::atomic::{AtomicBool, AtomicI32};
 
@@ -7,8 +6,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{HICON, HMENU};
 
 use crate::pref::CCH_NAME_MAX;
 
-const F_ICON_BIT: c_int = 0x08;
-const F_DEMO_BIT: c_int = 0x10;
+const F_ICON_BIT: i32 = 0x08;
+const F_DEMO_BIT: i32 = 0x10;
 
 pub static bInitMinimized: AtomicBool = AtomicBool::new(false);
 

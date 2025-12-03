@@ -1,5 +1,4 @@
 // Registry-backed preference helpers mirrored from pref.c.
-use core::ffi::c_int;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -19,20 +18,20 @@ use crate::sound::FInitTunes;
 pub const CCH_NAME_MAX: usize = 32;
 pub const ISZ_PREF_MAX: usize = 18;
 
-pub const FSOUND_ON: c_int = 3;
-pub const FSOUND_OFF: c_int = 2;
+pub const FSOUND_ON: i32 = 3;
+pub const FSOUND_OFF: i32 = 2;
 
-pub const MINHEIGHT: c_int = 9;
-pub const DEFHEIGHT: c_int = 9;
-pub const MINWIDTH: c_int = 9;
-pub const DEFWIDTH: c_int = 9;
+pub const MINHEIGHT: i32 = 9;
+pub const DEFHEIGHT: i32 = 9;
+pub const MINWIDTH: i32 = 9;
+pub const DEFWIDTH: i32 = 9;
 
-pub const WGAME_BEGIN: c_int = 0;
-pub const WGAME_INTER: c_int = 1;
-pub const WGAME_EXPERT: c_int = 2;
+pub const WGAME_BEGIN: i32 = 0;
+pub const WGAME_INTER: i32 = 1;
+pub const WGAME_EXPERT: i32 = 2;
 
-pub const FMENU_ALWAYS_ON: c_int = 0;
-pub const FMENU_ON: c_int = 2;
+pub const FMENU_ALWAYS_ON: i32 = 0;
+pub const FMENU_ON: i32 = 2;
 
 pub const SZ_WINMINE_REG: PCWSTR = w!("Software\\Microsoft\\winmine");
 
@@ -62,17 +61,17 @@ const PREF_STRINGS: [PCWSTR; ISZ_PREF_MAX] = [
 #[repr(C)]
 pub struct Pref {
     pub wGameType: u16,
-    pub Mines: c_int,
-    pub Height: c_int,
-    pub Width: c_int,
-    pub xWindow: c_int,
-    pub yWindow: c_int,
-    pub fSound: c_int,
+    pub Mines: i32,
+    pub Height: i32,
+    pub Width: i32,
+    pub xWindow: i32,
+    pub yWindow: i32,
+    pub fSound: i32,
     pub fMark: BOOL,
     pub fTick: BOOL,
-    pub fMenu: c_int,
+    pub fMenu: i32,
     pub fColor: BOOL,
-    pub rgTime: [c_int; 3],
+    pub rgTime: [i32; 3],
     pub szBegin: [u16; CCH_NAME_MAX],
     pub szInter: [u16; CCH_NAME_MAX],
     pub szExpert: [u16; CCH_NAME_MAX],
@@ -85,11 +84,11 @@ pub static mut g_hReg: HKEY = std::ptr::null_mut();
 
 pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
 pub unsafe fn ReadInt(
-    isz_pref: c_int,
-    val_default: c_int,
-    val_min: c_int,
-    val_max: c_int,
-) -> c_int {
+    isz_pref: i32,
+    val_default: i32,
+    val_min: i32,
+    val_max: i32,
+) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
     let handle = g_hReg;
     if handle.is_null() {
@@ -116,10 +115,10 @@ pub unsafe fn ReadInt(
         return val_default;
     }
 
-    clamp_i32(value as c_int, val_min, val_max)
+    clamp_i32(value as i32, val_min, val_max)
 }
 
-pub unsafe fn ReadSz(isz_pref: c_int, sz_ret: *mut u16) {
+pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
     // Pull a high-score name (or similar) from the hive, falling back to the default string.
     if sz_ret.is_null() {
         return;
@@ -193,8 +192,8 @@ pub unsafe fn ReadPreferences() {
     (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
 
     (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
-    (*prefs).fMark = bool_to_bool(ReadInt(7, TRUE as c_int, 0, 1));
-    (*prefs).fTick = bool_to_bool(ReadInt(9, FALSE as c_int, 0, 1));
+    (*prefs).fMark = bool_to_bool(ReadInt(7, TRUE, 0, 1));
+    (*prefs).fTick = bool_to_bool(ReadInt(9, FALSE, 0, 1));
     (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
 
     (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
@@ -216,7 +215,7 @@ pub unsafe fn ReadPreferences() {
     if !hdc.is_null() {
         ReleaseDC(desktop, hdc);
     }
-    (*prefs).fColor = bool_to_bool(ReadInt(10, default_color as c_int, 0, 1));
+    (*prefs).fColor = bool_to_bool(ReadInt(10, default_color, 0, 1));
 
     // If sound is enabled, verify that the system can actually play the resources.
     if (*prefs).fSound == FSOUND_ON {
@@ -253,7 +252,7 @@ pub unsafe fn WritePreferences() {
     let prefs = addr_of!(Preferences);
 
     // Persist the difficulty, board dimensions, and flags exactly as the original did.
-    WriteInt(0, (*prefs).wGameType as c_int);
+    WriteInt(0, (*prefs).wGameType as i32);
     WriteInt(2, (*prefs).Height);
     WriteInt(3, (*prefs).Width);
     WriteInt(1, (*prefs).Mines);
@@ -277,7 +276,7 @@ pub unsafe fn WritePreferences() {
     g_hReg = std::ptr::null_mut();
 }
 
-pub unsafe fn WriteInt(isz_pref: c_int, val: c_int) {
+pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
     // Simple DWORD setter used by both the registry migration and the dialog code.
     let handle = g_hReg;
     if handle.is_null() {
@@ -300,7 +299,7 @@ pub unsafe fn WriteInt(isz_pref: c_int, val: c_int) {
     );
 }
 
-pub unsafe fn WriteSz(isz_pref: c_int, sz: *const u16) {
+pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
     // Stores zero-terminated UTF-16 values such as player names.
     let handle = g_hReg;
     if handle.is_null() || sz.is_null() {
@@ -325,7 +324,7 @@ pub unsafe fn WriteSz(isz_pref: c_int, sz: *const u16) {
     );
 }
 
-fn pref_name(index: c_int) -> Option<PCWSTR> {
+fn pref_name(index: i32) -> Option<PCWSTR> {
     if index < 0 {
         return None;
     }
@@ -333,11 +332,11 @@ fn pref_name(index: c_int) -> Option<PCWSTR> {
     PREF_STRINGS.get(idx).copied()
 }
 
-fn clamp_i32(value: c_int, min: c_int, max: c_int) -> c_int {
+fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
 }
 
-fn bool_to_bool(value: c_int) -> BOOL {
+fn bool_to_bool(value: i32) -> BOOL {
     if value != 0 {
         TRUE
     } else {

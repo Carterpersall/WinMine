@@ -1,5 +1,4 @@
 use core::cmp::{max, min};
-use core::ffi::c_int;
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use windows_sys::Win32::Foundation::FALSE;
@@ -12,19 +11,19 @@ use crate::sound::{EndTunes, PlayTune};
 use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
 
-const I_BLK_BLANK: c_int = 0;
-const I_BLK_GUESS_DOWN: c_int = 9;
-const I_BLK_BOMB_DOWN: c_int = 10;
-const I_BLK_WRONG: c_int = 11;
-const I_BLK_EXPLODE: c_int = 12;
-const I_BLK_GUESS_UP: c_int = 13;
-const I_BLK_BOMB_UP: c_int = 14;
-const I_BLK_BLANK_UP: c_int = 15;
-const I_BLK_MAX_SENTINEL: c_int = 16;
+const I_BLK_BLANK: i32 = 0;
+const I_BLK_GUESS_DOWN: i32 = 9;
+const I_BLK_BOMB_DOWN: i32 = 10;
+const I_BLK_WRONG: i32 = 11;
+const I_BLK_EXPLODE: i32 = 12;
+const I_BLK_GUESS_UP: i32 = 13;
+const I_BLK_BOMB_UP: i32 = 14;
+const I_BLK_BLANK_UP: i32 = 15;
+const I_BLK_MAX_SENTINEL: i32 = 16;
 
-const I_BUTTON_HAPPY: c_int = 0;
-const I_BUTTON_WIN: c_int = 3;
-const I_BUTTON_LOSE: c_int = 2;
+const I_BUTTON_HAPPY: i32 = 0;
+const I_BUTTON_WIN: i32 = 3;
+const I_BUTTON_LOSE: i32 = 2;
 
 const MASK_BOMB: u8 = 0x80;
 const MASK_VISIT: u8 = 0x40;
@@ -35,21 +34,21 @@ const MASK_NOT_BOMB: u8 = !MASK_BOMB;
 const C_BLK_MAX: usize = 27 * 32;
 const I_STEP_MAX: usize = 100;
 
-const TUNE_TICK: c_int = 1;
-const TUNE_WINGAME: c_int = 2;
-const TUNE_LOSEGAME: c_int = 3;
+const TUNE_TICK: i32 = 1;
+const TUNE_WINGAME: i32 = 2;
+const TUNE_LOSEGAME: i32 = 3;
 
-const W_GAME_OTHER: c_int = 3;
+const W_GAME_OTHER: i32 = 3;
 
 const ID_TIMER: usize = 1;
 const ID_ERR_TIMER: u16 = 4;
 
-const F_PLAY: c_int = 0x01;
-const F_PAUSE: c_int = 0x02;
-const F_DEMO: c_int = 0x10;
+const F_PLAY: i32 = 0x01;
+const F_PAUSE: i32 = 0x02;
+const F_DEMO: i32 = 0x10;
 
-const F_RESIZE: c_int = 0x02;
-const F_DISPLAY: c_int = 0x04;
+const F_RESIZE: i32 = 0x02;
+const F_DISPLAY: i32 = 0x04;
 
 pub static mut Preferences: Pref = Pref {
     wGameType: 0,
@@ -116,16 +115,16 @@ fn clr_status_pause() {
     fStatus.fetch_and(!F_PAUSE, Ordering::Relaxed);
 }
 
-fn board_index(x: c_int, y: c_int) -> usize {
+fn board_index(x: i32, y: i32) -> usize {
     let offset = ((y as isize) << 5) + x as isize;
     offset.max(0) as usize
 }
 
-fn block_value(x: c_int, y: c_int) -> u8 {
+fn block_value(x: i32, y: i32) -> u8 {
     unsafe { rgBlk[board_index(x, y)] as u8 }
 }
 
-fn set_block_value(x: c_int, y: c_int, value: u8) {
+fn set_block_value(x: i32, y: i32, value: u8) {
     unsafe {
         let idx = board_index(x, y);
         let prev = rgBlk[idx] as u8;
@@ -133,13 +132,13 @@ fn set_block_value(x: c_int, y: c_int, value: u8) {
     }
 }
 
-fn set_border(x: c_int, y: c_int) {
+fn set_border(x: i32, y: i32) {
     unsafe {
         rgBlk[board_index(x, y)] = I_BLK_MAX_SENTINEL as i8;
     }
 }
 
-fn set_bomb(x: c_int, y: c_int) {
+fn set_bomb(x: i32, y: i32) {
     unsafe {
         let idx = board_index(x, y);
         let prev = rgBlk[idx] as u8;
@@ -147,7 +146,7 @@ fn set_bomb(x: c_int, y: c_int) {
     }
 }
 
-fn clear_bomb(x: c_int, y: c_int) {
+fn clear_bomb(x: i32, y: i32) {
     unsafe {
         let idx = board_index(x, y);
         let prev = rgBlk[idx] as u8;
@@ -155,45 +154,45 @@ fn clear_bomb(x: c_int, y: c_int) {
     }
 }
 
-fn is_bomb(x: c_int, y: c_int) -> bool {
+fn is_bomb(x: i32, y: i32) -> bool {
     (block_value(x, y) & MASK_BOMB) != 0
 }
 
-fn is_visit(x: c_int, y: c_int) -> bool {
+fn is_visit(x: i32, y: i32) -> bool {
     (block_value(x, y) & MASK_VISIT) != 0
 }
 
-fn guessed_bomb(x: c_int, y: c_int) -> bool {
+fn guessed_bomb(x: i32, y: i32) -> bool {
     block_value(x, y) & MASK_DATA == I_BLK_BOMB_UP as u8
 }
 
-fn guessed_mark(x: c_int, y: c_int) -> bool {
+fn guessed_mark(x: i32, y: i32) -> bool {
     block_value(x, y) & MASK_DATA == I_BLK_GUESS_UP as u8
 }
 
-fn f_in_range(x: c_int, y: c_int) -> bool {
+fn f_in_range(x: i32, y: i32) -> bool {
     let x_max = xBoxMac.load(Ordering::Relaxed);
     let y_max = yBoxMac.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
-fn clamp_board_value(value: c_int) -> u8 {
-    (value & MASK_DATA as c_int) as u8
+fn clamp_board_value(value: i32) -> u8 {
+    (value & MASK_DATA as i32) as u8
 }
 
-fn set_raw_block(x: c_int, y: c_int, block: c_int) {
+fn set_raw_block(x: i32, y: i32, block: i32) {
     set_block_value(x, y, clamp_board_value(block));
 }
 
-fn block_data(x: c_int, y: c_int) -> c_int {
-    (block_value(x, y) & MASK_DATA) as c_int
+fn block_data(x: i32, y: i32) -> i32 {
+    (block_value(x, y) & MASK_DATA) as i32
 }
 
 fn check_win() -> bool {
     C_BOX_VISIT.load(Ordering::Relaxed) == CBOX_VISIT_MAC.load(Ordering::Relaxed)
 }
 
-fn display_block(x: c_int, y: c_int) {
+fn display_block(x: i32, y: i32) {
     unsafe { DisplayBlk(x, y) };
 }
 
@@ -201,7 +200,7 @@ fn display_grid() {
     unsafe { DisplayGrid() };
 }
 
-fn display_button(state: c_int) {
+fn display_button(state: i32) {
     unsafe { DisplayButton(state) };
 }
 
@@ -213,7 +212,7 @@ fn display_bomb_count() {
     unsafe { DisplayBombCount() };
 }
 
-fn play_tune(which: c_int) {
+fn play_tune(which: i32) {
     PlayTune(which);
 }
 
@@ -221,7 +220,7 @@ fn stop_all_audio() {
     EndTunes();
 }
 
-fn show_bombs(i_blk: c_int) {
+fn show_bombs(i_blk: i32) {
     // Display hidden bombs and mark incorrect guesses.
     let x_max = xBoxMac.load(Ordering::Relaxed);
     let y_max = yBoxMac.load(Ordering::Relaxed);
@@ -242,7 +241,7 @@ fn show_bombs(i_blk: c_int) {
     display_grid();
 }
 
-fn count_bombs(x_center: c_int, y_center: c_int) -> c_int {
+fn count_bombs(x_center: i32, y_center: i32) -> i32 {
     // Count the bombs surrounding the target square.
     let mut c_bombs = 0;
     for y in (y_center - 1)..=(y_center + 1) {
@@ -255,7 +254,7 @@ fn count_bombs(x_center: c_int, y_center: c_int) -> c_int {
     c_bombs
 }
 
-fn count_marks(x_center: c_int, y_center: c_int) -> c_int {
+fn count_marks(x_center: i32, y_center: i32) -> i32 {
     // Count the number of adjacent flagged squares.
     let mut count = 0;
     for y in (y_center - 1)..=(y_center + 1) {
@@ -288,13 +287,13 @@ fn record_win_if_needed() {
     }
 }
 
-fn change_blk(x: c_int, y: c_int, block: c_int) {
+fn change_blk(x: i32, y: i32, block: i32) {
     // Update a single cell and repaint it immediately.
     set_raw_block(x, y, block);
     display_block(x, y);
 }
 
-fn step_xy(queue: &mut [(c_int, c_int); I_STEP_MAX], tail: &mut usize, x: c_int, y: c_int) {
+fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
     // Visit a square; enqueue it when empty so we flood-fill neighbors later.
     unsafe {
         let idx = board_index(x, y);
@@ -321,7 +320,7 @@ fn step_xy(queue: &mut [(c_int, c_int); I_STEP_MAX], tail: &mut usize, x: c_int,
     }
 }
 
-fn step_box(x: c_int, y: c_int) {
+fn step_box(x: i32, y: i32) {
     // Flood-fill contiguous empty squares using the same 3x3 sweep as the C version.
     let mut queue = [(0, 0); I_STEP_MAX];
     let mut head = 0usize;
@@ -368,7 +367,7 @@ fn game_over(win: bool) {
     }
 }
 
-fn step_square(x: c_int, y: c_int) {
+fn step_square(x: i32, y: i32) {
     // Handle a user click on a single square (first-click safety included).
     if is_bomb(x, y) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
@@ -386,7 +385,7 @@ fn step_square(x: c_int, y: c_int) {
                 }
             }
         } else {
-            change_blk(x, y, (MASK_VISIT | I_BLK_EXPLODE as u8) as c_int);
+            change_blk(x, y, (MASK_VISIT | I_BLK_EXPLODE as u8) as i32);
             game_over(false);
         }
     } else {
@@ -397,7 +396,7 @@ fn step_square(x: c_int, y: c_int) {
     }
 }
 
-fn step_block(x_center: c_int, y_center: c_int) {
+fn step_block(x_center: i32, y_center: i32) {
     // Chord around a revealed number once the flag count matches its value.
     if !is_visit(x_center, y_center)
         || block_data(x_center, y_center) != count_marks(x_center, y_center)
@@ -417,7 +416,7 @@ fn step_block(x_center: c_int, y_center: c_int) {
 
             if is_bomb(x, y) {
                 lose = true;
-                change_blk(x, y, (MASK_VISIT | I_BLK_EXPLODE as u8) as c_int);
+                change_blk(x, y, (MASK_VISIT | I_BLK_EXPLODE as u8) as i32);
             } else {
                 step_box(x, y);
             }
@@ -431,7 +430,7 @@ fn step_block(x_center: c_int, y_center: c_int) {
     }
 }
 
-fn make_guess_internal(x: c_int, y: c_int) {
+fn make_guess_internal(x: i32, y: i32) {
     // Cycle through blank -> flag -> question mark states depending on preferences.
     unsafe {
         if !f_in_range(x, y) || is_visit(x, y) {
@@ -460,7 +459,7 @@ fn make_guess_internal(x: c_int, y: c_int) {
     }
 }
 
-fn push_box_down(x: c_int, y: c_int) {
+fn push_box_down(x: i32, y: i32) {
     // Depress covered neighbors while tracking mouse drags.
     let mut blk = block_data(x, y);
     blk = match blk {
@@ -471,7 +470,7 @@ fn push_box_down(x: c_int, y: c_int) {
     set_raw_block(x, y, blk);
 }
 
-fn pop_box_up(x: c_int, y: c_int) {
+fn pop_box_up(x: i32, y: i32) {
     // Restore a previously pushed square back to its raised variant.
     let mut blk = block_data(x, y);
     blk = match blk {
@@ -482,13 +481,13 @@ fn pop_box_up(x: c_int, y: c_int) {
     set_raw_block(x, y, blk);
 }
 
-fn update_bomb_count_internal(delta: c_int) {
+fn update_bomb_count_internal(delta: i32) {
     // Adjust the visible bomb counter and repaint the LEDs.
     cBombLeft.fetch_add(delta, Ordering::Relaxed);
     display_bomb_count();
 }
 
-fn in_range_step(x: c_int, y: c_int) -> bool {
+fn in_range_step(x: i32, y: i32) -> bool {
     f_in_range(x, y) && !is_visit(x, y) && !guessed_bomb(x, y)
 }
 
@@ -572,7 +571,7 @@ pub unsafe fn StartGame() {
     AdjustWindow(f_adjust);
 }
 
-pub unsafe fn TrackMouse(x_new: c_int, y_new: c_int) {
+pub unsafe fn TrackMouse(x_new: i32, y_new: i32) {
     // Provide the classic pressed-square feedback during mouse drags.
     let x_old = xCur.load(Ordering::Relaxed);
     let y_old = yCur.load(Ordering::Relaxed);
@@ -647,7 +646,7 @@ pub unsafe fn TrackMouse(x_new: c_int, y_new: c_int) {
     }
 }
 
-pub fn MakeGuess(x: c_int, y: c_int) {
+pub fn MakeGuess(x: i32, y: i32) {
     // Toggle through flag/question mark states and update the bomb counter.
     make_guess_internal(x, y);
 }

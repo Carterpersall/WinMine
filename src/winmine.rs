@@ -1,5 +1,4 @@
 use core::cmp::{max, min};
-use core::ffi::c_int;
 use core::mem;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 use core::sync::atomic::{AtomicI32, Ordering};
@@ -89,26 +88,26 @@ const ID_DLG_ENTER: u16 = 600;
 const ID_DLG_BEST: u16 = 700;
 
 const WGAME_OTHER: u16 = 3;
-const ID_EDIT_HEIGHT: c_int = 141;
-const ID_EDIT_WIDTH: c_int = 142;
-const ID_EDIT_MINES: c_int = 143;
+const ID_EDIT_HEIGHT: i32 = 141;
+const ID_EDIT_WIDTH: i32 = 142;
+const ID_EDIT_MINES: i32 = 143;
 const ID_BTN_OK: u16 = 100;
 const ID_BTN_CANCEL: u16 = 109;
 const ID_BTN_RESET: u16 = 707;
-const ID_TEXT_BEST: c_int = 601;
-const ID_EDIT_NAME: c_int = 602;
-const ID_TIME_BEGIN: c_int = 701;
-const ID_NAME_BEGIN: c_int = 702;
-const ID_TIME_INTER: c_int = 703;
-const ID_NAME_INTER: c_int = 704;
-const ID_TIME_EXPERT: c_int = 705;
-const ID_NAME_EXPERT: c_int = 706;
-const ID_STEXT1: c_int = 708;
-const ID_STEXT2: c_int = 709;
-const ID_STEXT3: c_int = 710;
-const ID_TXT_MINES: c_int = 111;
-const ID_TXT_HEIGHT: c_int = 112;
-const ID_TXT_WIDTH: c_int = 113;
+const ID_TEXT_BEST: i32 = 601;
+const ID_EDIT_NAME: i32 = 602;
+const ID_TIME_BEGIN: i32 = 701;
+const ID_NAME_BEGIN: i32 = 702;
+const ID_TIME_INTER: i32 = 703;
+const ID_NAME_INTER: i32 = 704;
+const ID_TIME_EXPERT: i32 = 705;
+const ID_NAME_EXPERT: i32 = 706;
+const ID_STEXT1: i32 = 708;
+const ID_STEXT2: i32 = 709;
+const ID_STEXT3: i32 = 710;
+const ID_TXT_MINES: i32 = 111;
+const ID_TXT_HEIGHT: i32 = 112;
+const ID_TXT_WIDTH: i32 = 113;
 const IDH_PREF_EDIT_HEIGHT: u32 = 1000;
 const IDH_PREF_EDIT_WIDTH: u32 = 1001;
 const IDH_PREF_EDIT_MINES: u32 = 1002;
@@ -117,37 +116,37 @@ const IDH_STEXT: u32 = 1004;
 const ID_MSG_BEGIN: u16 = 9;
 const CCH_MSG_MAX: usize = 128;
 
-const DX_BLK: c_int = 16;
-const DY_BLK: c_int = 16;
-const DX_LEFT_SPACE: c_int = 12;
-const DX_RIGHT_SPACE: c_int = 12;
-const DY_TOP_SPACE: c_int = 12;
-const DY_BOTTOM_SPACE: c_int = 12;
-const DX_GRID_OFF: c_int = DX_LEFT_SPACE;
-const DY_LED: c_int = 23;
-const DY_TOP_LED: c_int = DY_TOP_SPACE + 4;
-const DY_GRID_OFF: c_int = DY_TOP_LED + DY_LED + 16;
-const DX_BUTTON: c_int = 24;
-const DY_BUTTON: c_int = 24;
+const DX_BLK: i32 = 16;
+const DY_BLK: i32 = 16;
+const DX_LEFT_SPACE: i32 = 12;
+const DX_RIGHT_SPACE: i32 = 12;
+const DY_TOP_SPACE: i32 = 12;
+const DY_BOTTOM_SPACE: i32 = 12;
+const DX_GRID_OFF: i32 = DX_LEFT_SPACE;
+const DY_LED: i32 = 23;
+const DY_TOP_LED: i32 = DY_TOP_SPACE + 4;
+const DY_GRID_OFF: i32 = DY_TOP_LED + DY_LED + 16;
+const DX_BUTTON: i32 = 24;
+const DY_BUTTON: i32 = 24;
 
-const I_BUTTON_HAPPY: c_int = 0;
-const I_BUTTON_CAUTION: c_int = 1;
-const I_BUTTON_DOWN: c_int = 4;
+const I_BUTTON_HAPPY: i32 = 0;
+const I_BUTTON_CAUTION: i32 = 1;
+const I_BUTTON_DOWN: i32 = 4;
 
-const FMENU_FLAG_OFF: c_int = 0x01;
-const F_CALC: c_int = 0x01;
-const F_RESIZE: c_int = 0x02;
-const F_DISPLAY: c_int = 0x04;
+const FMENU_FLAG_OFF: i32 = 0x01;
+const F_CALC: i32 = 0x01;
+const F_RESIZE: i32 = 0x02;
+const F_DISPLAY: i32 = 0x04;
 
 const WINDOW_STYLE: u32 = WS_OVERLAPPED | WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU;
 
-const LEVEL_DATA: [[c_int; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
+const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
-const F_PLAY: c_int = 0x01;
-const F_PAUSE: c_int = 0x02;
-const F_ICON: c_int = 0x08;
+const F_PLAY: i32 = 0x01;
+const F_PAUSE: i32 = 0x02;
+const F_ICON: i32 = 0x08;
 
-const FMENU_OFF: c_int = 1;
+const FMENU_OFF: i32 = 1;
 const SC_MASK: WPARAM = 0xFFF0;
 const WA_CLICKACTIVE: u16 = 2;
 
@@ -221,8 +220,8 @@ const NULL_HMENU: HMENU = 0 as HMENU;
 #[repr(C)]
 struct HelpInfo {
     cbSize: u32,
-    iContextType: c_int,
-    iCtrlId: c_int,
+    iContextType: i32,
+    iCtrlId: i32,
     hItemHandle: HANDLE,
     dwContextId: usize,
     mouse_pos: POINT,
@@ -248,7 +247,7 @@ fn bool_to_bool(flag: bool) -> BOOL {
     }
 }
 
-fn int_to_bool(value: c_int) -> BOOL {
+fn int_to_bool(value: i32) -> BOOL {
     bool_to_bool(value != 0)
 }
 
@@ -260,7 +259,7 @@ unsafe fn class_name_ptr() -> PCWSTR {
     addr_of!(szClass[0])
 }
 
-fn initial_minimized_state(n_cmd_show: c_int) -> bool {
+fn initial_minimized_state(n_cmd_show: i32) -> bool {
     n_cmd_show == SW_SHOWMINNOACTIVE || n_cmd_show == SW_SHOWMINIMIZED
 }
 
@@ -297,8 +296,8 @@ pub unsafe fn run_winmine(
     h_instance: HINSTANCE,
     _h_prev_instance: HINSTANCE,
     _lp_cmd_line: PSTR,
-    n_cmd_show: c_int,
-) -> c_int {
+    n_cmd_show: i32,
+) -> i32 {
     hInst = h_instance;
     InitConst();
 
@@ -308,7 +307,7 @@ pub unsafe fn run_winmine(
     hIconMain = LoadIconW(hInst, make_int_resource(ID_ICON_MAIN));
 
     if !register_main_window_class() {
-        return FALSE as c_int;
+        return FALSE;
     }
 
     hMenu = LoadMenuW(hInst, make_int_resource(ID_MENU));
@@ -338,14 +337,14 @@ pub unsafe fn run_winmine(
 
     if hwndMain == NULL_HWND {
         ReportErr(1000);
-        return FALSE as c_int;
+        return FALSE;
     }
 
     AdjustWindow(F_CALC);
 
     if FInitLocal() == FALSE {
         ReportErr(ID_ERR_MEM);
-        return FALSE as c_int;
+        return FALSE;
     }
 
     SetMenuBar(Preferences.fMenu);
@@ -375,14 +374,14 @@ pub unsafe fn run_winmine(
         WritePreferences();
     }
 
-    msg.wParam as c_int
+    msg.wParam as i32
 }
 
-fn x_box_from_xpos(x: c_int) -> c_int {
+fn x_box_from_xpos(x: i32) -> i32 {
     (x - (DX_GRID_OFF - DX_BLK)) >> 4
 }
 
-fn y_box_from_ypos(y: c_int) -> c_int {
+fn y_box_from_ypos(y: i32) -> i32 {
     (y - (DY_GRID_OFF - DY_BLK)) >> 4
 }
 
@@ -626,18 +625,18 @@ fn get_activate_state(w_param: WPARAM) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
-unsafe fn in_range(x: c_int, y: c_int) -> bool {
+unsafe fn in_range(x: i32, y: i32) -> bool {
     let x_max = xBoxMac.load(Ordering::Relaxed);
     let y_max = yBoxMac.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
-unsafe fn board_index(x: c_int, y: c_int) -> usize {
+unsafe fn board_index(x: i32, y: i32) -> usize {
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     offset.max(0) as usize
 }
 
-unsafe fn cell_is_bomb(x: c_int, y: c_int) -> bool {
+unsafe fn cell_is_bomb(x: i32, y: i32) -> bool {
     if !in_range(x, y) {
         return false;
     }
@@ -648,7 +647,7 @@ unsafe fn cell_is_bomb(x: c_int, y: c_int) -> bool {
     (rgBlk[idx] as u8 & MASK_BOMB) != 0
 }
 
-const CCH_XYZZY: c_int = 5;
+const CCH_XYZZY: i32 = 5;
 static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 const XYZZY_SEQUENCE: [u16; 5] = [
     b'X' as u16,
@@ -981,7 +980,7 @@ pub unsafe extern "system" fn EnterDlgProc(
                     h_dlg,
                     ID_EDIT_NAME,
                     current_name_ptr_mut(),
-                    CCH_NAME_MAX as c_int,
+                    CCH_NAME_MAX as i32,
                 );
                 EndDialog(h_dlg, TRUE as isize);
                 return TRUE as isize;
@@ -993,7 +992,7 @@ pub unsafe extern "system" fn EnterDlgProc(
     FALSE as isize
 }
 
-pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
+pub unsafe fn AdjustWindow(mut f_adjust: i32) {
     // Recompute the main window rectangle whenever the board or menu state changes.
     if hwndMain == NULL_HWND {
         return;
@@ -1116,7 +1115,7 @@ pub unsafe fn AdjustWindow(mut f_adjust: c_int) {
     }
 }
 
-fn our_get_system_metrics(index: c_int) -> c_int {
+fn our_get_system_metrics(index: i32) -> i32 {
     // Favor the virtual screen metrics when available to support multi-monitor setups.
     unsafe {
         match index {
@@ -1139,19 +1138,19 @@ fn our_get_system_metrics(index: c_int) -> c_int {
     }
 }
 
-fn loword(value: LPARAM) -> c_int {
-    ((value as u32) & 0xFFFF) as i16 as c_int
+fn loword(value: LPARAM) -> i32 {
+    ((value as u32) & 0xFFFF) as i16 as i32
 }
 
-fn hiword(value: LPARAM) -> c_int {
-    (((value as u32) >> 16) & 0xFFFF) as i16 as c_int
+fn hiword(value: LPARAM) -> i32 {
+    (((value as u32) >> 16) & 0xFFFF) as i16 as i32
 }
 
 fn command_id(w_param: WPARAM) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
-unsafe fn set_dtext(h_dlg: HWND, id: c_int, time: c_int, name: *const u16) {
+unsafe fn set_dtext(h_dlg: HWND, id: i32, time: i32, name: *const u16) {
     let mut buffer = [0u16; CCH_NAME_MAX];
     wsprintfW(buffer.as_mut_ptr(), addr_of!(szTime) as *const u16, time);
     SetDlgItemTextW(h_dlg, id, buffer.as_ptr());
@@ -1180,14 +1179,14 @@ unsafe fn reset_best_dialog(h_dlg: HWND) {
 }
 
 unsafe fn current_name_ptr() -> *const u16 {
-    name_ptr_for_game(Preferences.wGameType as c_int)
+    name_ptr_for_game(Preferences.wGameType as i32)
 }
 
 unsafe fn current_name_ptr_mut() -> *mut u16 {
-    name_ptr_for_game_mut(Preferences.wGameType as c_int)
+    name_ptr_for_game_mut(Preferences.wGameType as i32)
 }
 
-unsafe fn name_ptr_for_game(game_type: c_int) -> *const u16 {
+unsafe fn name_ptr_for_game(game_type: i32) -> *const u16 {
     match game_type {
         WGAME_BEGIN => addr_of!(Preferences.szBegin) as *const u16,
         WGAME_INTER => addr_of!(Preferences.szInter) as *const u16,
@@ -1195,7 +1194,7 @@ unsafe fn name_ptr_for_game(game_type: c_int) -> *const u16 {
     }
 }
 
-unsafe fn name_ptr_for_game_mut(game_type: c_int) -> *mut u16 {
+unsafe fn name_ptr_for_game_mut(game_type: i32) -> *mut u16 {
     match game_type {
         WGAME_BEGIN => addr_of_mut!(Preferences.szBegin) as *mut u16,
         WGAME_INTER => addr_of_mut!(Preferences.szInter) as *mut u16,
