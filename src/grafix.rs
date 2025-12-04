@@ -13,7 +13,7 @@ use windows_sys::Win32::Graphics::Gdi::{
 };
 use windows_sys::Win32::System::Diagnostics::Debug::OutputDebugStringA;
 use windows_sys::Win32::System::LibraryLoader::{FindResourceW, LoadResource, LockResource};
-use windows_sys::Win32::UI::WindowsAndMessaging::RT_BITMAP;
+use winsafe::co::RT;
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, hInst, hwndMain};
 use crate::pref::Pref;
@@ -495,7 +495,11 @@ unsafe fn load_bitmap_resource(id: u16) -> HGLOBAL {
     let offset = if color_enabled() { 0 } else { 1 };
     let resource_id = id + offset;
     // Colorless devices load the grayscale resource IDs immediately following the color ones.
-    let res: HRSRC = FindResourceW(hInst, make_int_resource(resource_id), RT_BITMAP);
+    let res: HRSRC = FindResourceW(
+        hInst,
+        make_int_resource(resource_id),
+        make_int_resource(RT::BITMAP.raw()),
+    );
     if res.is_null() {
         return null_mut();
     }

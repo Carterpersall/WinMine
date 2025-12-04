@@ -3,7 +3,6 @@ use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::core::{w, PCWSTR};
-use windows_sys::Win32::Foundation::{FALSE, TRUE};
 use winsafe::{self as w, co, guard::RegCloseKeyGuard, prelude::*, RegistryValue};
 
 use crate::globals::szDefaultName;
@@ -164,8 +163,8 @@ pub unsafe fn ReadPreferences() {
     (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
 
     (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
-    (*prefs).fMark = ReadInt(7, TRUE, 0, 1) != 0;
-    (*prefs).fTick = ReadInt(9, FALSE, 0, 1) != 0;
+    (*prefs).fMark = ReadInt(7, 1, 0, 1) != 0;
+    (*prefs).fTick = ReadInt(9, 0, 0, 1) != 0;
     (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
 
     (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
@@ -181,12 +180,12 @@ pub unsafe fn ReadPreferences() {
     let default_color = match desktop.GetDC() {
         Ok(hdc) => {
             if hdc.GetDeviceCaps(co::GDC::NUMCOLORS) != 2 {
-                TRUE
+                1
             } else {
-                FALSE
+                0
             }
         }
-        Err(_) => FALSE,
+        Err(_) => 0,
     };
     (*prefs).fColor = ReadInt(10, default_color, 0, 1) != 0;
 

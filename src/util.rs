@@ -3,7 +3,7 @@ use core::ptr::{addr_of, addr_of_mut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use windows_sys::core::{w, PCSTR, PCWSTR};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
-use windows_sys::Win32::Foundation::{FALSE, HWND, TRUE};
+use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameA;
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
 use windows_sys::Win32::System::WindowsProgramming::{
@@ -11,10 +11,9 @@ use windows_sys::Win32::System::WindowsProgramming::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     wsprintfW, GetDlgItemInt, GetSystemMetrics, LoadIconW, LoadStringW, MessageBoxW,
-    HELP_HELPONHELP, SM_CXBORDER, SM_CYBORDER, SM_CYCAPTION, SM_CYMENU,
 };
 
-use winsafe::{self as w, co, prelude::*, IdPos, HICON};
+use winsafe::{self as w, co, co::HELPW, co::SM, prelude::*, IdPos, HICON};
 
 use crate::globals::{
     dxpBorder, dypBorder, dypCaption, dypMenu, hInst, hMenu, hwndMain, szClass, szDefaultName,
@@ -232,10 +231,10 @@ pub unsafe fn InitConst() {
         CCH_NAME_MAX as u32,
     );
 
-    dypCaption.store(GetSystemMetrics(SM_CYCAPTION) + 1, Ordering::Relaxed);
-    dypMenu.store(GetSystemMetrics(SM_CYMENU) + 1, Ordering::Relaxed);
-    dypBorder.store(GetSystemMetrics(SM_CYBORDER) + 1, Ordering::Relaxed);
-    dxpBorder.store(GetSystemMetrics(SM_CXBORDER) + 1, Ordering::Relaxed);
+    dypCaption.store(GetSystemMetrics(SM::CYCAPTION.raw()) + 1, Ordering::Relaxed);
+    dypMenu.store(GetSystemMetrics(SM::CYMENU.raw()) + 1, Ordering::Relaxed);
+    dypBorder.store(GetSystemMetrics(SM::CYBORDER.raw()) + 1, Ordering::Relaxed);
+    dxpBorder.store(GetSystemMetrics(SM::CXBORDER.raw()) + 1, Ordering::Relaxed);
 
     let mut already_played = 0;
 
@@ -270,7 +269,7 @@ pub unsafe fn InitConst() {
     (*prefs).yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
 
     (*prefs).fSound = ReadIniInt(ISZ_PREF_SOUND as i32, 0, 0, FSOUND_ON);
-    (*prefs).fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, TRUE, 0, 1));
+    (*prefs).fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
     (*prefs).fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
     (*prefs).fMenu = ReadIniInt(
         ISZ_PREF_MENU as i32,
@@ -294,12 +293,12 @@ pub unsafe fn InitConst() {
     let default_color = match desktop.GetDC() {
         Ok(hdc) => {
             if hdc.GetDeviceCaps(co::GDC::NUMCOLORS) != 2 {
-                TRUE
+                1
             } else {
-                FALSE
+                0
             }
         }
-        Err(_) => FALSE,
+        Err(_) => 0,
     };
     (*prefs).fColor = bool_from_int(ReadIniInt(
         ISZ_PREF_COLOR as i32,
@@ -382,7 +381,7 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
-    if (w_command as u32) != (HELP_HELPONHELP as u32) {
+    if (w_command as u32) != HELPW::HELPONHELP.raw() {
         let len = GetModuleFileNameA(hInst, buffer.as_mut_ptr(), CCH_MAX_PATHNAME as u32) as usize;
         let mut dot = None;
         for i in (0..len).rev() {
@@ -418,7 +417,7 @@ fn utf16_buffer_to_string(buf: &[u16]) -> String {
 pub unsafe fn GetDlgInt(h_dlg: HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     // Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
     let mut success = 0i32;
-    let value = GetDlgItemInt(h_dlg, dlg_id, &mut success, FALSE);
+    let value = GetDlgItemInt(h_dlg, dlg_id, &mut success, 0);
     let value = value as i32;
     clamp(value, num_lo, num_hi)
 }

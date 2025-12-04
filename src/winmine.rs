@@ -15,21 +15,11 @@ use windows_sys::Win32::Graphics::Gdi::{
     PAINTSTRUCT,
 };
 use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, SetPixel};
-use windows_sys::Win32::UI::Controls::{
-    InitCommonControlsEx, ICC_ANIMATE_CLASS, ICC_BAR_CLASSES, ICC_COOL_CLASSES, ICC_HOTKEY_CLASS,
-    ICC_LISTVIEW_CLASSES, ICC_PAGESCROLLER_CLASS, ICC_PROGRESS_CLASS, ICC_TAB_CLASSES,
-    ICC_UPDOWN_CLASS, ICC_USEREX_CLASSES, INITCOMMONCONTROLSEX,
-};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    ReleaseCapture, SetCapture, VK_F4, VK_F5, VK_F6, VK_SHIFT,
-};
+use windows_sys::Win32::UI::Controls::{InitCommonControlsEx, INITCOMMONCONTROLSEX};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
 use windows_sys::Win32::UI::Shell::WinHelpW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    wsprintfW, GWL_EXSTYLE, GWL_STYLE, HACCEL, HELP_CONTEXT, HELP_CONTEXTMENU, HELP_HELPONHELP,
-    HELP_INDEX, HELP_WM_HELP, HMENU, IDCANCEL, IDC_ARROW, IDOK, MSG, PM_REMOVE, SC_CLOSE,
-    SC_MINIMIZE, SC_RESTORE, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
-    SW_HIDE, SW_SHOWMINIMIZED, SW_SHOWMINNOACTIVE, SW_SHOWNORMAL, WS_CAPTION, WS_MINIMIZEBOX,
-    WS_OVERLAPPED, WS_SYSMENU,
+    wsprintfW, GWL_EXSTYLE, GWL_STYLE, HACCEL, HMENU, MSG,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DialogBoxParamW, DispatchMessageW,
@@ -42,6 +32,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEFIRST, WM_MOUSELAST, WM_MOUSEMOVE, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP,
     WM_SYSCOMMAND, WM_TIMER, WM_WINDOWPOSCHANGED, WNDCLASSW,
 };
+
+use winsafe::co::{self, DLGID, HELPW, ICC, IDC, MK, SM, WA};
 
 use crate::globals::{
     bInitMinimized, dxFrameExtra, dxWindow, dxpBorder, dyWindow, dypAdjust, dypCaption, dypMenu,
@@ -138,7 +130,10 @@ const F_CALC: i32 = 0x01;
 const F_RESIZE: i32 = 0x02;
 const F_DISPLAY: i32 = 0x04;
 
-const WINDOW_STYLE: u32 = WS_OVERLAPPED | WS_MINIMIZEBOX | WS_CAPTION | WS_SYSMENU;
+const WINDOW_STYLE: u32 = co::WS::OVERLAPPED.raw()
+    | co::WS::MINIMIZEBOX.raw()
+    | co::WS::CAPTION.raw()
+    | co::WS::SYSMENU.raw();
 
 const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
@@ -148,18 +143,18 @@ const F_ICON: i32 = 0x08;
 
 const FMENU_OFF: i32 = 1;
 const SC_MASK: WPARAM = 0xFFF0;
-const WA_CLICKACTIVE: u16 = 2;
+const WA_CLICKACTIVE: u16 = WA::CLICKACTIVE.raw();
 
-const MK_LBUTTON: WPARAM = 0x0001;
-const MK_RBUTTON: WPARAM = 0x0002;
-const MK_SHIFT_FLAG: WPARAM = 0x0004;
+const MK_LBUTTON: WPARAM = MK::LBUTTON.raw() as WPARAM;
+const MK_RBUTTON: WPARAM = MK::RBUTTON.raw() as WPARAM;
+const MK_SHIFT_FLAG: WPARAM = MK::SHIFT.raw() as WPARAM;
 const MK_CHORD_MASK: WPARAM = MK_SHIFT_FLAG | MK_RBUTTON;
-const MK_CONTROL_FLAG: WPARAM = 0x0008;
+const MK_CONTROL_FLAG: WPARAM = MK::CONTROL.raw() as WPARAM;
 
-const VK_F4_CODE: u32 = VK_F4 as u32;
-const VK_F5_CODE: u32 = VK_F5 as u32;
-const VK_F6_CODE: u32 = VK_F6 as u32;
-const VK_SHIFT_CODE: u32 = VK_SHIFT as u32;
+const VK_F4_CODE: u32 = co::VK::F4.raw() as u32;
+const VK_F5_CODE: u32 = co::VK::F5.raw() as u32;
+const VK_F6_CODE: u32 = co::VK::F6.raw() as u32;
+const VK_SHIFT_CODE: u32 = co::VK::SHIFT.raw() as u32;
 
 const C_BLK_MAX: usize = 27 * 32;
 const BOARD_INDEX_SHIFT: usize = 5;
@@ -212,8 +207,8 @@ const BEST_HELP_IDS: [u32; 22] = [
 ];
 
 const EM_SETLIMITTEXT: u32 = 0x00C5;
-const IDOK_U16: u16 = IDOK as u16;
-const IDCANCEL_U16: u16 = IDCANCEL as u16;
+const IDOK_U16: u16 = DLGID::OK.raw();
+const IDCANCEL_U16: u16 = DLGID::CANCEL.raw();
 const NULL_HWND: HWND = 0 as HWND;
 const NULL_HMENU: HMENU = 0 as HMENU;
 
@@ -256,22 +251,22 @@ unsafe fn class_name_ptr() -> PCWSTR {
 }
 
 fn initial_minimized_state(n_cmd_show: i32) -> bool {
-    n_cmd_show == SW_SHOWMINNOACTIVE || n_cmd_show == SW_SHOWMINIMIZED
+    n_cmd_show == co::SW::SHOWMINNOACTIVE.raw() || n_cmd_show == co::SW::SHOWMINIMIZED.raw()
 }
 
 unsafe fn init_common_controls() {
     let icc = INITCOMMONCONTROLSEX {
         dwSize: mem::size_of::<INITCOMMONCONTROLSEX>() as u32,
-        dwICC: ICC_ANIMATE_CLASS
-            | ICC_BAR_CLASSES
-            | ICC_COOL_CLASSES
-            | ICC_HOTKEY_CLASS
-            | ICC_LISTVIEW_CLASSES
-            | ICC_PAGESCROLLER_CLASS
-            | ICC_PROGRESS_CLASS
-            | ICC_TAB_CLASSES
-            | ICC_UPDOWN_CLASS
-            | ICC_USEREX_CLASSES,
+        dwICC: ICC::ANIMATE_CLASS.raw()
+            | ICC::BAR_CLASSES.raw()
+            | ICC::COOL_CLASSES.raw()
+            | ICC::HOTKEY_CLASS.raw()
+            | ICC::LISTVIEW_CLASSES.raw()
+            | ICC::PAGESCROLLER_CLASS.raw()
+            | ICC::PROGRESS_CLASS.raw()
+            | ICC::TAB_CLASSES.raw()
+            | ICC::UPDOWN_CLASS.raw()
+            | ICC::USEREX_CLASSES.raw(),
     };
     InitCommonControlsEx(&icc);
 }
@@ -281,7 +276,7 @@ unsafe fn register_main_window_class() -> bool {
     wc.lpfnWndProc = Some(MainWndProc);
     wc.hInstance = hInst;
     wc.hIcon = hIconMain;
-    wc.hCursor = LoadCursorW(null_mut(), IDC_ARROW);
+    wc.hCursor = LoadCursorW(null_mut(), make_int_resource(IDC::ARROW.raw() as u16));
     wc.hbrBackground = GetStockObject(LTGRAY_BRUSH) as HBRUSH;
     wc.lpszMenuName = 0 as PCWSTR;
     wc.lpszClassName = class_name_ptr();
@@ -346,7 +341,7 @@ pub unsafe fn run_winmine(
     SetMenuBar(Preferences.fMenu);
     StartGame();
 
-    ShowWindow(hwndMain, SW_SHOWNORMAL);
+    ShowWindow(hwndMain, co::SW::SHOWNORMAL.raw());
     UpdateWindow(hwndMain);
 
     bInitMinimized.store(false, Ordering::Relaxed);
@@ -478,8 +473,8 @@ unsafe fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
     match command_id(w_param) {
         IDM_NEW => StartGame(),
         IDM_EXIT => {
-            ShowWindow(hwndMain, SW_HIDE);
-            SendMessageW(hwndMain, WM_SYSCOMMAND, SC_CLOSE as WPARAM, 0);
+            ShowWindow(hwndMain, co::SW::HIDE.raw());
+            SendMessageW(hwndMain, WM_SYSCOMMAND, co::SC::CLOSE.raw() as WPARAM, 0);
             return Some(0);
         }
         IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
@@ -506,7 +501,7 @@ unsafe fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
             FreeBitmaps();
             if !FLoadBitmaps() {
                 ReportErr(ID_ERR_MEM);
-                SendMessageW(hwndMain, WM_SYSCOMMAND, SC_CLOSE as WPARAM, 0);
+                SendMessageW(hwndMain, WM_SYSCOMMAND, co::SC::CLOSE.raw() as WPARAM, 0);
                 return Some(0);
             }
             DisplayScreen();
@@ -517,9 +512,9 @@ unsafe fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
             update_menu_from_preferences();
         }
         IDM_BEST => DoDisplayBest(),
-        IDM_HELP => DoHelp(HELP_INDEX as u16, HH_DISPLAY_TOPIC as u32),
-        IDM_HOW2PLAY => DoHelp(HELP_CONTEXT as u16, HH_DISPLAY_INDEX as u32),
-        IDM_HELP_HELP => DoHelp(HELP_HELPONHELP as u16, HH_DISPLAY_TOPIC as u32),
+        IDM_HELP => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
+        IDM_HOW2PLAY => DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32),
+        IDM_HELP_HELP => DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32),
         IDM_HELP_ABOUT => {
             DoAbout();
             return Some(0);
@@ -568,19 +563,16 @@ unsafe fn handle_window_pos_changed(l_param: LPARAM) {
 }
 
 unsafe fn handle_syscommand(w_param: WPARAM) {
-    match (w_param & SC_MASK) as u32 {
-        SC_MINIMIZE => {
-            PauseGame();
-            set_status_pause();
-            set_status_icon();
-        }
-        SC_RESTORE => {
-            clr_status_pause();
-            clr_status_icon();
-            ResumeGame();
-            fIgnoreClick.store(false, Ordering::Relaxed);
-        }
-        _ => {}
+    let command = (w_param & SC_MASK) as u32;
+    if command == co::SC::MINIMIZE.raw() {
+        PauseGame();
+        set_status_pause();
+        set_status_icon();
+    } else if command == co::SC::RESTORE.raw() {
+        clr_status_pause();
+        clr_status_icon();
+        ResumeGame();
+        fIgnoreClick.store(false, Ordering::Relaxed);
     }
 }
 
@@ -833,7 +825,14 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> bool {
 
     let mut pressed = true;
     loop {
-        if PeekMessageW(&mut msg, hwndMain, WM_MOUSEFIRST, WM_MOUSELAST, PM_REMOVE) != 0 {
+        if PeekMessageW(
+            &mut msg,
+            hwndMain,
+            WM_MOUSEFIRST,
+            WM_MOUSELAST,
+            co::PM::REMOVE.raw(),
+        ) != 0
+        {
             match msg.message {
                 WM_LBUTTONUP => {
                     if pressed && PtInRect(&rc, msg.pt) != 0 {
@@ -1054,13 +1053,14 @@ pub unsafe fn AdjustWindow(mut f_adjust: i32) {
     dypAdjust.store(dyp_adjust, Ordering::Relaxed);
     dxFrameExtra.store(frame_extra, Ordering::Relaxed);
 
-    let mut excess =
-        Preferences.xWindow + dx_window + frame_extra - our_get_system_metrics(SM_CXSCREEN);
+    let mut excess = Preferences.xWindow + dx_window + frame_extra
+        - our_get_system_metrics(SM::CXSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.xWindow -= excess;
     }
-    excess = Preferences.yWindow + dy_window + dyp_adjust - our_get_system_metrics(SM_CYSCREEN);
+    excess = Preferences.yWindow + dy_window + dyp_adjust
+        - our_get_system_metrics(SM::CYSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.yWindow -= excess;
@@ -1108,25 +1108,25 @@ pub unsafe fn AdjustWindow(mut f_adjust: i32) {
     }
 }
 
-fn our_get_system_metrics(index: i32) -> i32 {
+fn our_get_system_metrics(index: SM) -> i32 {
     // Favor the virtual screen metrics when available to support multi-monitor setups.
     unsafe {
         match index {
-            SM_CXSCREEN => {
-                let mut result = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+            SM::CXSCREEN => {
+                let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN.raw());
                 if result == 0 {
-                    result = GetSystemMetrics(SM_CXSCREEN);
+                    result = GetSystemMetrics(SM::CXSCREEN.raw());
                 }
                 result
             }
-            SM_CYSCREEN => {
-                let mut result = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+            SM::CYSCREEN => {
+                let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN.raw());
                 if result == 0 {
-                    result = GetSystemMetrics(SM_CYSCREEN);
+                    result = GetSystemMetrics(SM::CYSCREEN.raw());
                 }
                 result
             }
-            _ => GetSystemMetrics(index),
+            _ => GetSystemMetrics(index.raw()),
         }
     }
 }
@@ -1216,14 +1216,14 @@ unsafe fn apply_help_from_info(l_param: LPARAM, ids: &[u32]) -> bool {
     WinHelpW(
         info.hItemHandle,
         HELP_FILE,
-        HELP_WM_HELP,
+        HELPW::WM_HELP.raw(),
         ids.as_ptr() as usize,
     );
     true
 }
 
 unsafe fn apply_help_to_hwnd(hwnd: HWND, ids: &[u32]) {
-    WinHelpW(hwnd, HELP_FILE, HELP_CONTEXTMENU, ids.as_ptr() as usize);
+    WinHelpW(hwnd, HELP_FILE, HELPW::CONTEXTMENU.raw(), ids.as_ptr() as usize);
 }
 
 fn menu_is_visible() -> bool {
