@@ -1,8 +1,7 @@
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
-use windows_sys::Win32::Foundation::FALSE;
-use windows_sys::Win32::UI::WindowsAndMessaging::SetTimer;
+use winsafe::HWND;
 
 use crate::globals::{fBlock, fStatus, hwndMain};
 use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
@@ -58,10 +57,10 @@ pub static mut Preferences: Pref = Pref {
     xWindow: 0,
     yWindow: 0,
     fSound: 0,
-    fMark: FALSE,
-    fTick: FALSE,
+    fMark: false,
+    fTick: false,
     fMenu: 0,
-    fColor: FALSE,
+    fColor: false,
     rgTime: [0; 3],
     szBegin: [0; CCH_NAME_MAX],
     szInter: [0; CCH_NAME_MAX],
@@ -439,7 +438,7 @@ fn make_guess_internal(x: i32, y: i32) {
 
         let block = if guessed_bomb(x, y) {
             update_bomb_count_internal(1);
-            if Preferences.fMark != 0 {
+            if Preferences.fMark {
                 I_BLK_GUESS_UP
             } else {
                 I_BLK_BLANK_UP
@@ -664,7 +663,8 @@ pub unsafe fn DoButton1Up() {
             cSec.store(1, Ordering::Relaxed);
             display_time();
             F_TIMER.store(true, Ordering::Relaxed);
-            if SetTimer(hwndMain, ID_TIMER, 1000, None) == 0 {
+            let hwnd = unsafe { HWND::from_ptr(hwndMain as _) };
+            if hwnd.SetTimer(ID_TIMER, 1000, None).is_err() {
                 ReportErr(ID_ERR_TIMER);
             }
         }

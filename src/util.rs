@@ -1,34 +1,32 @@
-use core::ptr::{addr_of, addr_of_mut, null_mut};
+use core::ptr::{addr_of, addr_of_mut};
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use windows_sys::core::{w, BOOL, PCSTR, PCWSTR};
+use windows_sys::core::{w, PCSTR, PCWSTR};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::Foundation::{FALSE, HWND, TRUE};
-use windows_sys::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, HDC, NUMCOLORS};
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameA;
-use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
-};
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
 use windows_sys::Win32::System::WindowsProgramming::{
     GetPrivateProfileIntW, GetPrivateProfileStringW,
 };
-use windows_sys::Win32::UI::Shell::ShellAboutW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    wsprintfW, CheckMenuItem, GetDesktopWindow, GetDlgItemInt, GetSystemMetrics, LoadIconW,
-    LoadStringW, MessageBoxW, SetMenu, HELP_HELPONHELP, HMENU, MF_CHECKED, MF_UNCHECKED,
-    SM_CXBORDER, SM_CYBORDER, SM_CYCAPTION, SM_CYMENU,
+    wsprintfW, GetDlgItemInt, GetSystemMetrics, LoadIconW, LoadStringW, MessageBoxW,
+    HELP_HELPONHELP, SM_CXBORDER, SM_CYBORDER, SM_CYCAPTION, SM_CYMENU,
 };
+
+use winsafe::{self as w, co, prelude::*, IdPos, HICON};
 
 use crate::globals::{
     dxpBorder, dypBorder, dypCaption, dypMenu, hInst, hMenu, hwndMain, szClass, szDefaultName,
     szTime,
 };
 use crate::pref::{
-    self, Pref, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON,
+    Pref, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON,
     ISZ_PREF_MAX, MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
-use crate::pref::{g_hReg, rgszPref, ReadInt, WritePreferences};
+use crate::pref::{
+    close_registry_handle, g_hReg, rgszPref, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
+};
 use crate::rtns::Preferences;
 use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, FixMenus};
@@ -239,26 +237,18 @@ pub unsafe fn InitConst() {
     dypBorder.store(GetSystemMetrics(SM_CYBORDER) + 1, Ordering::Relaxed);
     dxpBorder.store(GetSystemMetrics(SM_CXBORDER) + 1, Ordering::Relaxed);
 
-    let mut disposition = 0u32;
-    let mut key: HKEY = std::ptr::null_mut();
     let mut already_played = 0;
 
-    if RegCreateKeyExW(
-        HKEY_CURRENT_USER,
-        pref::SZ_WINMINE_REG,
-        0,
-        null_mut(),
-        0,
-        KEY_READ,
-        null_mut(),
-        &mut key,
-        &mut disposition,
-    ) == 0
-    {
-        g_hReg = key;
+    if let Ok((mut key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
+        SZ_WINMINE_REG_STR,
+        None,
+        co::REG_OPTION::default(),
+        co::KEY::READ,
+        None,
+    ) {
+        g_hReg = key_guard.leak();
         already_played = ReadInt(ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1);
-        RegCloseKey(key);
-        g_hReg = std::ptr::null_mut();
+        close_registry_handle();
     }
 
     if already_played != 0 {
@@ -300,19 +290,20 @@ pub unsafe fn InitConst() {
         (*prefs).szExpert.as_mut_ptr(),
     );
 
-    let desktop = GetDesktopWindow();
-    let hdc: HDC = GetDC(desktop);
-    let default_color = if !hdc.is_null() && GetDeviceCaps(hdc, NUMCOLORS as i32) != 2 {
-        TRUE
-    } else {
-        FALSE
+    let desktop = w::HWND::GetDesktopWindow();
+    let default_color = match desktop.GetDC() {
+        Ok(hdc) => {
+            if hdc.GetDeviceCaps(co::GDC::NUMCOLORS) != 2 {
+                TRUE
+            } else {
+                FALSE
+            }
+        }
+        Err(_) => FALSE,
     };
-    if !hdc.is_null() {
-        ReleaseDC(desktop, hdc);
-    }
     (*prefs).fColor = bool_from_int(ReadIniInt(
         ISZ_PREF_COLOR as i32,
-        default_color as i32,
+        default_color,
         0,
         1,
     ));
@@ -324,17 +315,14 @@ pub unsafe fn InitConst() {
     WritePreferences();
 }
 
-pub unsafe fn CheckEm(idm: u16, f_check: BOOL) {
+pub unsafe fn CheckEm(idm: u16, f_check: bool) {
     // Maintain the old menu checkmark toggles (e.g. question marks, sound).
-    CheckMenuItem(
-        hMenu,
-        idm.into(),
-        if f_check != 0 {
-            MF_CHECKED
-        } else {
-            MF_UNCHECKED
-        },
-    );
+    if hMenu.is_null() {
+        return;
+    }
+
+    let menu = unsafe { w::HMENU::from_ptr(hMenu as _) };
+    let _ = menu.CheckMenuItem(IdPos::Id(idm), f_check);
 }
 
 pub unsafe fn SetMenuBar(f_active: i32) {
@@ -343,12 +331,26 @@ pub unsafe fn SetMenuBar(f_active: i32) {
     FixMenus();
 
     let menu_on = ((*prefs_ref()).fMenu & FMENU_FLAG_OFF) == 0;
-    SetMenu(hwndMain, if menu_on { hMenu } else { 0 as HMENU });
+    if hwndMain.is_null() {
+        return;
+    }
+
+    let hwnd = unsafe { w::HWND::from_ptr(hwndMain as _) };
+    let menu_handle = if menu_on && !hMenu.is_null() {
+        unsafe { w::HMENU::from_ptr(hMenu as _) }
+    } else {
+        w::HMENU::NULL
+    };
+    let _ = hwnd.SetMenu(&menu_handle);
     AdjustWindow(F_RESIZE);
 }
 
 pub unsafe fn DoAbout() {
     // Show the stock About box with the localized title and credit strings.
+    if hwndMain.is_null() {
+        return;
+    }
+
     let mut sz_version = [0u16; CCH_MSG_MAX];
     let mut sz_credit = [0u16; CCH_MSG_MAX];
 
@@ -363,12 +365,17 @@ pub unsafe fn DoAbout() {
         CCH_MSG_MAX as u32,
     );
 
-    ShellAboutW(
-        hwndMain,
-        sz_version.as_ptr(),
-        sz_credit.as_ptr(),
-        LoadIconW(hInst, make_int_resource(ID_ICON_MAIN)),
-    );
+    let title = utf16_buffer_to_string(&sz_version);
+    let credit = utf16_buffer_to_string(&sz_credit);
+    let icon_raw = LoadIconW(hInst, make_int_resource(ID_ICON_MAIN));
+    let icon = if icon_raw.is_null() {
+        None
+    } else {
+        Some(unsafe { HICON::from_ptr(icon_raw as _) })
+    };
+
+    let hwnd = unsafe { w::HWND::from_ptr(hwndMain as _) };
+    let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon.as_ref());
 }
 
 pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
@@ -399,7 +406,13 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
         buffer[..HELP_FILE.len()].copy_from_slice(HELP_FILE);
     }
 
-    HtmlHelpA(GetDesktopWindow(), buffer.as_ptr() as PCSTR, l_param, 0);
+    let desktop = w::HWND::GetDesktopWindow();
+    HtmlHelpA(desktop.ptr() as _, buffer.as_ptr() as PCSTR, l_param, 0);
+}
+
+fn utf16_buffer_to_string(buf: &[u16]) -> String {
+    let len = buf.iter().position(|&ch| ch == 0).unwrap_or(buf.len());
+    String::from_utf16_lossy(&buf[..len])
 }
 
 pub unsafe fn GetDlgInt(h_dlg: HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
@@ -410,10 +423,6 @@ pub unsafe fn GetDlgInt(h_dlg: HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i
     clamp(value, num_lo, num_hi)
 }
 
-fn bool_from_int(value: i32) -> BOOL {
-    if value != 0 {
-        TRUE
-    } else {
-        FALSE
-    }
+fn bool_from_int(value: i32) -> bool {
+    value != 0
 }

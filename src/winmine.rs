@@ -34,7 +34,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DialogBoxParamW, DispatchMessageW,
     EndDialog, GetDlgItem, GetDlgItemTextW, GetMenuItemRect, GetMessageW, GetSystemMetrics,
-    GetWindowLongPtrW, KillTimer, LoadAcceleratorsW, LoadCursorW, LoadIconW, LoadMenuW, MoveWindow,
+    GetWindowLongPtrW, LoadAcceleratorsW, LoadCursorW, LoadIconW, LoadMenuW, MoveWindow,
     PeekMessageW, PostMessageW, PostQuitMessage, RegisterClassW, SendMessageW, SetDlgItemInt,
     SetDlgItemTextW, ShowWindow, TranslateAcceleratorW, TranslateMessage, WINDOWPOS, WM_ACTIVATE,
     WM_COMMAND, WM_CONTEXTMENU, WM_DESTROY, WM_ENTERMENULOOP, WM_EXITMENULOOP, WM_HELP,
@@ -247,10 +247,6 @@ fn bool_to_bool(flag: bool) -> BOOL {
     }
 }
 
-fn int_to_bool(value: i32) -> BOOL {
-    bool_to_bool(value != 0)
-}
-
 fn make_int_resource(id: u16) -> PCWSTR {
     id as usize as *const u16
 }
@@ -342,7 +338,7 @@ pub unsafe fn run_winmine(
 
     AdjustWindow(F_CALC);
 
-    if FInitLocal() == FALSE {
+    if !FInitLocal() {
         ReportErr(ID_ERR_MEM);
         return FALSE;
     }
@@ -497,9 +493,9 @@ unsafe fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
         }
         IDM_CUSTOM => DoPref(),
         IDM_SOUND => {
-            if Preferences.fSound != 0 {
+            if sound_on() {
                 EndTunes();
-                Preferences.fSound = FALSE;
+                Preferences.fSound = FSOUND_OFF;
             } else {
                 Preferences.fSound = FInitTunes();
             }
@@ -508,7 +504,7 @@ unsafe fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
         IDM_COLOR => {
             Preferences.fColor = toggle_bool(Preferences.fColor);
             FreeBitmaps();
-            if FLoadBitmaps() == 0 {
+            if !FLoadBitmaps() {
                 ReportErr(ID_ERR_MEM);
                 SendMessageW(hwndMain, WM_SYSCOMMAND, SC_CLOSE as WPARAM, 0);
                 return Some(0);
@@ -613,12 +609,8 @@ unsafe fn update_menu_from_preferences() {
     SetMenuBar(Preferences.fMenu);
 }
 
-fn toggle_bool(value: BOOL) -> BOOL {
-    if value == FALSE {
-        TRUE
-    } else {
-        FALSE
-    }
+fn toggle_bool(value: bool) -> bool {
+    !value
 }
 
 fn get_activate_state(w_param: WPARAM) -> u16 {
@@ -718,7 +710,8 @@ pub unsafe extern "system" fn MainWndProc(
         }
         WM_KEYDOWN => handle_keydown(w_param),
         WM_DESTROY => {
-            KillTimer(hwndMain, ID_TIMER);
+            let hwnd = winsafe::HWND::from_ptr(hwndMain as _);
+            let _ = hwnd.KillTimer(ID_TIMER);
             PostQuitMessage(0);
         }
         WM_MBUTTONDOWN => {
@@ -735,7 +728,7 @@ pub unsafe extern "system" fn MainWndProc(
             if handle_ignore_click() {
                 return 0;
             }
-            if FLocalButton(l_param) != 0 {
+            if FLocalButton(l_param) {
                 return 0;
             }
             if status_play() {
@@ -782,14 +775,14 @@ pub unsafe extern "system" fn MainWndProc(
 pub unsafe fn FixMenus() {
     // Keep the menu checkmarks synchronized with the current difficulty/option flags.
     let game = Preferences.wGameType;
-    CheckEm(IDM_BEGIN, bool_to_bool(game == WGAME_BEGIN as u16));
-    CheckEm(IDM_INTER, bool_to_bool(game == WGAME_INTER as u16));
-    CheckEm(IDM_EXPERT, bool_to_bool(game == WGAME_EXPERT as u16));
-    CheckEm(IDM_CUSTOM, bool_to_bool(game == WGAME_OTHER));
+    CheckEm(IDM_BEGIN, game == WGAME_BEGIN as u16);
+    CheckEm(IDM_INTER, game == WGAME_INTER as u16);
+    CheckEm(IDM_EXPERT, game == WGAME_EXPERT as u16);
+    CheckEm(IDM_CUSTOM, game == WGAME_OTHER);
 
     CheckEm(IDM_COLOR, Preferences.fColor);
     CheckEm(IDM_MARK, Preferences.fMark);
-    CheckEm(IDM_SOUND, int_to_bool(Preferences.fSound));
+    CheckEm(IDM_SOUND, Preferences.fSound == FSOUND_ON);
 }
 
 pub unsafe fn DoPref() {
@@ -813,7 +806,7 @@ pub unsafe fn DoDisplayBest() {
     show_dialog(ID_DLG_BEST, Some(BestDlgProc));
 }
 
-pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
+pub unsafe fn FLocalButton(l_param: LPARAM) -> bool {
     // Handle clicks on the smiley face button while providing the pressed animation.
     let mut msg: MSG = core::mem::zeroed();
 
@@ -831,7 +824,7 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
     rc.bottom = rc.top + DY_BUTTON;
 
     if PtInRect(&rc, msg.pt) == 0 {
-        return FALSE;
+        return false;
     }
 
     SetCapture(hwndMain);
@@ -849,7 +842,7 @@ pub unsafe fn FLocalButton(l_param: LPARAM) -> BOOL {
                         StartGame();
                     }
                     ReleaseCapture();
-                    return TRUE;
+                    return true;
                 }
                 WM_MOUSEMOVE => {
                     if PtInRect(&rc, msg.pt) != 0 {

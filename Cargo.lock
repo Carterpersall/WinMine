@@ -310,6 +310,7 @@ version = "0.1.0"
 dependencies = [
  "embed-resource",
  "windows-sys 0.61.2",
+ "winsafe",
 ]
 
 [[package]]
@@ -327,3 +328,8 @@ dependencies = [
  "cfg-if",
  "windows-sys 0.59.0",
 ]
+
+[[package]]
+name = "winsafe"
+version = "0.0.26"
+source = "git+https://github.com/rodrigocfd/winsafe.git?rev=ec62c02c84a43d8e22cdfe51e2cdca95b4314267#ec62c02c84a43d8e22cdfe51e2cdca95b4314267"

@@ -3,7 +3,7 @@ use core::mem::size_of;
 use core::ptr::{addr_of_mut, null, null_mut};
 use core::sync::atomic::Ordering::Relaxed;
 
-use windows_sys::core::{BOOL, PCSTR, PCWSTR};
+use windows_sys::core::{PCSTR, PCWSTR};
 use windows_sys::Win32::Foundation::{HGLOBAL, HRSRC};
 use windows_sys::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen, DeleteDC, DeleteObject, GetDC,
@@ -74,25 +74,22 @@ fn prefs_ptr() -> *mut Pref {
 }
 
 fn color_enabled() -> bool {
-    unsafe { (*prefs_ptr()).fColor != 0 }
+    unsafe { (*prefs_ptr()).fColor }
 }
 
-pub unsafe fn FInitLocal() -> BOOL {
+pub unsafe fn FInitLocal() -> bool {
     // Load the sprite resources and reset the minefield before gameplay starts.
-    if FLoadBitmaps() == 0 {
-        return 0;
+    if !FLoadBitmaps() {
+        return false;
     }
 
     ClearField();
-    1
+    true
 }
 
-pub unsafe fn FLoadBitmaps() -> BOOL {
+pub unsafe fn FLoadBitmaps() -> bool {
     // Wrapper retained for compatibility with the original export table.
-    if !load_bitmaps_impl() {
-        return 0;
-    }
-    1
+    load_bitmaps_impl()
 }
 
 pub unsafe fn FreeBitmaps() {

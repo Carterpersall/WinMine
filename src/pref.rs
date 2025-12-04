@@ -1,15 +1,10 @@
 // Registry-backed preference helpers mirrored from pref.c.
-use core::ptr::{addr_of, addr_of_mut, null_mut};
+use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use windows_sys::core::{w, BOOL, PCWSTR};
-use windows_sys::Win32::Foundation::{FALSE, HWND, TRUE};
-use windows_sys::Win32::Graphics::Gdi::{GetDC, GetDeviceCaps, ReleaseDC, NUMCOLORS};
-use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegQueryValueExW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-    KEY_READ, KEY_WRITE, REG_DWORD, REG_SZ,
-};
-use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
+use windows_sys::core::{w, PCWSTR};
+use windows_sys::Win32::Foundation::{FALSE, TRUE};
+use winsafe::{self as w, co, guard::RegCloseKeyGuard, prelude::*, RegistryValue};
 
 use crate::globals::szDefaultName;
 use crate::rtns::{xBoxMac, yBoxMac, Preferences};
@@ -33,7 +28,7 @@ pub const WGAME_EXPERT: i32 = 2;
 pub const FMENU_ALWAYS_ON: i32 = 0;
 pub const FMENU_ON: i32 = 2;
 
-pub const SZ_WINMINE_REG: PCWSTR = w!("Software\\Microsoft\\winmine");
+pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 // Registry value names, ordered to match the legacy iszPref constants.
 const PREF_STRINGS: [PCWSTR; ISZ_PREF_MAX] = [
@@ -67,10 +62,10 @@ pub struct Pref {
     pub xWindow: i32,
     pub yWindow: i32,
     pub fSound: i32,
-    pub fMark: BOOL,
-    pub fTick: BOOL,
+    pub fMark: bool,
+    pub fTick: bool,
     pub fMenu: i32,
-    pub fColor: BOOL,
+    pub fColor: bool,
     pub rgTime: [i32; 3],
     pub szBegin: [u16; CCH_NAME_MAX],
     pub szInter: [u16; CCH_NAME_MAX],
@@ -80,7 +75,7 @@ pub struct Pref {
 // Flag consulted by the C UI layer to decide when to persist settings.
 pub static fUpdateIni: AtomicBool = AtomicBool::new(false);
 
-pub static mut g_hReg: HKEY = std::ptr::null_mut();
+pub static mut g_hReg: w::HKEY = w::HKEY::NULL;
 
 pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
 pub unsafe fn ReadInt(
@@ -90,32 +85,23 @@ pub unsafe fn ReadInt(
     val_max: i32,
 ) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
-    let handle = g_hReg;
-    if handle.is_null() {
+    if g_hReg == w::HKEY::NULL {
         return val_default;
     }
 
-    let key_name = match pref_name(isz_pref) {
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+
+    let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => return val_default,
     };
 
-    let mut value: u32 = 0;
-    let mut size = core::mem::size_of::<u32>() as u32;
-    let status = RegQueryValueExW(
-        handle,
-        key_name,
-        null_mut(),
-        null_mut(),
-        &mut value as *mut u32 as *mut u8,
-        &mut size,
-    );
+    let value = match handle.RegQueryValueEx(Some(&key_name)) {
+        Ok(RegistryValue::Dword(val)) => val as i32,
+        _ => return val_default,
+    };
 
-    if status != 0 {
-        return val_default;
-    }
-
-    clamp_i32(value as i32, val_min, val_max)
+    clamp_i32(value, val_min, val_max)
 }
 
 pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
@@ -124,57 +110,43 @@ pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
         return;
     }
 
-    let handle = g_hReg;
-    if handle.is_null() {
-        copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
+    if g_hReg == w::HKEY::NULL {
+        copy_default_name(sz_ret);
         return;
     }
 
-    let key_name = match pref_name(isz_pref) {
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+
+    let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => {
-            copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
+            copy_default_name(sz_ret);
             return;
         }
     };
 
-    let mut size = (CCH_NAME_MAX * core::mem::size_of::<u16>()) as u32;
-    let status = RegQueryValueExW(
-        handle,
-        key_name,
-        null_mut(),
-        null_mut(),
-        sz_ret as *mut u8,
-        &mut size,
-    );
-
-    if status != 0 {
-        copy_wide_with_capacity(default_name_ptr(), sz_ret, CCH_NAME_MAX);
+    match handle.RegQueryValueEx(Some(&key_name)) {
+        Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => {
+            copy_str_to_wide(&value, sz_ret, CCH_NAME_MAX);
+        }
+        _ => copy_default_name(sz_ret),
     }
 }
 
 pub unsafe fn ReadPreferences() {
     // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
-    let mut disposition = 0u32;
-    let mut key: HKEY = std::ptr::null_mut();
+    let (mut key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
+        SZ_WINMINE_REG_STR,
+        None,
+        co::REG_OPTION::default(),
+        co::KEY::READ,
+        None,
+    ) {
+        Ok(result) => result,
+        Err(_) => return,
+    };
 
-    // Open (or create) the WinMine registry hive; if it fails we keep defaults.
-    if RegCreateKeyExW(
-        HKEY_CURRENT_USER,
-        SZ_WINMINE_REG,
-        0,
-        null_mut(),
-        0,
-        KEY_READ,
-        null_mut(),
-        &mut key,
-        &mut disposition,
-    ) != 0
-    {
-        return;
-    }
-
-    g_hReg = key;
+    g_hReg = key_guard.leak();
 
     let prefs = addr_of_mut!(Preferences);
 
@@ -192,8 +164,8 @@ pub unsafe fn ReadPreferences() {
     (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
 
     (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
-    (*prefs).fMark = bool_to_bool(ReadInt(7, TRUE, 0, 1));
-    (*prefs).fTick = bool_to_bool(ReadInt(9, FALSE, 0, 1));
+    (*prefs).fMark = ReadInt(7, TRUE, 0, 1) != 0;
+    (*prefs).fTick = ReadInt(9, FALSE, 0, 1) != 0;
     (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
 
     (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
@@ -205,49 +177,41 @@ pub unsafe fn ReadPreferences() {
     ReadSz(16, addr_of_mut!((*prefs).szExpert[0]));
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
-    let desktop: HWND = GetDesktopWindow();
-    let hdc = GetDC(desktop);
-    let default_color = if !hdc.is_null() && GetDeviceCaps(hdc, NUMCOLORS as i32) != 2 {
-        TRUE
-    } else {
-        FALSE
+    let desktop = w::HWND::GetDesktopWindow();
+    let default_color = match desktop.GetDC() {
+        Ok(hdc) => {
+            if hdc.GetDeviceCaps(co::GDC::NUMCOLORS) != 2 {
+                TRUE
+            } else {
+                FALSE
+            }
+        }
+        Err(_) => FALSE,
     };
-    if !hdc.is_null() {
-        ReleaseDC(desktop, hdc);
-    }
-    (*prefs).fColor = bool_to_bool(ReadInt(10, default_color, 0, 1));
+    (*prefs).fColor = ReadInt(10, default_color, 0, 1) != 0;
 
     // If sound is enabled, verify that the system can actually play the resources.
     if (*prefs).fSound == FSOUND_ON {
         (*prefs).fSound = FInitTunes();
     }
 
-    RegCloseKey(g_hReg);
-    g_hReg = std::ptr::null_mut();
+    close_registry_handle();
 }
 
 pub unsafe fn WritePreferences() {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
-    let mut disposition = 0u32;
-    let mut key: HKEY = std::ptr::null_mut();
+    let (mut key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
+        SZ_WINMINE_REG_STR,
+        None,
+        co::REG_OPTION::default(),
+        co::KEY::WRITE,
+        None,
+    ) {
+        Ok(result) => result,
+        Err(_) => return,
+    };
 
-    // Try to reopen the hive with write access; on failure we leave preferences untouched.
-    if RegCreateKeyExW(
-        HKEY_CURRENT_USER,
-        SZ_WINMINE_REG,
-        0,
-        null_mut(),
-        0,
-        KEY_WRITE,
-        null_mut(),
-        &mut key,
-        &mut disposition,
-    ) != 0
-    {
-        return;
-    }
-
-    g_hReg = key;
+    g_hReg = key_guard.leak();
 
     let prefs = addr_of!(Preferences);
 
@@ -256,10 +220,10 @@ pub unsafe fn WritePreferences() {
     WriteInt(2, (*prefs).Height);
     WriteInt(3, (*prefs).Width);
     WriteInt(1, (*prefs).Mines);
-    WriteInt(7, (*prefs).fMark);
+    WriteInt(7, bool_to_i32((*prefs).fMark));
     WriteInt(17, 1);
 
-    WriteInt(10, (*prefs).fColor);
+    WriteInt(10, bool_to_i32((*prefs).fColor));
     WriteInt(6, (*prefs).fSound);
     WriteInt(4, (*prefs).xWindow);
     WriteInt(5, (*prefs).yWindow);
@@ -272,56 +236,42 @@ pub unsafe fn WritePreferences() {
     WriteSz(14, addr_of!((*prefs).szInter[0]));
     WriteSz(16, addr_of!((*prefs).szExpert[0]));
 
-    RegCloseKey(g_hReg);
-    g_hReg = std::ptr::null_mut();
+    close_registry_handle();
 }
 
 pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
     // Simple DWORD setter used by both the registry migration and the dialog code.
-    let handle = g_hReg;
-    if handle.is_null() {
+    if g_hReg == w::HKEY::NULL {
         return;
     }
 
-    let key_name = match pref_name(isz_pref) {
+    let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => return,
     };
 
-    let data = val as u32;
-    RegSetValueExW(
-        handle,
-        key_name,
-        0,
-        REG_DWORD,
-        &data as *const u32 as *const u8,
-        core::mem::size_of::<u32>() as u32,
-    );
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Dword(val as u32));
 }
 
 pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
     // Stores zero-terminated UTF-16 values such as player names.
-    let handle = g_hReg;
-    if handle.is_null() || sz.is_null() {
+    if g_hReg == w::HKEY::NULL || sz.is_null() {
         return;
     }
 
-    let key_name = match pref_name(isz_pref) {
+    let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => return,
     };
 
-    let len = wide_len(sz) + 1;
-    let byte_len = len * core::mem::size_of::<u16>();
+    let value = match wide_ptr_to_string(sz) {
+        Some(text) => text,
+        None => return,
+    };
 
-    RegSetValueExW(
-        handle,
-        key_name,
-        0,
-        REG_SZ,
-        sz as *const u8,
-        byte_len as u32,
-    );
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value));
 }
 
 fn pref_name(index: i32) -> Option<PCWSTR> {
@@ -332,20 +282,55 @@ fn pref_name(index: i32) -> Option<PCWSTR> {
     PREF_STRINGS.get(idx).copied()
 }
 
+fn pref_name_string(index: i32) -> Option<String> {
+    let ptr = pref_name(index)?;
+    if ptr.is_null() {
+        None
+    } else {
+        Some(unsafe { pcwstr_to_string(ptr) })
+    }
+}
+
 fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
 }
 
-fn bool_to_bool(value: i32) -> BOOL {
-    if value != 0 {
-        TRUE
+fn bool_to_i32(flag: bool) -> i32 {
+    if flag {
+        1
     } else {
-        FALSE
+        0
     }
 }
 
 unsafe fn default_name_ptr() -> *const u16 {
     addr_of!(szDefaultName[0])
+}
+
+unsafe fn pcwstr_to_string(ptr: PCWSTR) -> String {
+    let len = wide_len(ptr);
+    let slice = std::slice::from_raw_parts(ptr, len);
+    String::from_utf16_lossy(slice)
+}
+
+unsafe fn copy_str_to_wide(src: &str, dst: *mut u16, capacity: usize) {
+    if dst.is_null() || capacity == 0 {
+        return;
+    }
+
+    let mut buffer: Vec<u16> = src.encode_utf16().collect();
+    buffer.push(0);
+    copy_wide_with_capacity(buffer.as_ptr(), dst, capacity);
+}
+
+unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+
+    let len = wide_len(ptr);
+    let slice = std::slice::from_raw_parts(ptr, len);
+    Some(String::from_utf16_lossy(slice))
 }
 
 unsafe fn copy_wide_with_capacity(src: *const u16, dst: *mut u16, capacity: usize) {
@@ -376,4 +361,16 @@ unsafe fn wide_len(mut ptr: *const u16) -> usize {
         ptr = ptr.add(1);
     }
     len
+}
+
+unsafe fn copy_default_name(dst: *mut u16) {
+    copy_wide_with_capacity(default_name_ptr(), dst, CCH_NAME_MAX);
+}
+
+pub(crate) unsafe fn close_registry_handle() {
+    if g_hReg != w::HKEY::NULL {
+        let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+        g_hReg = w::HKEY::NULL;
+        let _ = RegCloseKeyGuard::new(handle);
+    }
 }
