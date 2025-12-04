@@ -1,19 +1,21 @@
 use core::ffi::c_void;
 use core::mem::size_of;
-use core::ptr::{addr_of_mut, null, null_mut};
+use core::ptr::{addr_of, addr_of_mut, null, null_mut};
 use core::sync::atomic::Ordering::Relaxed;
 
 use windows_sys::core::{PCSTR, PCWSTR};
 use windows_sys::Win32::Foundation::{HGLOBAL, HRSRC};
 use windows_sys::Win32::Graphics::Gdi::{
-    BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen, DeleteDC, DeleteObject, GetDC,
-    GetLayout, GetStockObject, LineTo, MoveToEx, ReleaseDC, SelectObject, SetDIBitsToDevice,
-    SetLayout, SetROP2, BITMAPINFO, BITMAPINFOHEADER, GDI_ERROR, HBITMAP, HDC, HPEN, R2_COPYPEN,
-    R2_WHITE,
+    DeleteDC, DeleteObject, GetLayout, SetDIBitsToDevice, SetLayout, SetROP2, BITMAPINFO,
+    BITMAPINFOHEADER, GDI_ERROR, R2_COPYPEN, R2_WHITE,
 };
 use windows_sys::Win32::System::Diagnostics::Debug::OutputDebugStringA;
 use windows_sys::Win32::System::LibraryLoader::{FindResourceW, LoadResource, LockResource};
-use winsafe::co::{DIB, LAYOUT, PS, ROP, RT, STOCK_PEN};
+use winsafe::{
+    self as w,
+    co::{DIB, LAYOUT, PS, ROP, RT, STOCK_PEN},
+    prelude::*,
+};
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, hInst, hwndMain};
 use crate::pref::Pref;
@@ -62,11 +64,11 @@ static mut LP_DIB_BLKS: *const u8 = null();
 static mut LP_DIB_LED: *const u8 = null();
 static mut LP_DIB_BUTTON: *const u8 = null();
 
-static mut H_GRAY_PEN: HPEN = null_mut();
+static mut H_GRAY_PEN: w::HPEN = w::HPEN::NULL;
 
 // Per-cell memory DIBs so repeated blits avoid calling SetDIBitsToDevice each time.
-static mut MEM_BLK_DC: [HDC; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
-static mut MEM_BLK_BITMAP: [HBITMAP; I_BLK_MAX] = [null_mut(); I_BLK_MAX];
+static mut MEM_BLK_DC: [w::HDC; I_BLK_MAX] = [w::HDC::NULL; I_BLK_MAX];
+static mut MEM_BLK_BITMAP: [w::HBITMAP; I_BLK_MAX] = [w::HBITMAP::NULL; I_BLK_MAX];
 
 #[inline]
 fn prefs_ptr() -> *mut Pref {
@@ -75,6 +77,14 @@ fn prefs_ptr() -> *mut Pref {
 
 fn color_enabled() -> bool {
     unsafe { (*prefs_ptr()).fColor }
+}
+
+unsafe fn main_window() -> Option<w::HWND> {
+    if hwndMain.is_null() {
+        None
+    } else {
+        Some(w::HWND::from_ptr(hwndMain as _))
+    }
 }
 
 pub unsafe fn FInitLocal() -> bool {
@@ -94,10 +104,12 @@ pub unsafe fn FLoadBitmaps() -> bool {
 
 pub unsafe fn FreeBitmaps() {
     // Tear down cached pens, handles, and scratch DCs when leaving the app.
-    if !H_GRAY_PEN.is_null() {
-        DeleteObject(H_GRAY_PEN as _);
-        H_GRAY_PEN = null_mut();
+    let pen = addr_of!(H_GRAY_PEN);
+    let handle = core::ptr::read(pen);
+    if handle != w::HPEN::NULL {
+        DeleteObject(handle.ptr());
     }
+    core::ptr::write(addr_of_mut!(H_GRAY_PEN), w::HPEN::NULL);
 
     H_RES_BLKS = null_mut();
     H_RES_LED = null_mut();
@@ -108,13 +120,13 @@ pub unsafe fn FreeBitmaps() {
     LP_DIB_BUTTON = null();
 
     for i in 0..I_BLK_MAX {
-        if !MEM_BLK_DC[i].is_null() {
-            DeleteDC(MEM_BLK_DC[i]);
-            MEM_BLK_DC[i] = null_mut();
+        if MEM_BLK_DC[i] != w::HDC::NULL {
+            DeleteDC(MEM_BLK_DC[i].ptr());
+            MEM_BLK_DC[i] = w::HDC::NULL;
         }
-        if !MEM_BLK_BITMAP[i].is_null() {
-            DeleteObject(MEM_BLK_BITMAP[i] as _);
-            MEM_BLK_BITMAP[i] = null_mut();
+        if MEM_BLK_BITMAP[i] != w::HBITMAP::NULL {
+            DeleteObject(MEM_BLK_BITMAP[i].ptr());
+            MEM_BLK_BITMAP[i] = w::HBITMAP::NULL;
         }
     }
 }
@@ -125,31 +137,35 @@ pub fn CleanUp() {
     EndTunes();
 }
 
-pub unsafe fn DrawBlk(hdc: HDC, x: i32, y: i32) {
+pub unsafe fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
     // Bit-blit a single cell sprite using the precalculated offsets.
-    BitBlt(
-        hdc,
-        (x << 4) + (DX_GRID_OFF - DX_BLK),
-        (y << 4) + (DY_GRID_OFF - DY_BLK),
-        DX_BLK,
-        DY_BLK,
-        block_dc(x, y),
-        0,
-        0,
-        ROP::SRCCOPY.raw(),
+    let src = block_dc(x, y);
+    if src == w::HDC::NULL {
+        return;
+    }
+
+    let _ = hdc.BitBlt(
+        w::POINT::with(
+            (x << 4) + (DX_GRID_OFF - DX_BLK),
+            (y << 4) + (DY_GRID_OFF - DY_BLK),
+        ),
+        w::SIZE::with(DX_BLK, DY_BLK),
+        &src,
+        w::POINT::new(),
+        ROP::SRCCOPY,
     );
 }
 
 pub unsafe fn DisplayBlk(x: i32, y: i32) {
     // Convenience wrapper that repaints one tile directly to the main window.
-    let hdc = GetDC(hwndMain);
-    if !hdc.is_null() {
-        DrawBlk(hdc, x, y);
-        ReleaseDC(hwndMain, hdc);
+    if let Some(hwnd) = main_window() {
+        if let Ok(hdc) = hwnd.GetDC() {
+            DrawBlk(&hdc, x, y);
+        }
     }
 }
 
-pub unsafe fn DrawGrid(hdc: HDC) {
+pub unsafe fn DrawGrid(hdc: &w::HDC) {
     // Rebuild the visible grid by iterating over the current rgBlk contents.
     let y_max = yBoxMac.load(Relaxed);
     let x_max = xBoxMac.load(Relaxed);
@@ -157,17 +173,16 @@ pub unsafe fn DrawGrid(hdc: HDC) {
     for y in 1..=y_max {
         let mut dx = DX_GRID_OFF;
         for x in 1..=x_max {
-            BitBlt(
-                hdc,
-                dx,
-                dy,
-                DX_BLK,
-                DY_BLK,
-                block_dc(x, y),
-                0,
-                0,
-                ROP::SRCCOPY.raw(),
-            );
+            let src = block_dc(x, y);
+            if src != w::HDC::NULL {
+                let _ = hdc.BitBlt(
+                    w::POINT::with(dx, dy),
+                    w::SIZE::with(DX_BLK, DY_BLK),
+                    &src,
+                    w::POINT::new(),
+                    ROP::SRCCOPY,
+                );
+            }
             dx += DX_BLK;
         }
         dy += DY_BLK;
@@ -175,17 +190,17 @@ pub unsafe fn DrawGrid(hdc: HDC) {
 }
 
 pub unsafe fn DisplayGrid() {
-    let hdc = GetDC(hwndMain);
-    if !hdc.is_null() {
-        DrawGrid(hdc);
-        ReleaseDC(hwndMain, hdc);
+    if let Some(hwnd) = main_window() {
+        if let Ok(hdc) = hwnd.GetDC() {
+            DrawGrid(&hdc);
+        }
     }
 }
 
-pub unsafe fn DrawLed(hdc: HDC, x: i32, i_led: i32) {
+pub unsafe fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
     // LED digits stay as packed DIBs, so we blast them straight from the resource.
     SetDIBitsToDevice(
-        hdc,
+        hdc.ptr(),
         x,
         DY_TOP_LED,
         DX_LED as u32,
@@ -200,12 +215,12 @@ pub unsafe fn DrawLed(hdc: HDC, x: i32, i_led: i32) {
     );
 }
 
-pub unsafe fn DrawBombCount(hdc: HDC) {
+pub unsafe fn DrawBombCount(hdc: &w::HDC) {
     // Match the C logic: handle negatives, honor RTL mirroring, then paint three digits.
-    let layout = GetLayout(hdc);
+    let layout = GetLayout(hdc.ptr());
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
-        SetLayout(hdc, 0);
+        SetLayout(hdc.ptr(), 0);
     }
 
     let bombs = cBombLeft.load(Relaxed);
@@ -220,24 +235,24 @@ pub unsafe fn DrawBombCount(hdc: HDC) {
     DrawLed(hdc, DX_LEFT_BOMB + DX_LED * 2, c_bombs % 10);
 
     if mirrored {
-        SetLayout(hdc, layout);
+        SetLayout(hdc.ptr(), layout);
     }
 }
 
 pub unsafe fn DisplayBombCount() {
-    let hdc = GetDC(hwndMain);
-    if !hdc.is_null() {
-        DrawBombCount(hdc);
-        ReleaseDC(hwndMain, hdc);
+    if let Some(hwnd) = main_window() {
+        if let Ok(hdc) = hwnd.GetDC() {
+            DrawBombCount(&hdc);
+        }
     }
 }
 
-pub unsafe fn DrawTime(hdc: HDC) {
+pub unsafe fn DrawTime(hdc: &w::HDC) {
     // The timer uses the same mirroring trick as the bomb counter.
-    let layout = GetLayout(hdc);
+    let layout = GetLayout(hdc.ptr());
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
-        SetLayout(hdc, 0);
+        SetLayout(hdc.ptr(), 0);
     }
 
     let mut time = cSec.load(Relaxed);
@@ -261,24 +276,24 @@ pub unsafe fn DrawTime(hdc: HDC) {
     );
 
     if mirrored {
-        SetLayout(hdc, layout);
+        SetLayout(hdc.ptr(), layout);
     }
 }
 
 pub unsafe fn DisplayTime() {
-    let hdc = GetDC(hwndMain);
-    if !hdc.is_null() {
-        DrawTime(hdc);
-        ReleaseDC(hwndMain, hdc);
+    if let Some(hwnd) = main_window() {
+        if let Ok(hdc) = hwnd.GetDC() {
+            DrawTime(&hdc);
+        }
     }
 }
 
-pub unsafe fn DrawButton(hdc: HDC, i_button: i32) {
+pub unsafe fn DrawButton(hdc: &w::HDC, i_button: i32) {
     // Center the face button and pull the requested state from the button sheet.
     let dx_window = dxWindow.load(Relaxed);
     let x = (dx_window - DX_BUTTON) >> 1;
     SetDIBitsToDevice(
-        hdc,
+        hdc.ptr(),
         x,
         DY_TOP_LED,
         DX_BUTTON as u32,
@@ -294,27 +309,32 @@ pub unsafe fn DrawButton(hdc: HDC, i_button: i32) {
 }
 
 pub unsafe fn DisplayButton(i_button: i32) {
-    let hdc = GetDC(hwndMain);
-    if !hdc.is_null() {
-        DrawButton(hdc, i_button);
-        ReleaseDC(hwndMain, hdc);
-    }
-}
-
-pub unsafe fn SetThePen(hdc: HDC, f_normal: i32) {
-    // Reproduce the old pen combos: even values use the gray pen, odd values use white.
-    if (f_normal & 1) != 0 {
-        SetROP2(hdc, R2_WHITE);
-    } else {
-        SetROP2(hdc, R2_COPYPEN);
-        if !H_GRAY_PEN.is_null() {
-            SelectObject(hdc, H_GRAY_PEN as _);
+    if let Some(hwnd) = main_window() {
+        if let Ok(hdc) = hwnd.GetDC() {
+            DrawButton(&hdc, i_button);
         }
     }
 }
 
+pub unsafe fn SetThePen(hdc: &w::HDC, f_normal: i32) {
+    // Reproduce the old pen combos: even values use the gray pen, odd values use white.
+    if (f_normal & 1) != 0 {
+        SetROP2(hdc.ptr(), R2_WHITE);
+    } else {
+        SetROP2(hdc.ptr(), R2_COPYPEN);
+        let pen_ptr = addr_of!(H_GRAY_PEN);
+        let pen = core::ptr::read(pen_ptr);
+        if pen != w::HPEN::NULL {
+            if let Ok(mut guard) = hdc.SelectObject(&pen) {
+                let _ = guard.leak();
+            }
+        }
+        core::ptr::write(addr_of_mut!(H_GRAY_PEN), pen);
+    }
+}
+
 pub unsafe fn DrawBorder(
-    hdc: HDC,
+    hdc: &w::HDC,
     mut x1: i32,
     mut y1: i32,
     mut x2: i32,
@@ -328,10 +348,10 @@ pub unsafe fn DrawBorder(
 
     while i < width {
         y2 -= 1;
-        MoveToEx(hdc, x1, y2, null_mut());
-        LineTo(hdc, x1, y1);
+        let _ = hdc.MoveToEx(x1, y2, None);
+        let _ = hdc.LineTo(x1, y1);
         x1 += 1;
-        LineTo(hdc, x2, y1);
+        let _ = hdc.LineTo(x2, y1);
         x2 -= 1;
         y1 += 1;
         i += 1;
@@ -343,17 +363,17 @@ pub unsafe fn DrawBorder(
 
     while i > 0 {
         y2 += 1;
-        MoveToEx(hdc, x1, y2, null_mut());
+        let _ = hdc.MoveToEx(x1, y2, None);
         x1 -= 1;
         x2 += 1;
-        LineTo(hdc, x2, y2);
+        let _ = hdc.LineTo(x2, y2);
         y1 -= 1;
-        LineTo(hdc, x2, y1);
+        let _ = hdc.LineTo(x2, y1);
         i -= 1;
     }
 }
 
-pub unsafe fn DrawBackground(hdc: HDC) {
+pub unsafe fn DrawBackground(hdc: &w::HDC) {
     // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
     let dx_window = dxWindow.load(Relaxed);
     let dy_window = dyWindow.load(Relaxed);
@@ -394,7 +414,7 @@ pub unsafe fn DrawBackground(hdc: HDC) {
     );
 }
 
-pub unsafe fn DrawScreen(hdc: HDC) {
+pub unsafe fn DrawScreen(hdc: &w::HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
     DrawBombCount(hdc);
@@ -404,10 +424,10 @@ pub unsafe fn DrawScreen(hdc: HDC) {
 }
 
 pub unsafe fn DisplayScreen() {
-    let hdc = GetDC(hwndMain);
-    if !hdc.is_null() {
-        DrawScreen(hdc);
-        ReleaseDC(hwndMain, hdc);
+    if let Some(hwnd) = main_window() {
+        if let Ok(hdc) = hwnd.GetDC() {
+            DrawScreen(&hdc);
+        }
     }
 }
 
@@ -431,12 +451,18 @@ fn load_bitmaps_impl() -> bool {
         }
 
         H_GRAY_PEN = if !color_enabled() {
-            GetStockObject(STOCK_PEN::BLACK.raw()) as HPEN
+            match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
+                Ok(pen) => pen,
+                Err(_) => w::HPEN::NULL,
+            }
         } else {
-            CreatePen(PS::SOLID.raw(), 1, rgb(128, 128, 128))
+            match w::HPEN::CreatePen(PS::SOLID, 1, rgb(128, 128, 128)) {
+                Ok(mut pen) => pen.leak(),
+                Err(_) => w::HPEN::NULL,
+            }
         };
 
-        if H_GRAY_PEN.is_null() {
+        if H_GRAY_PEN == w::HPEN::NULL {
             return false;
         }
 
@@ -460,27 +486,40 @@ fn load_bitmaps_impl() -> bool {
             RG_DIB_BUTTON_OFF[i] = header + (i as i32) * cb_button;
         }
 
-        let hdc = GetDC(hwndMain);
-        if hdc.is_null() {
-            return false;
-        }
+        let hwnd = match main_window() {
+            Some(hwnd) => hwnd,
+            None => return false,
+        };
+
+        let hdc = match hwnd.GetDC() {
+            Ok(dc) => dc,
+            Err(_) => return false,
+        };
 
         // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
         for i in 0..I_BLK_MAX {
-            MEM_BLK_DC[i] = CreateCompatibleDC(hdc);
-            if MEM_BLK_DC[i].is_null() {
-                OutputDebugStringA(DEBUG_CREATE_DC.as_ptr() as PCSTR);
-            }
+            MEM_BLK_DC[i] = match hdc.CreateCompatibleDC() {
+                Ok(mut dc_guard) => dc_guard.leak(),
+                Err(_) => {
+                    OutputDebugStringA(DEBUG_CREATE_DC.as_ptr() as PCSTR);
+                    w::HDC::NULL
+                }
+            };
 
-            MEM_BLK_BITMAP[i] = CreateCompatibleBitmap(hdc, DX_BLK, DX_BLK);
-            if MEM_BLK_BITMAP[i].is_null() {
-                OutputDebugStringA(DEBUG_CREATE_BITMAP.as_ptr() as PCSTR);
-            }
+            MEM_BLK_BITMAP[i] = match hdc.CreateCompatibleBitmap(DX_BLK, DX_BLK) {
+                Ok(mut bmp_guard) => bmp_guard.leak(),
+                Err(_) => {
+                    OutputDebugStringA(DEBUG_CREATE_BITMAP.as_ptr() as PCSTR);
+                    w::HBITMAP::NULL
+                }
+            };
 
-            if !MEM_BLK_DC[i].is_null() && !MEM_BLK_BITMAP[i].is_null() {
-                SelectObject(MEM_BLK_DC[i], MEM_BLK_BITMAP[i] as _);
+            if MEM_BLK_DC[i] != w::HDC::NULL && MEM_BLK_BITMAP[i] != w::HBITMAP::NULL {
+                if let Ok(mut guard) = MEM_BLK_DC[i].SelectObject(&MEM_BLK_BITMAP[i]) {
+                    let _ = guard.leak();
+                }
                 SetDIBitsToDevice(
-                    MEM_BLK_DC[i],
+                    MEM_BLK_DC[i].ptr(),
                     0,
                     0,
                     DX_BLK as u32,
@@ -496,7 +535,6 @@ fn load_bitmaps_impl() -> bool {
             }
         }
 
-        ReleaseDC(hwndMain, hdc);
         true
     }
 }
@@ -557,13 +595,13 @@ fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
     ptr as *const BITMAPINFO
 }
 
-fn block_dc(x: i32, y: i32) -> HDC {
+fn block_dc(x: i32, y: i32) -> w::HDC {
     unsafe {
         let idx = block_sprite_index(x, y);
         if idx < I_BLK_MAX {
-            MEM_BLK_DC[idx]
+            w::HDC::from_ptr(MEM_BLK_DC[idx].ptr())
         } else {
-            null_mut()
+            w::HDC::NULL
         }
     }
 }
@@ -578,8 +616,8 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
     }
 }
 
-const fn rgb(r: u8, g: u8, b: u8) -> u32 {
-    r as u32 | ((g as u32) << 8) | ((b as u32) << 16)
+const fn rgb(r: u8, g: u8, b: u8) -> w::COLORREF {
+    w::COLORREF::from_rgb(r, g, b)
 }
 
 fn make_int_resource(id: u16) -> PCWSTR {

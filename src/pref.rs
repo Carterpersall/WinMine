@@ -2,7 +2,6 @@
 use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use windows_sys::core::{w, PCWSTR};
 use winsafe::{self as w, co, guard::RegCloseKeyGuard, prelude::*, RegistryValue};
 
 use crate::globals::szDefaultName;
@@ -30,25 +29,25 @@ pub const FMENU_ON: i32 = 2;
 pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 // Registry value names, ordered to match the legacy iszPref constants.
-const PREF_STRINGS: [PCWSTR; ISZ_PREF_MAX] = [
-    w!("Difficulty"),
-    w!("Mines"),
-    w!("Height"),
-    w!("Width"),
-    w!("Xpos"),
-    w!("Ypos"),
-    w!("Sound"),
-    w!("Mark"),
-    w!("Menu"),
-    w!("Tick"),
-    w!("Color"),
-    w!("Time1"),
-    w!("Name1"),
-    w!("Time2"),
-    w!("Name2"),
-    w!("Time3"),
-    w!("Name3"),
-    w!("AlreadyPlayed"),
+const PREF_STRINGS: [&str; ISZ_PREF_MAX] = [
+    "Difficulty",
+    "Mines",
+    "Height",
+    "Width",
+    "Xpos",
+    "Ypos",
+    "Sound",
+    "Mark",
+    "Menu",
+    "Tick",
+    "Color",
+    "Time1",
+    "Name1",
+    "Time2",
+    "Name2",
+    "Time3",
+    "Name3",
+    "AlreadyPlayed",
 ];
 
 // Rust mirror of the PREF struct so we can mutate the shared C globals.
@@ -76,7 +75,6 @@ pub static fUpdateIni: AtomicBool = AtomicBool::new(false);
 
 pub static mut g_hReg: w::HKEY = w::HKEY::NULL;
 
-pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
 pub unsafe fn ReadInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
     if g_hReg == w::HKEY::NULL {
@@ -268,21 +266,15 @@ pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
     let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value));
 }
 
-fn pref_name(index: i32) -> Option<PCWSTR> {
+pub(crate) fn pref_key_literal(index: i32) -> Option<&'static str> {
     if index < 0 {
         return None;
     }
-    let idx = index as usize;
-    PREF_STRINGS.get(idx).copied()
+    PREF_STRINGS.get(index as usize).copied()
 }
 
 fn pref_name_string(index: i32) -> Option<String> {
-    let ptr = pref_name(index)?;
-    if ptr.is_null() {
-        None
-    } else {
-        Some(unsafe { pcwstr_to_string(ptr) })
-    }
+    pref_key_literal(index).map(|s| s.to_string())
 }
 
 fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
@@ -299,12 +291,6 @@ fn bool_to_i32(flag: bool) -> i32 {
 
 unsafe fn default_name_ptr() -> *const u16 {
     addr_of!(szDefaultName[0])
-}
-
-unsafe fn pcwstr_to_string(ptr: PCWSTR) -> String {
-    let len = wide_len(ptr);
-    let slice = std::slice::from_raw_parts(ptr, len);
-    String::from_utf16_lossy(slice)
 }
 
 unsafe fn copy_str_to_wide(src: &str, dst: *mut u16, capacity: usize) {

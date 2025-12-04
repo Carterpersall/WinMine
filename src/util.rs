@@ -1,7 +1,7 @@
 use core::ptr::{addr_of, addr_of_mut};
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use windows_sys::core::{w, PCSTR, PCWSTR};
+use windows_sys::core::{PCSTR, PCWSTR};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameA;
@@ -13,14 +13,14 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     wsprintfW, GetDlgItemInt, LoadIconW, LoadStringW, MessageBoxW,
 };
 
-use winsafe::{self as w, co, co::HELPW, co::SM, prelude::*, IdPos, HICON};
+use winsafe::{self as w, co, co::HELPW, co::SM, prelude::*, IdPos, WString, HICON};
 
 use crate::globals::{
     dxpBorder, dypBorder, dypCaption, dypMenu, hInst, hMenu, hwndMain, szClass, szDefaultName,
     szTime,
 };
 use crate::pref::{
-    close_registry_handle, g_hReg, rgszPref, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
+    close_registry_handle, g_hReg, pref_key_literal, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
 };
 use crate::pref::{
     Pref, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
@@ -70,7 +70,7 @@ const CCH_MAX_PATHNAME: usize = 250;
 const F_RESIZE: i32 = 0x02;
 const FMENU_FLAG_OFF: i32 = 0x01;
 
-const SZ_INI_FILE: PCWSTR = w!("entpack.ini");
+const SZ_INI_FILE: &str = "entpack.ini";
 
 fn seed_rng(seed: u32) {
     let value = if seed == 0 { RNG_DEFAULT_SEED } else { seed };
@@ -176,12 +176,14 @@ pub unsafe fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max:
         return val_default;
     }
 
-    let key = rgszPref[isz_pref as usize];
-    if key.is_null() {
-        return val_default;
-    }
+    let key = match pref_key_literal(isz_pref) {
+        Some(name) => WString::from_str(name),
+        None => return val_default,
+    };
 
-    let value = GetPrivateProfileIntW(class_ptr(), key, val_default, SZ_INI_FILE) as i32;
+    let ini_path = WString::from_str(SZ_INI_FILE);
+    let value =
+        GetPrivateProfileIntW(class_ptr(), key.as_ptr(), val_default, ini_path.as_ptr()) as i32;
     clamp(value, val_min, val_max)
 }
 
@@ -191,18 +193,19 @@ pub unsafe fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
         return;
     }
 
-    let key = rgszPref[isz_pref as usize];
-    if key.is_null() {
-        return;
-    }
+    let key = match pref_key_literal(isz_pref) {
+        Some(name) => WString::from_str(name),
+        None => return,
+    };
 
+    let ini_path = WString::from_str(SZ_INI_FILE);
     GetPrivateProfileStringW(
         class_ptr(),
-        key,
+        key.as_ptr(),
         default_name_ptr(),
         sz_ret,
         CCH_NAME_MAX as u32,
-        SZ_INI_FILE,
+        ini_path.as_ptr(),
     );
 }
 

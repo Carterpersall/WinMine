@@ -10,9 +10,8 @@ use windows_sys::Win32::Foundation::{
     FALSE, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, TRUE, WPARAM,
 };
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, EndPaint, InvalidateRect, MapWindowPoints, PtInRect, HBRUSH, PAINTSTRUCT,
+    BeginPaint, EndPaint, InvalidateRect, MapWindowPoints, PtInRect, SetPixel, HBRUSH, PAINTSTRUCT,
 };
-use windows_sys::Win32::Graphics::Gdi::{GetDC, ReleaseDC, SetPixel};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
 use windows_sys::Win32::UI::WindowsAndMessaging::{wsprintfW, HACCEL, HMENU, MSG};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -691,15 +690,13 @@ unsafe fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
         xCur.store(x_pos, Ordering::Relaxed);
         yCur.store(y_pos, Ordering::Relaxed);
         if in_range(x_pos, y_pos) {
-            let hdc = GetDC(NULL_HWND);
-            if !hdc.is_null() {
+            if let Ok(hdc) = winsafe::HWND::NULL.GetDC() {
                 let color = if cell_is_bomb(x_pos, y_pos) {
                     COLOR_BLACK
                 } else {
                     COLOR_WHITE
                 };
-                SetPixel(hdc, 0, 0, color);
-                ReleaseDC(NULL_HWND, hdc);
+                SetPixel(hdc.ptr(), 0, 0, color);
             }
         }
     }
@@ -774,7 +771,10 @@ pub unsafe extern "system" fn MainWndProc(
         co::WM::PAINT => {
             let mut paint: PAINTSTRUCT = mem::zeroed();
             let hdc = BeginPaint(h_wnd, &mut paint);
-            DrawScreen(hdc);
+            if !hdc.is_null() {
+                let hdc_handle = winsafe::HDC::from_ptr(hdc as _);
+                DrawScreen(&hdc_handle);
+            }
             EndPaint(h_wnd, &paint);
             return 0;
         }
