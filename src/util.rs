@@ -20,11 +20,11 @@ use crate::globals::{
     szTime,
 };
 use crate::pref::{
-    Pref, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON,
-    ISZ_PREF_MAX, MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
+    close_registry_handle, g_hReg, rgszPref, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
 };
 use crate::pref::{
-    close_registry_handle, g_hReg, rgszPref, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
+    Pref, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
+    MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
 use crate::rtns::Preferences;
 use crate::sound::FInitTunes;
@@ -170,12 +170,7 @@ pub unsafe fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     }
 }
 
-pub unsafe fn ReadIniInt(
-    isz_pref: i32,
-    val_default: i32,
-    val_min: i32,
-    val_max: i32,
-) -> i32 {
+pub unsafe fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Pull an integer from the legacy .ini file, honoring the same clamp the game always used.
     if isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
         return val_default;
@@ -284,10 +279,7 @@ pub unsafe fn InitConst() {
 
     ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, (*prefs).szBegin.as_mut_ptr());
     ReadIniSz(ISZ_PREF_INTER_NAME as i32, (*prefs).szInter.as_mut_ptr());
-    ReadIniSz(
-        ISZ_PREF_EXPERT_NAME as i32,
-        (*prefs).szExpert.as_mut_ptr(),
-    );
+    ReadIniSz(ISZ_PREF_EXPERT_NAME as i32, (*prefs).szExpert.as_mut_ptr());
 
     let desktop = w::HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
@@ -300,12 +292,7 @@ pub unsafe fn InitConst() {
         }
         Err(_) => 0,
     };
-    (*prefs).fColor = bool_from_int(ReadIniInt(
-        ISZ_PREF_COLOR as i32,
-        default_color,
-        0,
-        1,
-    ));
+    (*prefs).fColor = bool_from_int(ReadIniInt(ISZ_PREF_COLOR as i32, default_color, 0, 1));
 
     if (*prefs).fSound == FSOUND_ON {
         (*prefs).fSound = FInitTunes();

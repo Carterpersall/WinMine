@@ -1053,14 +1053,13 @@ pub unsafe fn AdjustWindow(mut f_adjust: i32) {
     dypAdjust.store(dyp_adjust, Ordering::Relaxed);
     dxFrameExtra.store(frame_extra, Ordering::Relaxed);
 
-    let mut excess = Preferences.xWindow + dx_window + frame_extra
-        - our_get_system_metrics(SM::CXSCREEN);
+    let mut excess =
+        Preferences.xWindow + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.xWindow -= excess;
     }
-    excess = Preferences.yWindow + dy_window + dyp_adjust
-        - our_get_system_metrics(SM::CYSCREEN);
+    excess = Preferences.yWindow + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
     if excess > 0 {
         f_adjust |= F_RESIZE;
         Preferences.yWindow -= excess;
@@ -1223,7 +1222,12 @@ unsafe fn apply_help_from_info(l_param: LPARAM, ids: &[u32]) -> bool {
 }
 
 unsafe fn apply_help_to_hwnd(hwnd: HWND, ids: &[u32]) {
-    WinHelpW(hwnd, HELP_FILE, HELPW::CONTEXTMENU.raw(), ids.as_ptr() as usize);
+    WinHelpW(
+        hwnd,
+        HELP_FILE,
+        HELPW::CONTEXTMENU.raw(),
+        ids.as_ptr() as usize,
+    );
 }
 
 fn menu_is_visible() -> bool {

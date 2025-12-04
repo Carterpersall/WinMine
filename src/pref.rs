@@ -77,12 +77,7 @@ pub static fUpdateIni: AtomicBool = AtomicBool::new(false);
 pub static mut g_hReg: w::HKEY = w::HKEY::NULL;
 
 pub static mut rgszPref: [PCWSTR; ISZ_PREF_MAX] = PREF_STRINGS;
-pub unsafe fn ReadInt(
-    isz_pref: i32,
-    val_default: i32,
-    val_min: i32,
-    val_max: i32,
-) -> i32 {
+pub unsafe fn ReadInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
     if g_hReg == w::HKEY::NULL {
         return val_default;

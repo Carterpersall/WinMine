@@ -8,8 +8,7 @@ use winsafe::{co, prelude::Handle, HINSTANCE};
 
 pub fn main() {
     unsafe {
-        let h_instance_handle = HINSTANCE::GetModuleHandle(None)
-            .unwrap_or(HINSTANCE::NULL);
+        let h_instance_handle = HINSTANCE::GetModuleHandle(None).unwrap_or(HINSTANCE::NULL);
         let exit_code = run_winmine(
             h_instance_handle.ptr() as win32::HINSTANCE,
             null_mut(),
