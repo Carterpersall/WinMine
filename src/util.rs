@@ -10,7 +10,7 @@ use windows_sys::Win32::System::WindowsProgramming::{
     GetPrivateProfileIntW, GetPrivateProfileStringW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    wsprintfW, GetDlgItemInt, GetSystemMetrics, LoadIconW, LoadStringW, MessageBoxW,
+    wsprintfW, GetDlgItemInt, LoadIconW, LoadStringW, MessageBoxW,
 };
 
 use winsafe::{self as w, co, co::HELPW, co::SM, prelude::*, IdPos, HICON};
@@ -159,7 +159,7 @@ pub unsafe fn ReportErr(id_err: u16) {
         std::ptr::null_mut(),
         sz_msg.as_ptr(),
         sz_title.as_ptr(),
-        0x0000_0010,
+        co::MB::ICONHAND.raw(),
     );
 }
 
@@ -226,10 +226,10 @@ pub unsafe fn InitConst() {
         CCH_NAME_MAX as u32,
     );
 
-    dypCaption.store(GetSystemMetrics(SM::CYCAPTION.raw()) + 1, Ordering::Relaxed);
-    dypMenu.store(GetSystemMetrics(SM::CYMENU.raw()) + 1, Ordering::Relaxed);
-    dypBorder.store(GetSystemMetrics(SM::CYBORDER.raw()) + 1, Ordering::Relaxed);
-    dxpBorder.store(GetSystemMetrics(SM::CXBORDER.raw()) + 1, Ordering::Relaxed);
+    dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
+    dypMenu.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
+    dypBorder.store(w::GetSystemMetrics(SM::CYBORDER) + 1, Ordering::Relaxed);
+    dxpBorder.store(w::GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
     let mut already_played = 0;
 

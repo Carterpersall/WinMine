@@ -8,12 +8,12 @@ use windows_sys::Win32::Foundation::{HGLOBAL, HRSRC};
 use windows_sys::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen, DeleteDC, DeleteObject, GetDC,
     GetLayout, GetStockObject, LineTo, MoveToEx, ReleaseDC, SelectObject, SetDIBitsToDevice,
-    SetLayout, SetROP2, BITMAPINFO, BITMAPINFOHEADER, BLACK_PEN, DIB_RGB_COLORS, GDI_ERROR,
-    HBITMAP, HDC, HPEN, LAYOUT_RTL, PS_SOLID, R2_COPYPEN, R2_WHITE, SRCCOPY,
+    SetLayout, SetROP2, BITMAPINFO, BITMAPINFOHEADER, GDI_ERROR, HBITMAP, HDC, HPEN, R2_COPYPEN,
+    R2_WHITE,
 };
 use windows_sys::Win32::System::Diagnostics::Debug::OutputDebugStringA;
 use windows_sys::Win32::System::LibraryLoader::{FindResourceW, LoadResource, LockResource};
-use winsafe::co::RT;
+use winsafe::co::{DIB, LAYOUT, PS, ROP, RT, STOCK_PEN};
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, hInst, hwndMain};
 use crate::pref::Pref;
@@ -136,7 +136,7 @@ pub unsafe fn DrawBlk(hdc: HDC, x: i32, y: i32) {
         block_dc(x, y),
         0,
         0,
-        SRCCOPY,
+        ROP::SRCCOPY.raw(),
     );
 }
 
@@ -157,7 +157,17 @@ pub unsafe fn DrawGrid(hdc: HDC) {
     for y in 1..=y_max {
         let mut dx = DX_GRID_OFF;
         for x in 1..=x_max {
-            BitBlt(hdc, dx, dy, DX_BLK, DY_BLK, block_dc(x, y), 0, 0, SRCCOPY);
+            BitBlt(
+                hdc,
+                dx,
+                dy,
+                DX_BLK,
+                DY_BLK,
+                block_dc(x, y),
+                0,
+                0,
+                ROP::SRCCOPY.raw(),
+            );
             dx += DX_BLK;
         }
         dy += DY_BLK;
@@ -186,14 +196,14 @@ pub unsafe fn DrawLed(hdc: HDC, x: i32, i_led: i32) {
         DY_LED as u32,
         led_bits(i_led),
         dib_info(LP_DIB_LED),
-        DIB_RGB_COLORS,
+        DIB::RGB_COLORS.raw(),
     );
 }
 
 pub unsafe fn DrawBombCount(hdc: HDC) {
     // Match the C logic: handle negatives, honor RTL mirroring, then paint three digits.
     let layout = GetLayout(hdc);
-    let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT_RTL) != 0;
+    let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
         SetLayout(hdc, 0);
     }
@@ -225,7 +235,7 @@ pub unsafe fn DisplayBombCount() {
 pub unsafe fn DrawTime(hdc: HDC) {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = GetLayout(hdc);
-    let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT_RTL) != 0;
+    let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
         SetLayout(hdc, 0);
     }
@@ -279,7 +289,7 @@ pub unsafe fn DrawButton(hdc: HDC, i_button: i32) {
         DY_BUTTON as u32,
         button_bits(i_button),
         dib_info(LP_DIB_BUTTON),
-        DIB_RGB_COLORS,
+        DIB::RGB_COLORS.raw(),
     );
 }
 
@@ -421,9 +431,9 @@ fn load_bitmaps_impl() -> bool {
         }
 
         H_GRAY_PEN = if !color_enabled() {
-            GetStockObject(BLACK_PEN) as HPEN
+            GetStockObject(STOCK_PEN::BLACK.raw()) as HPEN
         } else {
-            CreatePen(PS_SOLID, 1, rgb(128, 128, 128))
+            CreatePen(PS::SOLID.raw(), 1, rgb(128, 128, 128))
         };
 
         if H_GRAY_PEN.is_null() {
@@ -481,7 +491,7 @@ fn load_bitmaps_impl() -> bool {
                     DY_BLK as u32,
                     block_bits(i as i32),
                     dib_info(LP_DIB_BLKS),
-                    DIB_RGB_COLORS,
+                    DIB::RGB_COLORS.raw(),
                 );
             }
         }
