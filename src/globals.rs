@@ -1,8 +1,7 @@
-use core::ptr::null_mut;
 use core::sync::atomic::{AtomicBool, AtomicI32};
 
-use windows_sys::Win32::Foundation::{HINSTANCE, HWND};
-use windows_sys::Win32::UI::WindowsAndMessaging::{HICON, HMENU};
+use winsafe::prelude::Handle;
+use winsafe::{HICON, HINSTANCE, HMENU, HWND};
 
 use crate::pref::CCH_NAME_MAX;
 
@@ -11,13 +10,13 @@ const F_DEMO_BIT: i32 = 0x10;
 
 pub static bInitMinimized: AtomicBool = AtomicBool::new(false);
 
-pub static mut hInst: HINSTANCE = null_mut();
+pub static mut hInst: HINSTANCE = HINSTANCE::NULL;
 
-pub static mut hwndMain: HWND = null_mut();
+pub static mut hwndMain: HWND = HWND::NULL;
 
-pub static mut hMenu: HMENU = null_mut();
+pub static mut hMenu: HMENU = HMENU::NULL;
 
-pub static mut hIconMain: HICON = null_mut();
+pub static mut hIconMain: HICON = HICON::NULL;
 
 pub static fButton1Down: AtomicBool = AtomicBool::new(false);
 

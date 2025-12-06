@@ -3,7 +3,7 @@ use core::ptr::{addr_of, addr_of_mut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use windows_sys::core::{PCSTR, PCWSTR};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::Foundation::{HINSTANCE as RawHINSTANCE, HWND as RawHWND};
 use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameA;
 use windows_sys::Win32::System::SystemInformation::GetTickCount;
 use windows_sys::Win32::System::WindowsProgramming::{
@@ -134,14 +134,14 @@ pub unsafe fn ReportErr(id_err: u16) {
 
     if (id_err as u32) < ID_ERR_MAX {
         LoadStringW(
-            hInst,
+            hInst.ptr() as RawHINSTANCE,
             id_err.into(),
             sz_msg.as_mut_ptr(),
             CCH_MSG_MAX as i32,
         );
     } else {
         LoadStringW(
-            hInst,
+            hInst.ptr() as RawHINSTANCE,
             ID_ERR_UNKNOWN,
             sz_title.as_mut_ptr(),
             CCH_MSG_MAX as i32,
@@ -150,7 +150,7 @@ pub unsafe fn ReportErr(id_err: u16) {
     }
 
     LoadStringW(
-        hInst,
+        hInst.ptr() as RawHINSTANCE,
         ID_ERR_TITLE,
         sz_title.as_mut_ptr(),
         CCH_MSG_MAX as i32,
@@ -165,7 +165,7 @@ pub unsafe fn ReportErr(id_err: u16) {
 
 pub unsafe fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     // Wrapper around LoadString that raises the original fatal error if the resource is missing.
-    if LoadStringW(hInst, id.into(), sz, cch as i32) == 0 {
+    if LoadStringW(hInst.ptr() as RawHINSTANCE, id.into(), sz, cch as i32) == 0 {
         ReportErr(1001);
     }
 }
@@ -306,12 +306,9 @@ pub unsafe fn InitConst() {
 
 pub unsafe fn CheckEm(idm: u16, f_check: bool) {
     // Maintain the old menu checkmark toggles (e.g. question marks, sound).
-    if hMenu.is_null() {
-        return;
+    if let Some(menu) = hMenu.as_opt() {
+        let _ = menu.CheckMenuItem(IdPos::Id(idm), f_check);
     }
-
-    let menu = unsafe { w::HMENU::from_ptr(hMenu as _) };
-    let _ = menu.CheckMenuItem(IdPos::Id(idm), f_check);
 }
 
 pub unsafe fn SetMenuBar(f_active: i32) {
@@ -320,25 +317,23 @@ pub unsafe fn SetMenuBar(f_active: i32) {
     FixMenus();
 
     let menu_on = ((*prefs_ref()).fMenu & FMENU_FLAG_OFF) == 0;
-    if hwndMain.is_null() {
-        return;
+    if let Some(hwnd) = hwndMain.as_opt() {
+        let menu_ref = if menu_on {
+            hMenu.as_opt().unwrap_or(&w::HMENU::NULL)
+        } else {
+            &w::HMENU::NULL
+        };
+        let _ = hwnd.SetMenu(menu_ref);
+        AdjustWindow(F_RESIZE);
     }
-
-    let hwnd = unsafe { w::HWND::from_ptr(hwndMain as _) };
-    let menu_handle = if menu_on && !hMenu.is_null() {
-        unsafe { w::HMENU::from_ptr(hMenu as _) }
-    } else {
-        w::HMENU::NULL
-    };
-    let _ = hwnd.SetMenu(&menu_handle);
-    AdjustWindow(F_RESIZE);
 }
 
 pub unsafe fn DoAbout() {
     // Show the stock About box with the localized title and credit strings.
-    if hwndMain.is_null() {
-        return;
-    }
+    let hwnd = match hwndMain.as_opt() {
+        Some(hwnd) => hwnd,
+        None => return,
+    };
 
     let mut sz_version = [0u16; CCH_MSG_MAX];
     let mut sz_credit = [0u16; CCH_MSG_MAX];
@@ -356,14 +351,13 @@ pub unsafe fn DoAbout() {
 
     let title = utf16_buffer_to_string(&sz_version);
     let credit = utf16_buffer_to_string(&sz_credit);
-    let icon_raw = LoadIconW(hInst, make_int_resource(ID_ICON_MAIN));
+    let icon_raw = LoadIconW(hInst.ptr() as RawHINSTANCE, make_int_resource(ID_ICON_MAIN));
     let icon = if icon_raw.is_null() {
         None
     } else {
         Some(unsafe { HICON::from_ptr(icon_raw as _) })
     };
 
-    let hwnd = unsafe { w::HWND::from_ptr(hwndMain as _) };
     let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon.as_ref());
 }
 
@@ -372,7 +366,11 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
     if (w_command as u32) != HELPW::HELPONHELP.raw() {
-        let len = GetModuleFileNameA(hInst, buffer.as_mut_ptr(), CCH_MAX_PATHNAME as u32) as usize;
+        let len = GetModuleFileNameA(
+            hInst.ptr() as RawHINSTANCE,
+            buffer.as_mut_ptr(),
+            CCH_MAX_PATHNAME as u32,
+        ) as usize;
         let mut dot = None;
         for i in (0..len).rev() {
             if buffer[i] == b'.' {
@@ -404,10 +402,10 @@ fn utf16_buffer_to_string(buf: &[u16]) -> String {
     String::from_utf16_lossy(&buf[..len])
 }
 
-pub unsafe fn GetDlgInt(h_dlg: HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
+pub unsafe fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     // Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
     let mut success = 0i32;
-    let value = GetDlgItemInt(h_dlg, dlg_id, &mut success, 0);
+    let value = GetDlgItemInt(h_dlg.ptr() as RawHWND, dlg_id, &mut success, 0);
     let value = value as i32;
     clamp(value, num_lo, num_hi)
 }

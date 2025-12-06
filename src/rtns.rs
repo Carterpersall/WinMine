@@ -1,7 +1,7 @@
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
-use winsafe::HWND;
+use winsafe::prelude::*;
 
 use crate::globals::{fBlock, fStatus, hwndMain};
 use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
@@ -663,9 +663,10 @@ pub unsafe fn DoButton1Up() {
             cSec.store(1, Ordering::Relaxed);
             display_time();
             F_TIMER.store(true, Ordering::Relaxed);
-            let hwnd = unsafe { HWND::from_ptr(hwndMain as _) };
-            if hwnd.SetTimer(ID_TIMER, 1000, None).is_err() {
-                ReportErr(ID_ERR_TIMER);
+            if let Some(hwnd) = hwndMain.as_opt() {
+                if hwnd.SetTimer(ID_TIMER, 1000, None).is_err() {
+                    ReportErr(ID_ERR_TIMER);
+                }
             }
         }
 

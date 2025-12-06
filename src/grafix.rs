@@ -4,7 +4,7 @@ use core::ptr::{addr_of, addr_of_mut, null, null_mut};
 use core::sync::atomic::Ordering::Relaxed;
 
 use windows_sys::core::{PCSTR, PCWSTR};
-use windows_sys::Win32::Foundation::{HGLOBAL, HRSRC};
+use windows_sys::Win32::Foundation::{HGLOBAL, HINSTANCE, HRSRC};
 use windows_sys::Win32::Graphics::Gdi::{
     DeleteDC, DeleteObject, GetLayout, SetDIBitsToDevice, SetLayout, SetROP2, BITMAPINFO,
     BITMAPINFOHEADER, GDI_ERROR, R2_COPYPEN, R2_WHITE,
@@ -79,12 +79,8 @@ fn color_enabled() -> bool {
     unsafe { (*prefs_ptr()).fColor }
 }
 
-unsafe fn main_window() -> Option<w::HWND> {
-    if hwndMain.is_null() {
-        None
-    } else {
-        Some(w::HWND::from_ptr(hwndMain as _))
-    }
+unsafe fn main_window() -> Option<&'static w::HWND> {
+    hwndMain.as_opt()
 }
 
 pub unsafe fn FInitLocal() -> bool {
@@ -543,15 +539,16 @@ unsafe fn load_bitmap_resource(id: u16) -> HGLOBAL {
     let offset = if color_enabled() { 0 } else { 1 };
     let resource_id = id + offset;
     // Colorless devices load the grayscale resource IDs immediately following the color ones.
+    let inst = hInst.ptr() as HINSTANCE;
     let res: HRSRC = FindResourceW(
-        hInst,
+        inst,
         make_int_resource(resource_id),
         make_int_resource(RT::BITMAP.raw()),
     );
     if res.is_null() {
         return null_mut();
     }
-    LoadResource(hInst, res)
+    LoadResource(inst, res)
 }
 
 fn dib_header_size() -> i32 {
