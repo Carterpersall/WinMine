@@ -192,23 +192,23 @@ fn check_win() -> bool {
 }
 
 fn display_block(x: i32, y: i32) {
-    unsafe { DisplayBlk(x, y) };
+    DisplayBlk(x, y);
 }
 
 fn display_grid() {
-    unsafe { DisplayGrid() };
+    DisplayGrid();
 }
 
 fn display_button(state: i32) {
-    unsafe { DisplayButton(state) };
+    DisplayButton(state);
 }
 
 fn display_time() {
-    unsafe { DisplayTime() };
+    DisplayTime();
 }
 
 fn display_bomb_count() {
-    unsafe { DisplayBombCount() };
+    DisplayBombCount();
 }
 
 fn play_tune(which: i32) {
@@ -400,9 +400,7 @@ fn step_block(x_center: i32, y_center: i32) {
     if !is_visit(x_center, y_center)
         || block_data(x_center, y_center) != count_marks(x_center, y_center)
     {
-        unsafe {
-            TrackMouse(-2, -2);
-        }
+        TrackMouse(-2, -2);
         return;
     }
 
@@ -490,27 +488,29 @@ fn in_range_step(x: i32, y: i32) -> bool {
     f_in_range(x, y) && !is_visit(x, y) && !guessed_bomb(x, y)
 }
 
-pub unsafe fn ClearField() {
+pub fn ClearField() {
     // Reset every cell to blank-up and rebuild the sentinel border.
-    #[allow(clippy::needless_range_loop)]
-    for idx in 0..C_BLK_MAX {
-        rgBlk[idx] = I_BLK_BLANK_UP as i8;
-    }
+    unsafe {
+        #[allow(clippy::needless_range_loop)]
+        for idx in 0..C_BLK_MAX {
+            rgBlk[idx] = I_BLK_BLANK_UP as i8;
+        }
 
-    let x_max = xBoxMac.load(Ordering::Relaxed);
-    let y_max = yBoxMac.load(Ordering::Relaxed);
+        let x_max = xBoxMac.load(Ordering::Relaxed);
+        let y_max = yBoxMac.load(Ordering::Relaxed);
 
-    for x in 0..=(x_max + 1) {
-        set_border(x, 0);
-        set_border(x, y_max + 1);
-    }
-    for y in 0..=(y_max + 1) {
-        set_border(0, y);
-        set_border(x_max + 1, y);
+        for x in 0..=(x_max + 1) {
+            set_border(x, 0);
+            set_border(x, y_max + 1);
+        }
+        for y in 0..=(y_max + 1) {
+            set_border(0, y);
+            set_border(x_max + 1, y);
+        }
     }
 }
 
-pub unsafe fn DoTimer() {
+pub fn DoTimer() {
     let secs = cSec.load(Ordering::Relaxed);
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         cSec.store(secs + 1, Ordering::Relaxed);
@@ -519,26 +519,30 @@ pub unsafe fn DoTimer() {
     }
 }
 
-pub unsafe fn StartGame() {
+pub fn StartGame() {
     // Reset globals, randomize bombs, and resize the window if the board changed.
     F_TIMER.store(false, Ordering::Relaxed);
 
     let x_prev = xBoxMac.load(Ordering::Relaxed);
     let y_prev = yBoxMac.load(Ordering::Relaxed);
 
-    let f_adjust = if Preferences.Width != x_prev || Preferences.Height != y_prev {
+    let (pref_width, pref_height, pref_mines) = unsafe {
+        (Preferences.Width, Preferences.Height, Preferences.Mines)
+    };
+
+    let f_adjust = if pref_width != x_prev || pref_height != y_prev {
         F_RESIZE | F_DISPLAY
     } else {
         F_DISPLAY
     };
 
-    xBoxMac.store(Preferences.Width, Ordering::Relaxed);
-    yBoxMac.store(Preferences.Height, Ordering::Relaxed);
+    xBoxMac.store(pref_width, Ordering::Relaxed);
+    yBoxMac.store(pref_height, Ordering::Relaxed);
 
     ClearField();
     iButtonCur.store(I_BUTTON_HAPPY, Ordering::Relaxed);
 
-    CBOMB_START.store(Preferences.Mines, Ordering::Relaxed);
+    CBOMB_START.store(pref_mines, Ordering::Relaxed);
 
     let total_bombs = CBOMB_START.load(Ordering::Relaxed);
     let width = xBoxMac.load(Ordering::Relaxed);
@@ -570,7 +574,7 @@ pub unsafe fn StartGame() {
     AdjustWindow(f_adjust);
 }
 
-pub unsafe fn TrackMouse(x_new: i32, y_new: i32) {
+pub fn TrackMouse(x_new: i32, y_new: i32) {
     // Provide the classic pressed-square feedback during mouse drags.
     let x_old = xCur.load(Ordering::Relaxed);
     let y_old = yCur.load(Ordering::Relaxed);
@@ -650,7 +654,7 @@ pub fn MakeGuess(x: i32, y: i32) {
     make_guess_internal(x, y);
 }
 
-pub unsafe fn DoButton1Up() {
+pub fn DoButton1Up() {
     // Handle a left-button release: start the timer, then either chord or step.
     let x_pos = xCur.load(Ordering::Relaxed);
     let y_pos = yCur.load(Ordering::Relaxed);
@@ -663,10 +667,10 @@ pub unsafe fn DoButton1Up() {
             cSec.store(1, Ordering::Relaxed);
             display_time();
             F_TIMER.store(true, Ordering::Relaxed);
-            if let Some(hwnd) = hwndMain.as_opt() {
-                if hwnd.SetTimer(ID_TIMER, 1000, None).is_err() {
-                    ReportErr(ID_ERR_TIMER);
-                }
+            if let Some(hwnd) = unsafe { hwndMain.as_opt() }
+                && hwnd.SetTimer(ID_TIMER, 1000, None).is_err()
+            {
+                ReportErr(ID_ERR_TIMER);
             }
         }
 
@@ -686,7 +690,7 @@ pub unsafe fn DoButton1Up() {
     display_button(button);
 }
 
-pub unsafe fn PauseGame() {
+pub fn PauseGame() {
     // Pause by silencing audio, remembering timer state, and setting the flag.
     stop_all_audio();
 
@@ -700,7 +704,7 @@ pub unsafe fn PauseGame() {
     set_status_pause();
 }
 
-pub unsafe fn ResumeGame() {
+pub fn ResumeGame() {
     // Resume from pause by restoring the timer state and clearing the flag.
     if status_play() {
         F_TIMER.store(

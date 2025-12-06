@@ -23,7 +23,7 @@ use crate::pref::{
     close_registry_handle, g_hReg, pref_key_literal, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
 };
 use crate::pref::{
-    Pref, CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
+    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
     MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
 use crate::rtns::Preferences;
@@ -91,23 +91,13 @@ fn next_rand() -> i32 {
 }
 
 #[inline]
-unsafe fn prefs_mut() -> *mut Pref {
-    addr_of_mut!(Preferences)
+fn class_ptr() -> PCWSTR {
+    unsafe { addr_of!(szClass[0]) }
 }
 
 #[inline]
-unsafe fn prefs_ref() -> *const Pref {
-    addr_of!(Preferences)
-}
-
-#[inline]
-unsafe fn class_ptr() -> PCWSTR {
-    addr_of!(szClass[0])
-}
-
-#[inline]
-unsafe fn default_name_ptr() -> PCWSTR {
-    addr_of!(szDefaultName[0])
+fn default_name_ptr() -> PCWSTR {
+    unsafe { addr_of!(szDefaultName[0]) }
 }
 
 fn clamp(value: i32, min: i32, max: i32) -> i32 {
@@ -127,50 +117,39 @@ pub fn Rnd(rnd_max: i32) -> i32 {
     }
 }
 
-pub unsafe fn ReportErr(id_err: u16) {
+pub fn ReportErr(id_err: u16) {
     // Format either a catalog string or the "unknown error" template before showing the dialog.
     let mut sz_msg = [0u16; CCH_MSG_MAX];
     let mut sz_title = [0u16; CCH_MSG_MAX];
+    unsafe {
+        let inst = hInst.ptr() as RawHINSTANCE;
+        if (id_err as u32) < ID_ERR_MAX {
+            LoadStringW(inst, id_err.into(), sz_msg.as_mut_ptr(), CCH_MSG_MAX as i32);
+        } else {
+            LoadStringW(inst, ID_ERR_UNKNOWN, sz_title.as_mut_ptr(), CCH_MSG_MAX as i32);
+            wsprintfW(sz_msg.as_mut_ptr(), sz_title.as_ptr(), id_err as i32);
+        }
 
-    if (id_err as u32) < ID_ERR_MAX {
-        LoadStringW(
-            hInst.ptr() as RawHINSTANCE,
-            id_err.into(),
-            sz_msg.as_mut_ptr(),
-            CCH_MSG_MAX as i32,
+        LoadStringW(inst, ID_ERR_TITLE, sz_title.as_mut_ptr(), CCH_MSG_MAX as i32);
+        MessageBoxW(
+            std::ptr::null_mut(),
+            sz_msg.as_ptr(),
+            sz_title.as_ptr(),
+            co::MB::ICONHAND.raw(),
         );
-    } else {
-        LoadStringW(
-            hInst.ptr() as RawHINSTANCE,
-            ID_ERR_UNKNOWN,
-            sz_title.as_mut_ptr(),
-            CCH_MSG_MAX as i32,
-        );
-        wsprintfW(sz_msg.as_mut_ptr(), sz_title.as_ptr(), id_err as i32);
     }
-
-    LoadStringW(
-        hInst.ptr() as RawHINSTANCE,
-        ID_ERR_TITLE,
-        sz_title.as_mut_ptr(),
-        CCH_MSG_MAX as i32,
-    );
-    MessageBoxW(
-        std::ptr::null_mut(),
-        sz_msg.as_ptr(),
-        sz_title.as_ptr(),
-        co::MB::ICONHAND.raw(),
-    );
 }
 
-pub unsafe fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
+pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     // Wrapper around LoadString that raises the original fatal error if the resource is missing.
-    if LoadStringW(hInst.ptr() as RawHINSTANCE, id.into(), sz, cch as i32) == 0 {
-        ReportErr(1001);
+    unsafe {
+        if LoadStringW(hInst.ptr() as RawHINSTANCE, id.into(), sz, cch as i32) == 0 {
+            ReportErr(1001);
+        }
     }
 }
 
-pub unsafe fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
+pub fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Pull an integer from the legacy .ini file, honoring the same clamp the game always used.
     if isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
         return val_default;
@@ -182,12 +161,13 @@ pub unsafe fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max:
     };
 
     let ini_path = WString::from_str(SZ_INI_FILE);
-    let value =
-        GetPrivateProfileIntW(class_ptr(), key.as_ptr(), val_default, ini_path.as_ptr()) as i32;
+    let value = unsafe {
+        GetPrivateProfileIntW(class_ptr(), key.as_ptr(), val_default, ini_path.as_ptr()) as i32
+    };
     clamp(value, val_min, val_max)
 }
 
-pub unsafe fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
+pub fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
     // Grab the string from entpack.ini or fall back to the default Hall of Fame name.
     if sz_ret.is_null() || isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
         return;
@@ -199,35 +179,40 @@ pub unsafe fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
     };
 
     let ini_path = WString::from_str(SZ_INI_FILE);
-    GetPrivateProfileStringW(
-        class_ptr(),
-        key.as_ptr(),
-        default_name_ptr(),
-        sz_ret,
-        CCH_NAME_MAX as u32,
-        ini_path.as_ptr(),
-    );
+    unsafe {
+        GetPrivateProfileStringW(
+            class_ptr(),
+            key.as_ptr(),
+            default_name_ptr(),
+            sz_ret,
+            CCH_NAME_MAX as u32,
+            ini_path.as_ptr(),
+        );
+    }
 }
 
-pub unsafe fn InitConst() {
+pub fn InitConst() {
     // Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
-    seed_rng((GetTickCount() & 0xFFFF) as u32);
+    let ticks = unsafe { GetTickCount() & 0xFFFF };
+    seed_rng(ticks as u32);
 
-    LoadSz(
-        ID_GAMENAME as u16,
-        addr_of_mut!(szClass[0]),
-        CCH_NAME_MAX as u32,
-    );
-    LoadSz(
-        ID_MSG_SEC as u16,
-        addr_of_mut!(szTime[0]),
-        CCH_NAME_MAX as u32,
-    );
-    LoadSz(
-        ID_NAME_DEFAULT as u16,
-        addr_of_mut!(szDefaultName[0]),
-        CCH_NAME_MAX as u32,
-    );
+    unsafe {
+        LoadSz(
+            ID_GAMENAME as u16,
+            addr_of_mut!(szClass[0]),
+            CCH_NAME_MAX as u32,
+        );
+        LoadSz(
+            ID_MSG_SEC as u16,
+            addr_of_mut!(szTime[0]),
+            CCH_NAME_MAX as u32,
+        );
+        LoadSz(
+            ID_NAME_DEFAULT as u16,
+            addr_of_mut!(szDefaultName[0]),
+            CCH_NAME_MAX as u32,
+        );
+    }
 
     dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
     dypMenu.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
@@ -243,46 +228,50 @@ pub unsafe fn InitConst() {
         co::KEY::READ,
         None,
     ) {
-        g_hReg = key_guard.leak();
-        already_played = ReadInt(ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1);
-        close_registry_handle();
+        unsafe {
+            g_hReg = key_guard.leak();
+            already_played = ReadInt(ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1);
+            close_registry_handle();
+        }
     }
 
     if already_played != 0 {
         return;
     }
 
-    let prefs = prefs_mut();
+    unsafe {
+        let prefs = &mut Preferences;
 
-    (*prefs).Height = ReadIniInt(ISZ_PREF_HEIGHT as i32, MINHEIGHT, DEFHEIGHT, 25);
-    (*prefs).Width = ReadIniInt(ISZ_PREF_WIDTH as i32, MINWIDTH, DEFWIDTH, 30);
-    (*prefs).wGameType = ReadIniInt(
-        ISZ_PREF_GAME as i32,
-        WGAME_BEGIN,
-        WGAME_BEGIN,
-        WGAME_EXPERT + 1,
-    ) as u16;
-    (*prefs).Mines = ReadIniInt(ISZ_PREF_MINES as i32, 10, 10, 999);
-    (*prefs).xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
-    (*prefs).yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
+        prefs.Height = ReadIniInt(ISZ_PREF_HEIGHT as i32, MINHEIGHT, DEFHEIGHT, 25);
+        prefs.Width = ReadIniInt(ISZ_PREF_WIDTH as i32, MINWIDTH, DEFWIDTH, 30);
+        prefs.wGameType = ReadIniInt(
+            ISZ_PREF_GAME as i32,
+            WGAME_BEGIN,
+            WGAME_BEGIN,
+            WGAME_EXPERT + 1,
+        ) as u16;
+        prefs.Mines = ReadIniInt(ISZ_PREF_MINES as i32, 10, 10, 999);
+        prefs.xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
+        prefs.yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
 
-    (*prefs).fSound = ReadIniInt(ISZ_PREF_SOUND as i32, 0, 0, FSOUND_ON);
-    (*prefs).fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
-    (*prefs).fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
-    (*prefs).fMenu = ReadIniInt(
-        ISZ_PREF_MENU as i32,
-        FMENU_ALWAYS_ON,
-        FMENU_ALWAYS_ON,
-        FMENU_ON,
-    );
+        prefs.fSound = ReadIniInt(ISZ_PREF_SOUND as i32, 0, 0, FSOUND_ON);
+        prefs.fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
+        prefs.fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
+        prefs.fMenu = ReadIniInt(
+            ISZ_PREF_MENU as i32,
+            FMENU_ALWAYS_ON,
+            FMENU_ALWAYS_ON,
+            FMENU_ON,
+        );
 
-    (*prefs).rgTime[WGAME_BEGIN as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
-    (*prefs).rgTime[WGAME_INTER as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
-    (*prefs).rgTime[WGAME_EXPERT as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
+        prefs.rgTime[WGAME_BEGIN as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
+        prefs.rgTime[WGAME_INTER as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
+        prefs.rgTime[WGAME_EXPERT as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
 
-    ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, (*prefs).szBegin.as_mut_ptr());
-    ReadIniSz(ISZ_PREF_INTER_NAME as i32, (*prefs).szInter.as_mut_ptr());
-    ReadIniSz(ISZ_PREF_EXPERT_NAME as i32, (*prefs).szExpert.as_mut_ptr());
+        ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, prefs.szBegin.as_mut_ptr());
+        ReadIniSz(ISZ_PREF_INTER_NAME as i32, prefs.szInter.as_mut_ptr());
+        ReadIniSz(ISZ_PREF_EXPERT_NAME as i32, prefs.szExpert.as_mut_ptr());
+    }
 
     let desktop = w::HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
@@ -295,31 +284,38 @@ pub unsafe fn InitConst() {
         }
         Err(_) => 0,
     };
-    (*prefs).fColor = bool_from_int(ReadIniInt(ISZ_PREF_COLOR as i32, default_color, 0, 1));
+    unsafe {
+        let prefs = &mut Preferences;
+        prefs.fColor = bool_from_int(ReadIniInt(ISZ_PREF_COLOR as i32, default_color, 0, 1));
 
-    if (*prefs).fSound == FSOUND_ON {
-        (*prefs).fSound = FInitTunes();
+        if prefs.fSound == FSOUND_ON {
+            prefs.fSound = FInitTunes();
+        }
     }
 
-    WritePreferences();
+    unsafe {
+        WritePreferences();
+    }
 }
 
-pub unsafe fn CheckEm(idm: u16, f_check: bool) {
+pub fn CheckEm(idm: u16, f_check: bool) {
     // Maintain the old menu checkmark toggles (e.g. question marks, sound).
-    if let Some(menu) = hMenu.as_opt() {
+    if let Some(menu) = unsafe { hMenu.as_opt() } {
         let _ = menu.CheckMenuItem(IdPos::Id(idm), f_check);
     }
 }
 
-pub unsafe fn SetMenuBar(f_active: i32) {
+pub fn SetMenuBar(f_active: i32) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
-    (*prefs_mut()).fMenu = f_active;
+    unsafe {
+        Preferences.fMenu = f_active;
+    }
     FixMenus();
 
-    let menu_on = ((*prefs_ref()).fMenu & FMENU_FLAG_OFF) == 0;
-    if let Some(hwnd) = hwndMain.as_opt() {
+    let menu_on = unsafe { (Preferences.fMenu & FMENU_FLAG_OFF) == 0 };
+    if let Some(hwnd) = unsafe { hwndMain.as_opt() } {
         let menu_ref = if menu_on {
-            hMenu.as_opt().unwrap_or(&w::HMENU::NULL)
+            unsafe { hMenu.as_opt() }.unwrap_or(&w::HMENU::NULL)
         } else {
             &w::HMENU::NULL
         };
@@ -328,9 +324,9 @@ pub unsafe fn SetMenuBar(f_active: i32) {
     }
 }
 
-pub unsafe fn DoAbout() {
+pub fn DoAbout() {
     // Show the stock About box with the localized title and credit strings.
-    let hwnd = match hwndMain.as_opt() {
+    let hwnd = match unsafe { hwndMain.as_opt() } {
         Some(hwnd) => hwnd,
         None => return,
     };
@@ -351,7 +347,7 @@ pub unsafe fn DoAbout() {
 
     let title = utf16_buffer_to_string(&sz_version);
     let credit = utf16_buffer_to_string(&sz_credit);
-    let icon_raw = LoadIconW(hInst.ptr() as RawHINSTANCE, make_int_resource(ID_ICON_MAIN));
+    let icon_raw = unsafe { LoadIconW(hInst.ptr() as RawHINSTANCE, make_int_resource(ID_ICON_MAIN)) };
     let icon = if icon_raw.is_null() {
         None
     } else {
@@ -366,11 +362,13 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
     if (w_command as u32) != HELPW::HELPONHELP.raw() {
-        let len = GetModuleFileNameA(
-            hInst.ptr() as RawHINSTANCE,
-            buffer.as_mut_ptr(),
-            CCH_MAX_PATHNAME as u32,
-        ) as usize;
+        let len = unsafe {
+            GetModuleFileNameA(
+                hInst.ptr() as RawHINSTANCE,
+                buffer.as_mut_ptr(),
+                CCH_MAX_PATHNAME as u32,
+            ) as usize
+        };
         let mut dot = None;
         for i in (0..len).rev() {
             if buffer[i] == b'.' {
@@ -394,7 +392,9 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
     }
 
     let desktop = w::HWND::GetDesktopWindow();
-    HtmlHelpA(desktop.ptr() as _, buffer.as_ptr() as PCSTR, l_param, 0);
+    unsafe {
+        HtmlHelpA(desktop.ptr() as _, buffer.as_ptr() as PCSTR, l_param, 0);
+    }
 }
 
 fn utf16_buffer_to_string(buf: &[u16]) -> String {
@@ -402,10 +402,10 @@ fn utf16_buffer_to_string(buf: &[u16]) -> String {
     String::from_utf16_lossy(&buf[..len])
 }
 
-pub unsafe fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
+pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     // Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
     let mut success = 0i32;
-    let value = GetDlgItemInt(h_dlg.ptr() as RawHWND, dlg_id, &mut success, 0);
+    let value = unsafe { GetDlgItemInt(h_dlg.ptr() as RawHWND, dlg_id, &mut success, 0) };
     let value = value as i32;
     clamp(value, num_lo, num_hi)
 }

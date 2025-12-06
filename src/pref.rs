@@ -77,11 +77,11 @@ pub static mut g_hReg: w::HKEY = w::HKEY::NULL;
 
 pub unsafe fn ReadInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
-    if g_hReg == w::HKEY::NULL {
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+
+    if handle == w::HKEY::NULL {
         return val_default;
     }
-
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
 
     let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
@@ -102,26 +102,34 @@ pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
         return;
     }
 
-    if g_hReg == w::HKEY::NULL {
-        copy_default_name(sz_ret);
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+
+    if handle == w::HKEY::NULL {
+        unsafe {
+            copy_default_name(sz_ret);
+        }
         return;
     }
-
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
 
     let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => {
-            copy_default_name(sz_ret);
+            unsafe {
+                copy_default_name(sz_ret);
+            }
             return;
         }
     };
 
     match handle.RegQueryValueEx(Some(&key_name)) {
         Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => {
-            copy_str_to_wide(&value, sz_ret, CCH_NAME_MAX);
+            unsafe {
+                copy_str_to_wide(&value, sz_ret, CCH_NAME_MAX);
+            }
         }
-        _ => copy_default_name(sz_ret),
+        _ => unsafe {
+            copy_default_name(sz_ret)
+        },
     }
 }
 
@@ -138,35 +146,38 @@ pub unsafe fn ReadPreferences() {
         Err(_) => return,
     };
 
-    g_hReg = key_guard.leak();
+    unsafe {
+        g_hReg = key_guard.leak();
+    }
 
     let prefs = addr_of_mut!(Preferences);
+    unsafe {
+        let height = ReadInt(2, MINHEIGHT, DEFHEIGHT, 25);
+        yBoxMac.store(height, Ordering::Relaxed);
+        (*prefs).Height = height;
 
-    let height = ReadInt(2, MINHEIGHT, DEFHEIGHT, 25);
-    yBoxMac.store(height, Ordering::Relaxed);
-    (*prefs).Height = height;
+        let width = ReadInt(3, MINWIDTH, DEFWIDTH, 30);
+        xBoxMac.store(width, Ordering::Relaxed);
+        (*prefs).Width = width;
 
-    let width = ReadInt(3, MINWIDTH, DEFWIDTH, 30);
-    xBoxMac.store(width, Ordering::Relaxed);
-    (*prefs).Width = width;
+        (*prefs).wGameType = ReadInt(0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;
+        (*prefs).Mines = ReadInt(1, 10, 10, 999);
+        (*prefs).xWindow = ReadInt(4, 80, 0, 1024);
+        (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
 
-    (*prefs).wGameType = ReadInt(0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;
-    (*prefs).Mines = ReadInt(1, 10, 10, 999);
-    (*prefs).xWindow = ReadInt(4, 80, 0, 1024);
-    (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
+        (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
+        (*prefs).fMark = ReadInt(7, 1, 0, 1) != 0;
+        (*prefs).fTick = ReadInt(9, 0, 0, 1) != 0;
+        (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
 
-    (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
-    (*prefs).fMark = ReadInt(7, 1, 0, 1) != 0;
-    (*prefs).fTick = ReadInt(9, 0, 0, 1) != 0;
-    (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
+        (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
+        (*prefs).rgTime[WGAME_INTER as usize] = ReadInt(13, 999, 0, 999);
+        (*prefs).rgTime[WGAME_EXPERT as usize] = ReadInt(15, 999, 0, 999);
 
-    (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
-    (*prefs).rgTime[WGAME_INTER as usize] = ReadInt(13, 999, 0, 999);
-    (*prefs).rgTime[WGAME_EXPERT as usize] = ReadInt(15, 999, 0, 999);
-
-    ReadSz(12, addr_of_mut!((*prefs).szBegin[0]));
-    ReadSz(14, addr_of_mut!((*prefs).szInter[0]));
-    ReadSz(16, addr_of_mut!((*prefs).szExpert[0]));
+        ReadSz(12, addr_of_mut!((*prefs).szBegin[0]));
+        ReadSz(14, addr_of_mut!((*prefs).szInter[0]));
+        ReadSz(16, addr_of_mut!((*prefs).szExpert[0]));
+    }
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
     let desktop = w::HWND::GetDesktopWindow();
@@ -180,14 +191,20 @@ pub unsafe fn ReadPreferences() {
         }
         Err(_) => 0,
     };
-    (*prefs).fColor = ReadInt(10, default_color, 0, 1) != 0;
-
-    // If sound is enabled, verify that the system can actually play the resources.
-    if (*prefs).fSound == FSOUND_ON {
-        (*prefs).fSound = FInitTunes();
+    unsafe {
+        (*prefs).fColor = ReadInt(10, default_color, 0, 1) != 0;
     }
 
-    close_registry_handle();
+    // If sound is enabled, verify that the system can actually play the resources.
+    unsafe {
+        if (*prefs).fSound == FSOUND_ON {
+            (*prefs).fSound = FInitTunes();
+        }
+    }
+
+    unsafe {
+        close_registry_handle();
+    }
 }
 
 pub unsafe fn WritePreferences() {
@@ -203,37 +220,45 @@ pub unsafe fn WritePreferences() {
         Err(_) => return,
     };
 
-    g_hReg = key_guard.leak();
+    unsafe {
+        g_hReg = key_guard.leak();
+    }
 
     let prefs = addr_of!(Preferences);
 
     // Persist the difficulty, board dimensions, and flags exactly as the original did.
-    WriteInt(0, (*prefs).wGameType as i32);
-    WriteInt(2, (*prefs).Height);
-    WriteInt(3, (*prefs).Width);
-    WriteInt(1, (*prefs).Mines);
-    WriteInt(7, bool_to_i32((*prefs).fMark));
-    WriteInt(17, 1);
+    unsafe {
+        WriteInt(0, (*prefs).wGameType as i32);
+        WriteInt(2, (*prefs).Height);
+        WriteInt(3, (*prefs).Width);
+        WriteInt(1, (*prefs).Mines);
+        WriteInt(7, bool_to_i32((*prefs).fMark));
+        WriteInt(17, 1);
 
-    WriteInt(10, bool_to_i32((*prefs).fColor));
-    WriteInt(6, (*prefs).fSound);
-    WriteInt(4, (*prefs).xWindow);
-    WriteInt(5, (*prefs).yWindow);
+        WriteInt(10, bool_to_i32((*prefs).fColor));
+        WriteInt(6, (*prefs).fSound);
+        WriteInt(4, (*prefs).xWindow);
+        WriteInt(5, (*prefs).yWindow);
 
-    WriteInt(11, (*prefs).rgTime[WGAME_BEGIN as usize]);
-    WriteInt(13, (*prefs).rgTime[WGAME_INTER as usize]);
-    WriteInt(15, (*prefs).rgTime[WGAME_EXPERT as usize]);
+        WriteInt(11, (*prefs).rgTime[WGAME_BEGIN as usize]);
+        WriteInt(13, (*prefs).rgTime[WGAME_INTER as usize]);
+        WriteInt(15, (*prefs).rgTime[WGAME_EXPERT as usize]);
 
-    WriteSz(12, addr_of!((*prefs).szBegin[0]));
-    WriteSz(14, addr_of!((*prefs).szInter[0]));
-    WriteSz(16, addr_of!((*prefs).szExpert[0]));
+        WriteSz(12, addr_of!((*prefs).szBegin[0]));
+        WriteSz(14, addr_of!((*prefs).szInter[0]));
+        WriteSz(16, addr_of!((*prefs).szExpert[0]));
+    }
 
-    close_registry_handle();
+    unsafe {
+        close_registry_handle();
+    }
 }
 
 pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
     // Simple DWORD setter used by both the registry migration and the dialog code.
-    if g_hReg == w::HKEY::NULL {
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+
+    if handle == w::HKEY::NULL {
         return;
     }
 
@@ -248,7 +273,9 @@ pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
 
 pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
     // Stores zero-terminated UTF-16 values such as player names.
-    if g_hReg == w::HKEY::NULL || sz.is_null() {
+    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+
+    if handle == w::HKEY::NULL || sz.is_null() {
         return;
     }
 
@@ -257,7 +284,7 @@ pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
         None => return,
     };
 
-    let value = match wide_ptr_to_string(sz) {
+    let value = match unsafe { wide_ptr_to_string(sz) } {
         Some(text) => text,
         None => return,
     };
@@ -290,7 +317,7 @@ fn bool_to_i32(flag: bool) -> i32 {
 }
 
 unsafe fn default_name_ptr() -> *const u16 {
-    addr_of!(szDefaultName[0])
+    unsafe { addr_of!(szDefaultName[0]) }
 }
 
 unsafe fn copy_str_to_wide(src: &str, dst: *mut u16, capacity: usize) {
@@ -300,7 +327,9 @@ unsafe fn copy_str_to_wide(src: &str, dst: *mut u16, capacity: usize) {
 
     let mut buffer: Vec<u16> = src.encode_utf16().collect();
     buffer.push(0);
-    copy_wide_with_capacity(buffer.as_ptr(), dst, capacity);
+    unsafe {
+        copy_wide_with_capacity(buffer.as_ptr(), dst, capacity);
+    }
 }
 
 unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
@@ -308,8 +337,8 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
         return None;
     }
 
-    let len = wide_len(ptr);
-    let slice = std::slice::from_raw_parts(ptr, len);
+    let len = unsafe { wide_len(ptr) };
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
     Some(String::from_utf16_lossy(slice))
 }
 
@@ -318,17 +347,19 @@ unsafe fn copy_wide_with_capacity(src: *const u16, dst: *mut u16, capacity: usiz
         return;
     }
 
-    let mut i = 0usize;
-    while i + 1 < capacity {
-        let ch = *src.add(i);
-        *dst.add(i) = ch;
-        if ch == 0 {
-            return;
+    unsafe {
+        let mut i = 0usize;
+        while i + 1 < capacity {
+            let ch = *src.add(i);
+            *dst.add(i) = ch;
+            if ch == 0 {
+                return;
+            }
+            i += 1;
         }
-        i += 1;
-    }
 
-    *dst.add(capacity - 1) = 0;
+        *dst.add(capacity - 1) = 0;
+    }
 }
 
 unsafe fn wide_len(mut ptr: *const u16) -> usize {
@@ -336,21 +367,29 @@ unsafe fn wide_len(mut ptr: *const u16) -> usize {
         return 0;
     }
     let mut len = 0usize;
-    while *ptr != 0 {
-        len += 1;
-        ptr = ptr.add(1);
+    unsafe {
+        while *ptr != 0 {
+            len += 1;
+            ptr = ptr.add(1);
+        }
     }
     len
 }
 
 unsafe fn copy_default_name(dst: *mut u16) {
-    copy_wide_with_capacity(default_name_ptr(), dst, CCH_NAME_MAX);
+    unsafe {
+        copy_wide_with_capacity(default_name_ptr(), dst, CCH_NAME_MAX);
+    }
 }
 
 pub(crate) unsafe fn close_registry_handle() {
-    if g_hReg != w::HKEY::NULL {
+    if unsafe { g_hReg != w::HKEY::NULL } {
         let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
-        g_hReg = w::HKEY::NULL;
-        let _ = RegCloseKeyGuard::new(handle);
+        unsafe {
+            g_hReg = w::HKEY::NULL;
+        }
+        unsafe {
+            let _ = RegCloseKeyGuard::new(handle);
+        }
     }
 }
