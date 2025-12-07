@@ -9,11 +9,11 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Graphics::Gdi::{PtInRect, SetPixel};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
+use windows_sys::Win32::UI::WindowsAndMessaging::HMENU as RawHMENU;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, GetDlgItem, GetDlgItemTextW, RegisterClassW, SendMessageW,
     SetDlgItemInt, SetDlgItemTextW, WNDCLASSW,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{HMENU as RawHMENU};
 use windows_sys::core::PSTR;
 
 use winsafe::co::{self, DLGID, GWLP, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, WA, WS, WS_EX};
@@ -22,8 +22,8 @@ use winsafe::prelude::Handle;
 use winsafe::{
     AdjustWindowRectEx as ws_AdjustWindowRectEx, COLORREF, DLGPROC, DispatchMessage, GetMessage,
     GetSystemMetrics as win_get_system_metrics, INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdStr,
-    InitCommonControlsEx, MSG, POINT, PtsRc, RECT, SIZE, WINDOWPOS, PeekMessage,
-    PostQuitMessage, TranslateMessage,
+    InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc, RECT, SIZE,
+    TranslateMessage, WINDOWPOS,
 };
 
 use crate::globals::{
@@ -1076,9 +1076,10 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         let mut diff_level = false;
         if menu_visible {
             if let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt()) {
-                if let (Ok(game_rect), Ok(help_rect)) =
-                    (hwnd.GetMenuItemRect(&menu, 0), hwnd.GetMenuItemRect(&menu, 1))
-                {
+                if let (Ok(game_rect), Ok(help_rect)) = (
+                    hwnd.GetMenuItemRect(&menu, 0),
+                    hwnd.GetMenuItemRect(&menu, 1),
+                ) {
                     if game_rect.top != help_rect.top {
                         diff_level = true;
                         menu_extra = dypMenu.load(Ordering::Relaxed);
