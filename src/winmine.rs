@@ -1,29 +1,20 @@
 use core::cmp::{max, min};
-use core::mem;
-use core::ptr::{addr_of, addr_of_mut, null_mut};
+use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicI32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
-use windows_sys::Win32::Foundation::{
-    FALSE, HANDLE, HINSTANCE as RawHINSTANCE, HWND as RawHWND, LPARAM, LRESULT, TRUE, WPARAM,
-};
 use windows_sys::Win32::Graphics::Gdi::{PtInRect, SetPixel};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
-use windows_sys::Win32::UI::WindowsAndMessaging::HMENU as RawHMENU;
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, GetDlgItem, GetDlgItemTextW, RegisterClassW, SendMessageW,
-    SetDlgItemInt, SetDlgItemTextW, WNDCLASSW,
-};
-use windows_sys::core::PSTR;
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW};
 
 use winsafe::co::{self, DLGID, GWLP, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, WA, WS, WS_EX};
 use winsafe::msg::WndMsg;
 use winsafe::prelude::Handle;
 use winsafe::{
-    AdjustWindowRectEx as ws_AdjustWindowRectEx, COLORREF, DLGPROC, DispatchMessage, GetMessage,
-    GetSystemMetrics as win_get_system_metrics, INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdStr,
-    InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc, RECT, SIZE,
-    TranslateMessage, WINDOWPOS,
+    AdjustWindowRectEx as ws_AdjustWindowRectEx, AtomStr, COLORREF, DLGPROC, DispatchMessage,
+    GetMessage, GetSystemMetrics as win_get_system_metrics, HACCEL, HBRUSH, HCURSOR, HICON,
+    HINSTANCE, HMENU, HWND, INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdMenu, IdStr,
+    InitCommonControlsEx, MSG, POINT, PtsRc, RECT, SIZE, WINDOWPOS, WString, WNDCLASSEX,
+    PeekMessage, PostQuitMessage, RegisterClassEx, TranslateMessage,
 };
 
 use crate::globals::{
@@ -133,14 +124,14 @@ const F_PAUSE: i32 = 0x02;
 const F_ICON: i32 = 0x08;
 
 const FMENU_OFF: i32 = 1;
-const SC_MASK: WPARAM = 0xFFF0;
+const SC_MASK: usize = 0xFFF0;
 const WA_CLICKACTIVE: u16 = WA::CLICKACTIVE.raw();
 
-const MK_LBUTTON: WPARAM = MK::LBUTTON.raw() as WPARAM;
-const MK_RBUTTON: WPARAM = MK::RBUTTON.raw() as WPARAM;
-const MK_SHIFT_FLAG: WPARAM = MK::SHIFT.raw() as WPARAM;
-const MK_CHORD_MASK: WPARAM = MK_SHIFT_FLAG | MK_RBUTTON;
-const MK_CONTROL_FLAG: WPARAM = MK::CONTROL.raw() as WPARAM;
+const MK_LBUTTON: usize = MK::LBUTTON.raw() as usize;
+const MK_RBUTTON: usize = MK::RBUTTON.raw() as usize;
+const MK_SHIFT_FLAG: usize = MK::SHIFT.raw() as usize;
+const MK_CHORD_MASK: usize = MK_SHIFT_FLAG | MK_RBUTTON;
+const MK_CONTROL_FLAG: usize = MK::CONTROL.raw() as usize;
 
 const VK_F4_CODE: u32 = co::VK::F4.raw() as u32;
 const VK_F5_CODE: u32 = co::VK::F5.raw() as u32;
@@ -200,30 +191,22 @@ const BEST_HELP_IDS: [u32; 22] = [
 const EM_SETLIMITTEXT: u32 = 0x00C5;
 const IDOK_U16: u16 = DLGID::OK.raw();
 const IDCANCEL_U16: u16 = DLGID::CANCEL.raw();
-const NULL_HWND_RAW: RawHWND = 0 as RawHWND;
-
 #[repr(C)]
 struct HelpInfo {
     cbSize: u32,
     iContextType: i32,
     iCtrlId: i32,
-    hItemHandle: HANDLE,
+    hItemHandle: HWND,
     dwContextId: usize,
     mouse_pos: POINT,
 }
 
-type DialogProc = DLGPROC;
-
-fn show_dialog(template_id: u16, proc: DialogProc) {
-    let hinst_wrap = unsafe { winsafe::HINSTANCE::from_ptr(hInst.ptr()) };
+fn show_dialog(template_id: u16, proc: DLGPROC) {
+    let hinst_wrap = unsafe { HINSTANCE::from_ptr(hInst.ptr()) };
     let parent_hwnd = unsafe { hwndMain.as_opt() };
     unsafe {
         let _ = hinst_wrap.DialogBoxParam(IdStr::Id(template_id), parent_hwnd, proc, Some(0));
     }
-}
-
-fn class_name_ptr() -> *const u16 {
-    unsafe { addr_of!(szClass[0]) }
 }
 
 fn initial_minimized_state(n_cmd_show: i32) -> bool {
@@ -247,54 +230,57 @@ fn init_common_controls() {
 
 fn register_main_window_class() -> bool {
     unsafe {
-        let mut wc: WNDCLASSW = mem::zeroed();
-        wc.lpfnWndProc = Some(MainWndProc);
-        wc.hInstance = hInst.ptr() as RawHINSTANCE;
-        wc.hIcon = hIconMain.ptr() as _;
-        wc.hCursor = winsafe::HINSTANCE::NULL
+        let mut wcx = WNDCLASSEX::default();
+        wcx.lpfnWndProc = Some(MainWndProc);
+        let hinst = HINSTANCE::from_ptr(hInst.ptr());
+        let hicon = HICON::from_ptr(hIconMain.ptr());
+        let hicon_sm = HICON::from_ptr(hIconMain.ptr());
+        wcx.hInstance = hinst;
+        wcx.hIcon = hicon;
+        wcx.hIconSm = hicon_sm;
+        wcx.hCursor = HINSTANCE::NULL
             .LoadCursor(IdIdcStr::Idc(IDC::ARROW))
-            .map(|mut cursor| cursor.leak().ptr() as _)
-            .unwrap_or(null_mut());
-        wc.hbrBackground = winsafe::HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)
-            .map(|brush| brush.ptr() as _)
-            .unwrap_or(null_mut());
-        wc.lpszMenuName = core::ptr::null();
-        wc.lpszClassName = class_name_ptr();
-        RegisterClassW(&wc) != 0
+            .map(|mut cursor| cursor.leak())
+            .unwrap_or(HCURSOR::NULL);
+        wcx.hbrBackground = HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY).unwrap_or(HBRUSH::NULL);
+
+        let mut class_name = WString::from_wchars_slice(&szClass);
+        wcx.set_lpszClassName(Some(&mut class_name));
+        RegisterClassEx(&wcx).is_ok()
     }
 }
 
 pub fn run_winmine(
-    h_instance: RawHINSTANCE,
-    _h_prev_instance: RawHINSTANCE,
-    _lp_cmd_line: PSTR,
+    h_instance: HINSTANCE,
+    _h_prev_instance: HINSTANCE,
+    _lp_cmd_line: *mut u8,
     n_cmd_show: i32,
 ) -> i32 {
     unsafe {
-        hInst = winsafe::HINSTANCE::from_ptr(h_instance as _);
+        hInst = h_instance;
         InitConst();
 
         bInitMinimized.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
 
         init_common_controls();
-        let hinst_wrap = winsafe::HINSTANCE::from_ptr(hInst.ptr());
+        let hinst_wrap = HINSTANCE::from_ptr(hInst.ptr());
         hIconMain = hinst_wrap
             .LoadIcon(IdIdiStr::Id(ID_ICON_MAIN))
             .map(|mut icon| icon.leak())
-            .unwrap_or(winsafe::HICON::NULL);
+            .unwrap_or(HICON::NULL);
 
         if !register_main_window_class() {
-            return FALSE;
+            return 0;
         }
 
         hMenu = hinst_wrap
             .LoadMenu(IdStr::Id(ID_MENU))
             .map(|mut menu| menu.leak())
-            .unwrap_or(winsafe::HMENU::NULL);
+            .unwrap_or(HMENU::NULL);
         let h_accel = hinst_wrap
             .LoadAccelerators(IdStr::Id(ID_MENU_ACCEL))
             .map(|mut accel| accel.leak())
-            .unwrap_or(winsafe::HACCEL::NULL);
+            .unwrap_or(HACCEL::NULL);
 
         ReadPreferences();
 
@@ -303,32 +289,48 @@ pub fn run_winmine(
         let dxp_border = dxpBorder.load(Ordering::Relaxed);
         let dyp_adjust = dypAdjust.load(Ordering::Relaxed);
 
-        let raw_created_hwnd = CreateWindowExW(
-            0,
-            class_name_ptr(),
-            class_name_ptr(),
-            WINDOW_STYLE,
-            Preferences.xWindow - dxp_border,
-            Preferences.yWindow - dyp_adjust,
-            dx_window + dxp_border,
-            dy_window + dyp_adjust,
-            NULL_HWND_RAW,
-            hMenu.ptr() as RawHMENU,
-            hInst.ptr() as RawHINSTANCE,
-            null_mut(),
-        );
-        hwndMain = winsafe::HWND::from_ptr(raw_created_hwnd as _);
+        let class_name = {
+            let slice = &szClass;
+            let len = slice.iter().position(|&c| c == 0).unwrap_or(slice.len());
+            String::from_utf16_lossy(&slice[..len])
+        };
+
+        let menu_param = if hMenu == HMENU::NULL {
+            IdMenu::None
+        } else {
+            IdMenu::Menu(&hMenu)
+        };
+
+        hwndMain = HWND::CreateWindowEx(
+            WS_EX::from_raw(0),
+            AtomStr::from_str(&class_name),
+            Some(&class_name),
+            WS::from_raw(WINDOW_STYLE),
+            POINT {
+                x: Preferences.xWindow - dxp_border,
+                y: Preferences.yWindow - dyp_adjust,
+            },
+            SIZE {
+                cx: dx_window + dxp_border,
+                cy: dy_window + dyp_adjust,
+            },
+            None,
+            menu_param,
+            &hInst,
+            None,
+        )
+        .unwrap_or(HWND::NULL);
 
         if hwndMain.as_opt().is_none() {
             ReportErr(1000);
-            return FALSE;
+            return 0;
         }
 
         AdjustWindow(F_CALC);
 
         if !FInitLocal() {
             ReportErr(ID_ERR_MEM);
-            return FALSE;
+            return 0;
         }
 
         SetMenuBar(Preferences.fMenu);
@@ -342,11 +344,7 @@ pub fn run_winmine(
         bInitMinimized.store(false, Ordering::Relaxed);
 
         let mut msg = MSG::default();
-        loop {
-            let has_msg = match GetMessage(&mut msg, None, 0, 0) {
-                Ok(flag) => flag,
-                Err(_) => break,
-            };
+        while let Ok(has_msg) = GetMessage(&mut msg, None, 0, 0) {
             if !has_msg {
                 break;
             }
@@ -412,10 +410,7 @@ fn set_block_flag(active: bool) {
     fBlock.store(active, Ordering::Relaxed);
 }
 
-fn begin_primary_button_drag(h_wnd: RawHWND) {
-    unsafe {
-        SetCapture(h_wnd);
-    }
+fn begin_primary_button_drag(_h_wnd: HWND) {
     fButton1Down.store(true, Ordering::Relaxed);
     xCur.store(-1, Ordering::Relaxed);
     yCur.store(-1, Ordering::Relaxed);
@@ -424,9 +419,6 @@ fn begin_primary_button_drag(h_wnd: RawHWND) {
 
 fn finish_primary_button_drag() {
     fButton1Down.store(false, Ordering::Relaxed);
-    unsafe {
-        ReleaseCapture();
-    }
     if status_play() {
         DoButton1Up();
     } else {
@@ -434,7 +426,7 @@ fn finish_primary_button_drag() {
     }
 }
 
-fn handle_mouse_move(w_param: WPARAM, l_param: LPARAM) {
+fn handle_mouse_move(w_param: usize, l_param: isize) {
     if fButton1Down.load(Ordering::Relaxed) {
         if status_play() {
             TrackMouse(
@@ -449,7 +441,7 @@ fn handle_mouse_move(w_param: WPARAM, l_param: LPARAM) {
     }
 }
 
-fn handle_rbutton_down(h_wnd: RawHWND, w_param: WPARAM, l_param: LPARAM) -> Option<LRESULT> {
+fn handle_rbutton_down(h_wnd: HWND, w_param: usize, l_param: isize) -> Option<isize> {
     unsafe {
         if handle_ignore_click() {
             return Some(0);
@@ -483,18 +475,19 @@ fn handle_rbutton_down(h_wnd: RawHWND, w_param: WPARAM, l_param: LPARAM) -> Opti
     }
 }
 
-fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
+fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
     unsafe {
         match command_id(w_param) {
             IDM_NEW => StartGame(),
             IDM_EXIT => {
                 hwndMain.ShowWindow(co::SW::HIDE);
-                SendMessageW(
-                    hwndMain.ptr() as RawHWND,
-                    co::WM::SYSCOMMAND.raw(),
-                    co::SC::CLOSE.raw() as WPARAM,
-                    0,
-                );
+                if let Some(hwnd) = hwndMain.as_opt() {
+                        let _ = hwnd.SendMessage(WndMsg::new(
+                            co::WM::SYSCOMMAND,
+                            co::SC::CLOSE.raw() as usize,
+                            0,
+                        ));
+                    }
                 return Some(0);
             }
             IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
@@ -521,12 +514,13 @@ fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
                 FreeBitmaps();
                 if !FLoadBitmaps() {
                     ReportErr(ID_ERR_MEM);
-                    SendMessageW(
-                        hwndMain.ptr() as RawHWND,
-                        co::WM::SYSCOMMAND.raw(),
-                        co::SC::CLOSE.raw() as WPARAM,
-                        0,
-                    );
+                    if let Some(hwnd) = hwndMain.as_opt() {
+                        let _ = hwnd.SendMessage(WndMsg::new(
+                            co::WM::SYSCOMMAND,
+                            co::SC::CLOSE.raw() as usize,
+                            0,
+                        ));
+                    }
                     return Some(0);
                 }
                 DisplayScreen();
@@ -551,7 +545,7 @@ fn handle_command(w_param: WPARAM, _l_param: LPARAM) -> Option<LRESULT> {
     None
 }
 
-fn handle_keydown(w_param: WPARAM) {
+fn handle_keydown(w_param: usize) {
     unsafe {
         match w_param as u32 {
             VK_F4_CODE => {
@@ -580,7 +574,7 @@ fn handle_keydown(w_param: WPARAM) {
     }
 }
 
-fn handle_window_pos_changed(l_param: LPARAM) {
+fn handle_window_pos_changed(l_param: isize) {
     unsafe {
         if status_icon() || l_param == 0 {
             return;
@@ -592,7 +586,7 @@ fn handle_window_pos_changed(l_param: LPARAM) {
     }
 }
 
-fn handle_syscommand(w_param: WPARAM) {
+fn handle_syscommand(w_param: usize) {
     let command = (w_param & SC_MASK) as u32;
     if command == co::SC::MINIMIZE.raw() {
         PauseGame();
@@ -637,7 +631,7 @@ fn toggle_bool(value: bool) -> bool {
     !value
 }
 
-fn get_activate_state(w_param: WPARAM) -> u16 {
+fn get_activate_state(w_param: usize) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
@@ -681,7 +675,7 @@ fn handle_xyzzys_shift() {
     }
 }
 
-fn handle_xyzzys_default_key(w_param: WPARAM) {
+fn handle_xyzzys_default_key(w_param: usize) {
     let current = I_XYZZY.load(Ordering::Relaxed);
     if current < CCH_XYZZY {
         let expected = XYZZY_SEQUENCE[current as usize];
@@ -693,7 +687,7 @@ fn handle_xyzzys_default_key(w_param: WPARAM) {
     }
 }
 
-fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
+fn handle_xyzzys_mouse(w_param: usize, l_param: isize) {
     let state = I_XYZZY.load(Ordering::Relaxed);
     if state == 0 {
         return;
@@ -706,7 +700,7 @@ fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
         xCur.store(x_pos, Ordering::Relaxed);
         yCur.store(y_pos, Ordering::Relaxed);
         if in_range(x_pos, y_pos)
-            && let Ok(hdc) = winsafe::HWND::NULL.GetDC()
+            && let Ok(hdc) = HWND::NULL.GetDC()
         {
             let color = if cell_is_bomb(x_pos, y_pos) {
                 COLOR_BLACK
@@ -720,84 +714,82 @@ fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
     }
 }
 
-pub unsafe extern "system" fn MainWndProc(
-    h_wnd: RawHWND,
-    message: u32,
-    w_param: WPARAM,
-    l_param: LPARAM,
-) -> LRESULT {
-    unsafe {
-        let msg_code = co::WM::from_raw(message);
-        match msg_code {
-            co::WM::WINDOWPOSCHANGED => handle_window_pos_changed(l_param),
-            co::WM::SYSCOMMAND => handle_syscommand(w_param),
-            co::WM::COMMAND => {
-                if let Some(result) = handle_command(w_param, l_param) {
-                    return result;
-                }
+pub extern "system" fn MainWndProc(
+    h_wnd: HWND,
+    message: co::WM,
+    w_param: usize,
+    l_param: isize,
+) -> isize {
+    match message {
+        co::WM::WINDOWPOSCHANGED => handle_window_pos_changed(l_param),
+        co::WM::SYSCOMMAND => handle_syscommand(w_param),
+        co::WM::COMMAND => {
+            if let Some(result) = handle_command(w_param, l_param) {
+                return result;
             }
-            co::WM::KEYDOWN => handle_keydown(w_param),
-            co::WM::DESTROY => {
-                let _ = hwndMain.KillTimer(ID_TIMER);
-                PostQuitMessage(0);
-            }
-            co::WM::MBUTTONDOWN => {
-                if handle_ignore_click() {
-                    return 0;
-                }
-                if status_play() {
-                    set_block_flag(true);
-                    begin_primary_button_drag(h_wnd);
-                    handle_mouse_move(w_param, l_param);
-                }
-            }
-            co::WM::LBUTTONDOWN => {
-                if handle_ignore_click() {
-                    return 0;
-                }
-                if FLocalButton(l_param) {
-                    return 0;
-                }
-                if status_play() {
-                    set_block_flag((w_param & MK_CHORD_MASK) != 0);
-                    begin_primary_button_drag(h_wnd);
-                    handle_mouse_move(w_param, l_param);
-                }
-            }
-            co::WM::MOUSEMOVE => handle_mouse_move(w_param, l_param),
-            co::WM::RBUTTONUP | co::WM::MBUTTONUP | co::WM::LBUTTONUP => {
-                if fButton1Down.load(Ordering::Relaxed) {
-                    finish_primary_button_drag();
-                }
-            }
-            co::WM::RBUTTONDOWN => {
-                if let Some(result) = handle_rbutton_down(h_wnd, w_param, l_param) {
-                    return result;
-                }
-            }
-            co::WM::ACTIVATE => {
-                if get_activate_state(w_param) == WA_CLICKACTIVE {
-                    fIgnoreClick.store(true, Ordering::Relaxed);
-                }
-            }
-            co::WM::TIMER => {
-                DoTimer();
-                return 0;
-            }
-            co::WM::ENTERMENULOOP => fLocalPause.store(true, Ordering::Relaxed),
-            co::WM::EXITMENULOOP => fLocalPause.store(false, Ordering::Relaxed),
-            co::WM::PAINT => {
-                let hwnd_wrap = winsafe::HWND::from_ptr(h_wnd as _);
-                if let Ok(paint_guard) = hwnd_wrap.BeginPaint() {
-                    DrawScreen(&paint_guard);
-                }
-                return 0;
-            }
-            _ => {}
         }
-
-        DefWindowProcW(h_wnd, message, w_param, l_param)
+        co::WM::KEYDOWN => handle_keydown(w_param),
+        co::WM::DESTROY => {
+            let _ = unsafe { hwndMain.KillTimer(ID_TIMER) };
+            PostQuitMessage(0);
+        }
+        co::WM::MBUTTONDOWN => {
+            if handle_ignore_click() {
+                return 0;
+            }
+            if status_play() {
+                set_block_flag(true);
+                let hwnd_copy = unsafe { HWND::from_ptr(h_wnd.ptr()) };
+                begin_primary_button_drag(hwnd_copy);
+                handle_mouse_move(w_param, l_param);
+            }
+        }
+        co::WM::LBUTTONDOWN => {
+            if handle_ignore_click() {
+                return 0;
+            }
+            if FLocalButton(l_param) {
+                return 0;
+            }
+            if status_play() {
+                set_block_flag((w_param & MK_CHORD_MASK) != 0);
+                let hwnd_copy = unsafe { HWND::from_ptr(h_wnd.ptr()) };
+                begin_primary_button_drag(hwnd_copy);
+                handle_mouse_move(w_param, l_param);
+            }
+        }
+        co::WM::MOUSEMOVE => handle_mouse_move(w_param, l_param),
+        co::WM::RBUTTONUP | co::WM::MBUTTONUP | co::WM::LBUTTONUP => {
+            if fButton1Down.load(Ordering::Relaxed) {
+                finish_primary_button_drag();
+            }
+        }
+        co::WM::RBUTTONDOWN => {
+            let hwnd_copy = unsafe { HWND::from_ptr(h_wnd.ptr()) };
+            if let Some(result) = handle_rbutton_down(hwnd_copy, w_param, l_param) {
+                return result;
+            }
+        }
+        co::WM::ACTIVATE => {
+            if get_activate_state(w_param) == WA_CLICKACTIVE {
+                fIgnoreClick.store(true, Ordering::Relaxed);
+            }
+        }
+        co::WM::TIMER => {
+            DoTimer();
+            return 0;
+        }
+        co::WM::ENTERMENULOOP => fLocalPause.store(true, Ordering::Relaxed),
+        co::WM::EXITMENULOOP => fLocalPause.store(false, Ordering::Relaxed),
+        co::WM::PAINT => {
+            if let Ok(paint_guard) = h_wnd.BeginPaint() {
+                DrawScreen(&paint_guard);
+            }
+            return 0;
+        }
+        _ => {}
     }
+    unsafe { h_wnd.DefWindowProc(WndMsg::new(message, w_param, l_param)) }
 }
 
 pub fn FixMenus() {
@@ -838,7 +830,7 @@ pub fn DoDisplayBest() {
     show_dialog(ID_DLG_BEST, BestDlgProc);
 }
 
-pub fn FLocalButton(l_param: LPARAM) -> bool {
+pub fn FLocalButton(l_param: isize) -> bool {
     unsafe {
         // Handle clicks on the smiley face button while providing the pressed animation.
         let mut msg = MSG::default();
@@ -870,10 +862,10 @@ pub fn FLocalButton(l_param: LPARAM) -> bool {
             return false;
         }
 
-        SetCapture(hwndMain.ptr() as RawHWND);
+        let mut capture_guard = hwndMain.as_opt().map(|hwnd| hwnd.SetCapture());
         DisplayButton(I_BUTTON_DOWN);
         if let Some(hwnd) = hwndMain.as_opt() {
-            let _ = hwnd.MapWindowPoints(&winsafe::HWND::NULL, PtsRc::Rc(&mut rc));
+            let _ = hwnd.MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc));
         }
 
         let mut pressed = true;
@@ -903,7 +895,7 @@ pub fn FLocalButton(l_param: LPARAM) -> bool {
                             DisplayButton(I_BUTTON_HAPPY);
                             StartGame();
                         }
-                        ReleaseCapture();
+                        capture_guard.take();
                         return true;
                     }
                     co::WM::MOUSEMOVE => {
@@ -925,24 +917,24 @@ pub fn FLocalButton(l_param: LPARAM) -> bool {
 }
 
 pub extern "system" fn PrefDlgProc(
-    h_dlg: winsafe::HWND,
+    h_dlg: HWND,
     message: co::WM,
     w_param: usize,
     l_param: isize,
 ) -> isize {
     // Custom game dialog mirroring the legacy behavior and help wiring.
-    let h_dlg_raw = h_dlg.ptr() as RawHWND;
+    let h_dlg_raw = h_dlg.ptr();
     match message {
         co::WM::INITDIALOG => {
             unsafe {
-                SetDlgItemInt(h_dlg_raw, ID_EDIT_HEIGHT, Preferences.Height as u32, FALSE);
-                SetDlgItemInt(h_dlg_raw, ID_EDIT_WIDTH, Preferences.Width as u32, FALSE);
-                SetDlgItemInt(h_dlg_raw, ID_EDIT_MINES, Preferences.Mines as u32, FALSE);
+                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_HEIGHT, Preferences.Height as u32, 0);
+                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_WIDTH, Preferences.Width as u32, 0);
+                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_MINES, Preferences.Mines as u32, 0);
             }
-            return TRUE as isize;
+            return 1;
         }
         co::WM::COMMAND => {
-            match command_id(w_param as WPARAM) {
+            match command_id(w_param) {
                 ID_BTN_OK | IDOK_U16 => unsafe {
                     Preferences.Height = GetDlgInt(&h_dlg, ID_EDIT_HEIGHT, MINHEIGHT, 24);
                     Preferences.Width = GetDlgInt(&h_dlg, ID_EDIT_WIDTH, MINWIDTH, 30);
@@ -950,39 +942,39 @@ pub extern "system" fn PrefDlgProc(
                     Preferences.Mines = GetDlgInt(&h_dlg, ID_EDIT_MINES, 10, max_mines);
                 },
                 ID_BTN_CANCEL | IDCANCEL_U16 => {}
-                _ => return FALSE as isize,
+                _ => return 0,
             }
-            let _ = h_dlg.EndDialog(TRUE as isize);
-            return TRUE as isize;
+            let _ = h_dlg.EndDialog(1);
+            return 1;
         }
         co::WM::HELP => {
-            if apply_help_from_info(l_param as LPARAM, &PREF_HELP_IDS) {
-                return TRUE as isize;
+            if apply_help_from_info(l_param, &PREF_HELP_IDS) {
+                return 1;
             }
         }
         co::WM::CONTEXTMENU => {
-            apply_help_to_hwnd(w_param as RawHWND, &PREF_HELP_IDS);
-            return TRUE as isize;
+            let target = unsafe { HWND::from_ptr(w_param as _) };
+            apply_help_to_hwnd(target, &PREF_HELP_IDS);
+            return 1;
         }
         _ => {}
     }
-    FALSE as isize
+    0
 }
 
 pub extern "system" fn BestDlgProc(
-    h_dlg: winsafe::HWND,
+    h_dlg: HWND,
     message: co::WM,
     w_param: usize,
     l_param: isize,
 ) -> isize {
     // High-score dialog with reset + context help support.
-    let h_dlg_raw = h_dlg.ptr() as RawHWND;
     match message {
         co::WM::INITDIALOG => {
-            reset_best_dialog(h_dlg_raw);
-            return TRUE as isize;
+            reset_best_dialog(&h_dlg);
+            return 1;
         }
-        co::WM::COMMAND => match command_id(w_param as WPARAM) {
+        co::WM::COMMAND => match command_id(w_param) {
             ID_BTN_RESET => unsafe {
                 Preferences.rgTime[WGAME_BEGIN as usize] = 999;
                 Preferences.rgTime[WGAME_INTER as usize] = 999;
@@ -991,70 +983,74 @@ pub extern "system" fn BestDlgProc(
                 copy_from_default(name_ptr_for_game_mut(WGAME_INTER));
                 copy_from_default(name_ptr_for_game_mut(WGAME_EXPERT));
                 fUpdateIni.store(true, Ordering::Relaxed);
-                reset_best_dialog(h_dlg_raw);
-                return TRUE as isize;
+                reset_best_dialog(&h_dlg);
+                return 1;
             },
             ID_BTN_OK | IDOK_U16 | ID_BTN_CANCEL | IDCANCEL_U16 => {
-                let _ = h_dlg.EndDialog(TRUE as isize);
-                return TRUE as isize;
+                let _ = h_dlg.EndDialog(1);
+                return 1;
             }
             _ => {}
         },
         co::WM::HELP => {
-            if apply_help_from_info(l_param as LPARAM, &BEST_HELP_IDS) {
-                return TRUE as isize;
+            if apply_help_from_info(l_param, &BEST_HELP_IDS) {
+                return 1;
             }
         }
         co::WM::CONTEXTMENU => {
-            apply_help_to_hwnd(w_param as RawHWND, &BEST_HELP_IDS);
-            return TRUE as isize;
+            let target = unsafe { HWND::from_ptr(w_param as _) };
+            apply_help_to_hwnd(target, &BEST_HELP_IDS);
+            return 1;
         }
         _ => {}
     }
-    FALSE as isize
+    0
 }
 
 pub extern "system" fn EnterDlgProc(
-    h_dlg: winsafe::HWND,
+    h_dlg: HWND,
     message: co::WM,
     w_param: usize,
     _l_param: isize,
 ) -> isize {
     // Name entry dialog shown when a player beats a high score.
-    let h_dlg_raw = h_dlg.ptr() as RawHWND;
+    let h_dlg_raw = h_dlg.ptr();
     match message {
         co::WM::INITDIALOG => {
             unsafe {
                 let mut buffer = [0u16; CCH_MSG_MAX];
                 let string_id = Preferences.wGameType + ID_MSG_BEGIN;
                 LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32);
-                SetDlgItemTextW(h_dlg_raw, ID_TEXT_BEST, buffer.as_ptr());
-                let edit_hwnd = GetDlgItem(h_dlg_raw, ID_EDIT_NAME);
-                if edit_hwnd != NULL_HWND_RAW {
-                    SendMessageW(edit_hwnd, EM_SETLIMITTEXT, CCH_NAME_MAX as WPARAM, 0);
+                SetDlgItemTextW(h_dlg_raw as _, ID_TEXT_BEST, buffer.as_ptr());
+                if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ID_EDIT_NAME as u16) {
+                    let _ = edit_hwnd.SendMessage(WndMsg::new(
+                        co::WM::from_raw(EM_SETLIMITTEXT),
+                        CCH_NAME_MAX,
+                        0,
+                    ));
                 }
-                SetDlgItemTextW(h_dlg_raw, ID_EDIT_NAME, current_name_ptr());
+                SetDlgItemTextW(h_dlg_raw as _, ID_EDIT_NAME, current_name_ptr());
             }
-            return TRUE as isize;
+            return 1;
         }
-        co::WM::COMMAND => match command_id(w_param as WPARAM) {
+        co::WM::COMMAND => match command_id(w_param) {
             ID_BTN_OK | IDOK_U16 | ID_BTN_CANCEL | IDCANCEL_U16 => {
                 unsafe {
                     GetDlgItemTextW(
-                        h_dlg_raw,
+                        h_dlg_raw as _,
                         ID_EDIT_NAME,
                         current_name_ptr_mut(),
                         CCH_NAME_MAX as i32,
                     );
-                    let _ = h_dlg.EndDialog(TRUE as isize);
+                    let _ = h_dlg.EndDialog(1);
                 }
-                return TRUE as isize;
+                return 1;
             }
             _ => {}
         },
         _ => {}
     }
-    FALSE as isize
+    0
 }
 
 pub fn AdjustWindow(mut f_adjust: i32) {
@@ -1076,10 +1072,9 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         let mut diff_level = false;
         if menu_visible {
             if let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt()) {
-                if let (Ok(game_rect), Ok(help_rect)) = (
-                    hwnd.GetMenuItemRect(&menu, 0),
-                    hwnd.GetMenuItemRect(&menu, 1),
-                ) {
+                if let (Ok(game_rect), Ok(help_rect)) =
+                    (hwnd.GetMenuItemRect(&menu, 0), hwnd.GetMenuItemRect(&menu, 1))
+                {
                     if game_rect.top != help_rect.top {
                         diff_level = true;
                         menu_extra = dypMenu.load(Ordering::Relaxed);
@@ -1155,9 +1150,9 @@ pub fn AdjustWindow(mut f_adjust: i32) {
                     .as_opt()
                     .and_then(|menu| {
                         hwnd_main
-                            .GetMenuItemRect(&menu, 0)
+                            .GetMenuItemRect(menu, 0)
                             .ok()
-                            .zip(hwnd_main.GetMenuItemRect(&menu, 1).ok())
+                            .zip(hwnd_main.GetMenuItemRect(menu, 1).ok())
                     })
                     .is_some_and(|(g, h)| g.top == h.top)
             {
@@ -1210,19 +1205,19 @@ fn our_get_system_metrics(index: SM) -> i32 {
     }
 }
 
-fn loword(value: LPARAM) -> i32 {
+fn loword(value: isize) -> i32 {
     ((value as u32) & 0xFFFF) as i16 as i32
 }
 
-fn hiword(value: LPARAM) -> i32 {
+fn hiword(value: isize) -> i32 {
     (((value as u32) >> 16) & 0xFFFF) as i16 as i32
 }
 
-fn command_id(w_param: WPARAM) -> u16 {
+fn command_id(w_param: usize) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
-fn set_dtext(h_dlg: RawHWND, id: i32, time: i32, name: *const u16) {
+fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: *const u16) {
     unsafe {
         let mut buffer = [0u16; CCH_NAME_MAX];
         let fmt_len = szTime
@@ -1241,12 +1236,12 @@ fn set_dtext(h_dlg: RawHWND, id: i32, time: i32, name: *const u16) {
             *buffer.as_mut_ptr().add(i) = code_unit;
         }
 
-        SetDlgItemTextW(h_dlg, id, buffer.as_ptr());
-        SetDlgItemTextW(h_dlg, id + 1, name);
+        SetDlgItemTextW(h_dlg.ptr() as _, id, buffer.as_ptr());
+        SetDlgItemTextW(h_dlg.ptr() as _, id + 1, name);
     }
 }
 
-fn reset_best_dialog(h_dlg: RawHWND) {
+    fn reset_best_dialog(h_dlg: &HWND) {
     unsafe {
         set_dtext(
             h_dlg,
@@ -1312,29 +1307,27 @@ fn copy_from_default(dst: *mut u16) {
     }
 }
 
-fn apply_help_from_info(l_param: LPARAM, ids: &[u32]) -> bool {
+fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
     unsafe {
         if l_param == 0 {
             return false;
         }
         let info = &*(l_param as *const HelpInfo);
-        if info.hItemHandle.is_null() {
+        if info.hItemHandle.as_opt().is_none() {
             return false;
         }
-        let hwnd = winsafe::HWND::from_ptr(info.hItemHandle);
-        let _ = hwnd.WinHelp(HELP_FILE, HELPW::WM_HELP, ids.as_ptr() as usize);
+        let _ = info
+            .hItemHandle
+            .WinHelp(HELP_FILE, HELPW::WM_HELP, ids.as_ptr() as usize);
         true
     }
 }
 
-fn apply_help_to_hwnd(hwnd: RawHWND, ids: &[u32]) {
-    unsafe {
-        if hwnd.is_null() {
-            return;
-        }
-        let hwnd = winsafe::HWND::from_ptr(hwnd);
-        let _ = hwnd.WinHelp(HELP_FILE, HELPW::CONTEXTMENU, ids.as_ptr() as usize);
+fn apply_help_to_hwnd(hwnd: HWND, ids: &[u32]) {
+    if hwnd.as_opt().is_none() {
+        return;
     }
+    let _ = hwnd.WinHelp(HELP_FILE, HELPW::CONTEXTMENU, ids.as_ptr() as usize);
 }
 
 fn menu_is_visible() -> bool {
