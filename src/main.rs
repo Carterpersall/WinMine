@@ -21,10 +21,5 @@ pub extern "system" fn WinMain(
     lp_cmd_line: *mut u8,
     n_cmd_show: i32,
 ) -> i32 {
-    run_winmine(
-        h_instance,
-        h_prev_instance,
-        lp_cmd_line,
-        n_cmd_show,
-    )
+    run_winmine(h_instance, h_prev_instance, lp_cmd_line, n_cmd_show)
 }

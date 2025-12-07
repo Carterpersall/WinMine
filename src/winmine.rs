@@ -4,7 +4,9 @@ use core::sync::atomic::{AtomicI32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
 use windows_sys::Win32::Graphics::Gdi::{PtInRect, SetPixel};
-use windows_sys::Win32::UI::WindowsAndMessaging::{GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
+};
 
 use winsafe::co::{self, DLGID, GWLP, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, WA, WS, WS_EX};
 use winsafe::msg::WndMsg;
@@ -13,8 +15,8 @@ use winsafe::{
     AdjustWindowRectEx as ws_AdjustWindowRectEx, AtomStr, COLORREF, DLGPROC, DispatchMessage,
     GetMessage, GetSystemMetrics as win_get_system_metrics, HACCEL, HBRUSH, HCURSOR, HICON,
     HINSTANCE, HMENU, HWND, INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdMenu, IdStr,
-    InitCommonControlsEx, MSG, POINT, PtsRc, RECT, SIZE, WINDOWPOS, WString, WNDCLASSEX,
-    PeekMessage, PostQuitMessage, RegisterClassEx, TranslateMessage,
+    InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc, RECT, RegisterClassEx,
+    SIZE, TranslateMessage, WINDOWPOS, WNDCLASSEX, WString,
 };
 
 use crate::globals::{
@@ -482,12 +484,12 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             IDM_EXIT => {
                 hwndMain.ShowWindow(co::SW::HIDE);
                 if let Some(hwnd) = hwndMain.as_opt() {
-                        let _ = hwnd.SendMessage(WndMsg::new(
-                            co::WM::SYSCOMMAND,
-                            co::SC::CLOSE.raw() as usize,
-                            0,
-                        ));
-                    }
+                    let _ = hwnd.SendMessage(WndMsg::new(
+                        co::WM::SYSCOMMAND,
+                        co::SC::CLOSE.raw() as usize,
+                        0,
+                    ));
+                }
                 return Some(0);
             }
             IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
@@ -1072,9 +1074,10 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         let mut diff_level = false;
         if menu_visible {
             if let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt()) {
-                if let (Ok(game_rect), Ok(help_rect)) =
-                    (hwnd.GetMenuItemRect(&menu, 0), hwnd.GetMenuItemRect(&menu, 1))
-                {
+                if let (Ok(game_rect), Ok(help_rect)) = (
+                    hwnd.GetMenuItemRect(&menu, 0),
+                    hwnd.GetMenuItemRect(&menu, 1),
+                ) {
                     if game_rect.top != help_rect.top {
                         diff_level = true;
                         menu_extra = dypMenu.load(Ordering::Relaxed);
@@ -1241,7 +1244,7 @@ fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: *const u16) {
     }
 }
 
-    fn reset_best_dialog(h_dlg: &HWND) {
+fn reset_best_dialog(h_dlg: &HWND) {
     unsafe {
         set_dtext(
             h_dlg,
