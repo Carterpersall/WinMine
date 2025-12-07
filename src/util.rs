@@ -1,30 +1,22 @@
 use core::ptr::{addr_of, addr_of_mut};
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use windows_sys::core::{PCSTR, PCWSTR};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
-use windows_sys::Win32::Foundation::{HINSTANCE as RawHINSTANCE, HWND as RawHWND};
-use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameA;
-use windows_sys::Win32::System::SystemInformation::GetTickCount;
-use windows_sys::Win32::System::WindowsProgramming::{
-    GetPrivateProfileIntW, GetPrivateProfileStringW,
-};
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    wsprintfW, GetDlgItemInt, LoadIconW, LoadStringW, MessageBoxW,
-};
+use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
+use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{self as w, co, co::HELPW, co::SM, prelude::*, IdPos, WString, HICON};
+use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
 use crate::globals::{
     dxpBorder, dypBorder, dypCaption, dypMenu, hInst, hMenu, hwndMain, szClass, szDefaultName,
     szTime,
 };
 use crate::pref::{
-    close_registry_handle, g_hReg, pref_key_literal, ReadInt, WritePreferences, SZ_WINMINE_REG_STR,
-};
-use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
     MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
+};
+use crate::pref::{
+    ReadInt, SZ_WINMINE_REG_STR, WritePreferences, close_registry_handle, g_hReg, pref_key_literal,
 };
 use crate::rtns::Preferences;
 use crate::sound::FInitTunes;
@@ -91,21 +83,12 @@ fn next_rand() -> i32 {
 }
 
 #[inline]
-fn class_ptr() -> PCWSTR {
+fn class_ptr() -> *const u16 {
     unsafe { addr_of!(szClass[0]) }
-}
-
-#[inline]
-fn default_name_ptr() -> PCWSTR {
-    unsafe { addr_of!(szDefaultName[0]) }
 }
 
 fn clamp(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
-}
-
-fn make_int_resource(id: u16) -> PCWSTR {
-    id as usize as *const u16
 }
 
 pub fn Rnd(rnd_max: i32) -> i32 {
@@ -119,32 +102,33 @@ pub fn Rnd(rnd_max: i32) -> i32 {
 
 pub fn ReportErr(id_err: u16) {
     // Format either a catalog string or the "unknown error" template before showing the dialog.
-    let mut sz_msg = [0u16; CCH_MSG_MAX];
-    let mut sz_title = [0u16; CCH_MSG_MAX];
-    unsafe {
-        let inst = hInst.ptr() as RawHINSTANCE;
-        if (id_err as u32) < ID_ERR_MAX {
-            LoadStringW(inst, id_err.into(), sz_msg.as_mut_ptr(), CCH_MSG_MAX as i32);
-        } else {
-            LoadStringW(inst, ID_ERR_UNKNOWN, sz_title.as_mut_ptr(), CCH_MSG_MAX as i32);
-            wsprintfW(sz_msg.as_mut_ptr(), sz_title.as_ptr(), id_err as i32);
-        }
+    let msg = if (id_err as u32) < ID_ERR_MAX {
+        unsafe { hInst.LoadString(id_err).unwrap_or_default() }
+    } else {
+        let template = unsafe { hInst.LoadString(ID_ERR_UNKNOWN as u16).unwrap_or_default() };
+        template.replace("%d", &id_err.to_string())
+    };
 
-        LoadStringW(inst, ID_ERR_TITLE, sz_title.as_mut_ptr(), CCH_MSG_MAX as i32);
-        MessageBoxW(
-            std::ptr::null_mut(),
-            sz_msg.as_ptr(),
-            sz_title.as_ptr(),
-            co::MB::ICONHAND.raw(),
-        );
-    }
+    let title = unsafe { hInst.LoadString(ID_ERR_TITLE as u16).unwrap_or_default() };
+    let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
 }
 
 pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     // Wrapper around LoadString that raises the original fatal error if the resource is missing.
+    let text = unsafe { hInst.LoadString(id).unwrap_or_default() };
+    if text.is_empty() {
+        ReportErr(1001);
+        return;
+    }
+
     unsafe {
-        if LoadStringW(hInst.ptr() as RawHINSTANCE, id.into(), sz, cch as i32) == 0 {
-            ReportErr(1001);
+        for (i, code_unit) in text
+            .encode_utf16()
+            .chain(Some(0))
+            .take(cch as usize)
+            .enumerate()
+        {
+            *sz.add(i) = code_unit;
         }
     }
 }
@@ -178,22 +162,30 @@ pub fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
         None => return,
     };
 
-    let ini_path = WString::from_str(SZ_INI_FILE);
+    let section = utf16_buffer_to_string(unsafe { &szClass });
+    let key_text = key.to_string();
+    let default_name = utf16_buffer_to_string(unsafe { &szDefaultName });
+
+    let value = match w::GetPrivateProfileString(&section, &key_text, SZ_INI_FILE) {
+        Ok(Some(text)) => text,
+        _ => default_name,
+    };
+
     unsafe {
-        GetPrivateProfileStringW(
-            class_ptr(),
-            key.as_ptr(),
-            default_name_ptr(),
-            sz_ret,
-            CCH_NAME_MAX as u32,
-            ini_path.as_ptr(),
-        );
+        for (i, code_unit) in value
+            .encode_utf16()
+            .chain(Some(0))
+            .take(CCH_NAME_MAX)
+            .enumerate()
+        {
+            *sz_ret.add(i) = code_unit;
+        }
     }
 }
 
 pub fn InitConst() {
     // Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
-    let ticks = unsafe { GetTickCount() & 0xFFFF };
+    let ticks = (w::GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
 
     unsafe {
@@ -347,14 +339,10 @@ pub fn DoAbout() {
 
     let title = utf16_buffer_to_string(&sz_version);
     let credit = utf16_buffer_to_string(&sz_credit);
-    let icon_raw = unsafe { LoadIconW(hInst.ptr() as RawHINSTANCE, make_int_resource(ID_ICON_MAIN)) };
-    let icon = if icon_raw.is_null() {
-        None
-    } else {
-        Some(unsafe { HICON::from_ptr(icon_raw as _) })
-    };
+    let icon_guard = unsafe { hInst.LoadIcon(w::IdIdiStr::Id(ID_ICON_MAIN)) }.ok();
+    let icon = icon_guard.as_deref();
 
-    let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon.as_ref());
+    let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon);
 }
 
 pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
@@ -362,13 +350,15 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
     if (w_command as u32) != HELPW::HELPONHELP.raw() {
-        let len = unsafe {
-            GetModuleFileNameA(
-                hInst.ptr() as RawHINSTANCE,
-                buffer.as_mut_ptr(),
-                CCH_MAX_PATHNAME as u32,
-            ) as usize
-        };
+        let exe_path = unsafe { hInst.GetModuleFileName() }.unwrap_or_default();
+        let mut bytes = exe_path.into_bytes();
+        if bytes.len() + 1 > CCH_MAX_PATHNAME {
+            bytes.truncate(CCH_MAX_PATHNAME - 1);
+        }
+        bytes.push(0);
+        let len = bytes.len() - 1;
+        buffer[..bytes.len()].copy_from_slice(&bytes);
+
         let mut dot = None;
         for i in (0..len).rev() {
             if buffer[i] == b'.' {
@@ -382,7 +372,7 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
         let pos = dot.unwrap_or(len);
         const EXT: &[u8] = b".chm\0";
         let mut i = 0;
-        while i < EXT.len() {
+        while i < EXT.len() && pos + i < buffer.len() {
             buffer[pos + i] = EXT[i];
             i += 1;
         }
@@ -393,7 +383,7 @@ pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
 
     let desktop = w::HWND::GetDesktopWindow();
     unsafe {
-        HtmlHelpA(desktop.ptr() as _, buffer.as_ptr() as PCSTR, l_param, 0);
+        HtmlHelpA(desktop.ptr() as _, buffer.as_ptr(), l_param, 0);
     }
 }
 
@@ -405,7 +395,7 @@ fn utf16_buffer_to_string(buf: &[u16]) -> String {
 pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     // Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
     let mut success = 0i32;
-    let value = unsafe { GetDlgItemInt(h_dlg.ptr() as RawHWND, dlg_id, &mut success, 0) };
+    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &mut success, 0) };
     let value = value as i32;
     clamp(value, num_lo, num_hi)
 }

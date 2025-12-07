@@ -1,7 +1,7 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use winmine::run_winmine;
-use winsafe::{co, prelude::Handle, HINSTANCE};
+use winsafe::{HINSTANCE, co, prelude::Handle};
 
 pub fn main() {
     let h_instance_handle = HINSTANCE::GetModuleHandle(None).unwrap_or(HINSTANCE::NULL);

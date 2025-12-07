@@ -5,7 +5,7 @@ use winsafe::prelude::*;
 
 use crate::globals::{fBlock, fStatus, hwndMain};
 use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
-use crate::pref::{Pref, CCH_NAME_MAX};
+use crate::pref::{CCH_NAME_MAX, Pref};
 use crate::sound::{EndTunes, PlayTune};
 use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
@@ -526,9 +526,8 @@ pub fn StartGame() {
     let x_prev = xBoxMac.load(Ordering::Relaxed);
     let y_prev = yBoxMac.load(Ordering::Relaxed);
 
-    let (pref_width, pref_height, pref_mines) = unsafe {
-        (Preferences.Width, Preferences.Height, Preferences.Mines)
-    };
+    let (pref_width, pref_height, pref_mines) =
+        unsafe { (Preferences.Width, Preferences.Height, Preferences.Mines) };
 
     let f_adjust = if pref_width != x_prev || pref_height != y_prev {
         F_RESIZE | F_DISPLAY

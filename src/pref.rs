@@ -2,10 +2,10 @@
 use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use winsafe::{self as w, co, guard::RegCloseKeyGuard, prelude::*, RegistryValue};
+use winsafe::{self as w, RegistryValue, co, guard::RegCloseKeyGuard, prelude::*};
 
 use crate::globals::szDefaultName;
-use crate::rtns::{xBoxMac, yBoxMac, Preferences};
+use crate::rtns::{Preferences, xBoxMac, yBoxMac};
 use crate::sound::FInitTunes;
 
 pub const CCH_NAME_MAX: usize = 32;
@@ -122,14 +122,10 @@ pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
     };
 
     match handle.RegQueryValueEx(Some(&key_name)) {
-        Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => {
-            unsafe {
-                copy_str_to_wide(&value, sz_ret, CCH_NAME_MAX);
-            }
-        }
-        _ => unsafe {
-            copy_default_name(sz_ret)
+        Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => unsafe {
+            copy_str_to_wide(&value, sz_ret, CCH_NAME_MAX);
         },
+        _ => unsafe { copy_default_name(sz_ret) },
     }
 }
 
@@ -309,11 +305,7 @@ fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
 }
 
 fn bool_to_i32(flag: bool) -> i32 {
-    if flag {
-        1
-    } else {
-        0
-    }
+    if flag { 1 } else { 0 }
 }
 
 unsafe fn default_name_ptr() -> *const u16 {

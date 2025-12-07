@@ -3,31 +3,27 @@ use core::mem;
 use core::ptr::{addr_of, addr_of_mut, null_mut};
 use core::sync::atomic::{AtomicI32, Ordering};
 
-use windows_sys::core::{BOOL, PCWSTR, PSTR};
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
-use windows_sys::Win32::Foundation::COLORREF;
 use windows_sys::Win32::Foundation::{
-    FALSE, HANDLE, HINSTANCE as RawHINSTANCE, HWND as RawHWND, LPARAM, LRESULT, POINT, RECT, TRUE,
-    WPARAM,
+    FALSE, HANDLE, HINSTANCE as RawHINSTANCE, HWND as RawHWND, LPARAM, LRESULT, TRUE, WPARAM,
 };
-use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, EndPaint, InvalidateRect, MapWindowPoints, PtInRect, SetPixel, HBRUSH, PAINTSTRUCT,
-};
+use windows_sys::Win32::Graphics::Gdi::{PtInRect, SetPixel};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture};
-use windows_sys::Win32::UI::WindowsAndMessaging::{wsprintfW, HACCEL as RawHACCEL, HMENU as RawHMENU, MSG};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    AdjustWindowRectEx, CreateWindowExW, DefWindowProcW, DispatchMessageW, GetDlgItem,
-    GetDlgItemTextW, GetMenuItemRect, GetMessageW, GetWindowLongPtrW, MoveWindow, PeekMessageW,
-    RegisterClassW, SendMessageW, SetDlgItemInt, SetDlgItemTextW, TranslateAcceleratorW,
-    TranslateMessage, WINDOWPOS, WNDCLASSW,
+    CreateWindowExW, DefWindowProcW, GetDlgItem, GetDlgItemTextW, RegisterClassW, SendMessageW,
+    SetDlgItemInt, SetDlgItemTextW, WNDCLASSW,
 };
+use windows_sys::Win32::UI::WindowsAndMessaging::{HMENU as RawHMENU};
+use windows_sys::core::PSTR;
 
-use winsafe::co::{self, DLGID, GWLP, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, WA};
+use winsafe::co::{self, DLGID, GWLP, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, WA, WS, WS_EX};
 use winsafe::msg::WndMsg;
 use winsafe::prelude::Handle;
 use winsafe::{
-    GetSystemMetrics as win_get_system_metrics, IdIdcStr, IdIdiStr, IdStr, InitCommonControlsEx,
-    PostQuitMessage, DLGPROC, INITCOMMONCONTROLSEX,
+    AdjustWindowRectEx as ws_AdjustWindowRectEx, COLORREF, DLGPROC, DispatchMessage, GetMessage,
+    GetSystemMetrics as win_get_system_metrics, INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdStr,
+    InitCommonControlsEx, MSG, POINT, PtsRc, RECT, SIZE, WINDOWPOS, PeekMessage,
+    PostQuitMessage, TranslateMessage,
 };
 
 use crate::globals::{
@@ -39,13 +35,13 @@ use crate::grafix::{
     CleanUp, DisplayButton, DisplayScreen, DrawScreen, FInitLocal, FLoadBitmaps, FreeBitmaps,
 };
 use crate::pref::{
-    fUpdateIni, ReadPreferences, WritePreferences, CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON,
-    FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
+    CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH,
+    ReadPreferences, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER, WritePreferences, fUpdateIni,
 };
 use crate::rtns::rgBlk;
 use crate::rtns::{
-    iButtonCur, xBoxMac, xCur, yBoxMac, yCur, DoButton1Up, DoTimer, MakeGuess, PauseGame,
-    Preferences, ResumeGame, StartGame, TrackMouse,
+    DoButton1Up, DoTimer, MakeGuess, PauseGame, Preferences, ResumeGame, StartGame, TrackMouse,
+    iButtonCur, xBoxMac, xCur, yBoxMac, yCur,
 };
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar};
@@ -103,8 +99,6 @@ const IDH_STEXT: u32 = 1004;
 const ID_MSG_BEGIN: u16 = 9;
 const CCH_MSG_MAX: usize = 128;
 
-const NULL_HACCEL: RawHACCEL = 0 as RawHACCEL;
-
 const DX_BLK: i32 = 16;
 const DY_BLK: i32 = 16;
 const DX_LEFT_SPACE: i32 = 12;
@@ -156,8 +150,8 @@ const VK_SHIFT_CODE: u32 = co::VK::SHIFT.raw() as u32;
 const C_BLK_MAX: usize = 27 * 32;
 const BOARD_INDEX_SHIFT: usize = 5;
 const MASK_BOMB: u8 = 0x80;
-const COLOR_BLACK: COLORREF = 0x0000_0000;
-const COLOR_WHITE: COLORREF = 0x00FF_FFFF;
+const COLOR_BLACK: COLORREF = COLORREF::from_rgb(0, 0, 0);
+const COLOR_WHITE: COLORREF = COLORREF::from_rgb(0xFF, 0xFF, 0xFF);
 
 const HELP_FILE: &str = "winmine.hlp";
 
@@ -228,15 +222,7 @@ fn show_dialog(template_id: u16, proc: DialogProc) {
     }
 }
 
-fn bool_to_bool(flag: bool) -> BOOL {
-    if flag {
-        TRUE
-    } else {
-        FALSE
-    }
-}
-
-fn class_name_ptr() -> PCWSTR {
+fn class_name_ptr() -> *const u16 {
     unsafe { addr_of!(szClass[0]) }
 }
 
@@ -270,9 +256,9 @@ fn register_main_window_class() -> bool {
             .map(|mut cursor| cursor.leak().ptr() as _)
             .unwrap_or(null_mut());
         wc.hbrBackground = winsafe::HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)
-            .map(|brush| brush.ptr() as HBRUSH)
+            .map(|brush| brush.ptr() as _)
             .unwrap_or(null_mut());
-        wc.lpszMenuName = 0 as PCWSTR;
+        wc.lpszMenuName = core::ptr::null();
         wc.lpszClassName = class_name_ptr();
         RegisterClassW(&wc) != 0
     }
@@ -305,10 +291,10 @@ pub fn run_winmine(
             .LoadMenu(IdStr::Id(ID_MENU))
             .map(|mut menu| menu.leak())
             .unwrap_or(winsafe::HMENU::NULL);
-        let h_accel: RawHACCEL = hinst_wrap
+        let h_accel = hinst_wrap
             .LoadAccelerators(IdStr::Id(ID_MENU_ACCEL))
-            .map(|mut accel| accel.leak().ptr() as _)
-            .unwrap_or(NULL_HACCEL);
+            .map(|mut accel| accel.leak())
+            .unwrap_or(winsafe::HACCEL::NULL);
 
         ReadPreferences();
 
@@ -355,18 +341,28 @@ pub fn run_winmine(
 
         bInitMinimized.store(false, Ordering::Relaxed);
 
-        let mut msg: MSG = mem::zeroed();
+        let mut msg = MSG::default();
         loop {
-            let result = GetMessageW(&mut msg, NULL_HWND_RAW, 0, 0);
-            if result <= 0 {
+            let has_msg = match GetMessage(&mut msg, None, 0, 0) {
+                Ok(flag) => flag,
+                Err(_) => break,
+            };
+            if !has_msg {
                 break;
             }
 
-            if h_accel.is_null()
-                || TranslateAcceleratorW(hwndMain.ptr() as RawHWND, h_accel, &msg) == 0
-            {
+            let handled = h_accel
+                .as_opt()
+                .and_then(|accel| {
+                    hwndMain
+                        .as_opt()
+                        .and_then(|hwnd| hwnd.TranslateAccelerator(accel, &mut msg).ok())
+                })
+                .is_some();
+
+            if !handled {
                 TranslateMessage(&msg);
-                DispatchMessageW(&msg);
+                let _ = DispatchMessage(&msg);
             }
         }
 
@@ -417,7 +413,9 @@ fn set_block_flag(active: bool) {
 }
 
 fn begin_primary_button_drag(h_wnd: RawHWND) {
-    unsafe { SetCapture(h_wnd); }
+    unsafe {
+        SetCapture(h_wnd);
+    }
     fButton1Down.store(true, Ordering::Relaxed);
     xCur.store(-1, Ordering::Relaxed);
     yCur.store(-1, Ordering::Relaxed);
@@ -426,7 +424,9 @@ fn begin_primary_button_drag(h_wnd: RawHWND) {
 
 fn finish_primary_button_drag() {
     fButton1Down.store(false, Ordering::Relaxed);
-    unsafe { ReleaseCapture(); }
+    unsafe {
+        ReleaseCapture();
+    }
     if status_play() {
         DoButton1Up();
     } else {
@@ -449,11 +449,7 @@ fn handle_mouse_move(w_param: WPARAM, l_param: LPARAM) {
     }
 }
 
-fn handle_rbutton_down(
-    h_wnd: RawHWND,
-    w_param: WPARAM,
-    l_param: LPARAM,
-) -> Option<LRESULT> {
+fn handle_rbutton_down(h_wnd: RawHWND, w_param: WPARAM, l_param: LPARAM) -> Option<LRESULT> {
     unsafe {
         if handle_ignore_click() {
             return Some(0);
@@ -709,14 +705,16 @@ fn handle_xyzzys_mouse(w_param: WPARAM, l_param: LPARAM) {
         let y_pos = y_box_from_ypos(hiword(l_param));
         xCur.store(x_pos, Ordering::Relaxed);
         yCur.store(y_pos, Ordering::Relaxed);
-        if in_range(x_pos, y_pos) && let Ok(hdc) = winsafe::HWND::NULL.GetDC() {
+        if in_range(x_pos, y_pos)
+            && let Ok(hdc) = winsafe::HWND::NULL.GetDC()
+        {
             let color = if cell_is_bomb(x_pos, y_pos) {
                 COLOR_BLACK
             } else {
                 COLOR_WHITE
             };
             unsafe {
-                SetPixel(hdc.ptr(), 0, 0, color);
+                SetPixel(hdc.ptr(), 0, 0, color.raw());
             }
         }
     }
@@ -789,13 +787,10 @@ pub unsafe extern "system" fn MainWndProc(
             co::WM::ENTERMENULOOP => fLocalPause.store(true, Ordering::Relaxed),
             co::WM::EXITMENULOOP => fLocalPause.store(false, Ordering::Relaxed),
             co::WM::PAINT => {
-                let mut paint: PAINTSTRUCT = mem::zeroed();
-                let hdc = BeginPaint(h_wnd, &mut paint);
-                if !hdc.is_null() {
-                    let hdc_handle = winsafe::HDC::from_ptr(hdc as _);
-                    DrawScreen(&hdc_handle);
+                let hwnd_wrap = winsafe::HWND::from_ptr(h_wnd as _);
+                if let Ok(paint_guard) = hwnd_wrap.BeginPaint() {
+                    DrawScreen(&paint_guard);
                 }
-                EndPaint(h_wnd, &paint);
                 return 0;
             }
             _ => {}
@@ -846,7 +841,7 @@ pub fn DoDisplayBest() {
 pub fn FLocalButton(l_param: LPARAM) -> bool {
     unsafe {
         // Handle clicks on the smiley face button while providing the pressed animation.
-        let mut msg: MSG = core::mem::zeroed();
+        let mut msg = MSG::default();
 
         msg.pt.x = loword(l_param);
         msg.pt.y = hiword(l_param);
@@ -861,32 +856,49 @@ pub fn FLocalButton(l_param: LPARAM) -> bool {
         rc.right = rc.left + DX_BUTTON;
         rc.bottom = rc.top + DY_BUTTON;
 
-        if PtInRect(&rc, msg.pt) == 0 {
+        let mut rc_sys = windows_sys::Win32::Foundation::RECT {
+            left: rc.left,
+            top: rc.top,
+            right: rc.right,
+            bottom: rc.bottom,
+        };
+        let mut pt_sys = windows_sys::Win32::Foundation::POINT {
+            x: msg.pt.x,
+            y: msg.pt.y,
+        };
+        if PtInRect(&rc_sys, pt_sys) == 0 {
             return false;
         }
 
         SetCapture(hwndMain.ptr() as RawHWND);
         DisplayButton(I_BUTTON_DOWN);
-        MapWindowPoints(
-            hwndMain.ptr() as RawHWND,
-            NULL_HWND_RAW,
-            &mut rc as *mut RECT as *mut POINT,
-            2,
-        );
+        if let Some(hwnd) = hwndMain.as_opt() {
+            let _ = hwnd.MapWindowPoints(&winsafe::HWND::NULL, PtsRc::Rc(&mut rc));
+        }
 
         let mut pressed = true;
+        let hwnd_opt = hwndMain.as_opt();
         loop {
-            if PeekMessageW(
+            if PeekMessage(
                 &mut msg,
-                hwndMain.ptr() as RawHWND,
+                hwnd_opt,
                 co::WM::MOUSEFIRST.raw(),
                 co::WM::MOUSELAST.raw(),
-                co::PM::REMOVE.raw(),
-            ) != 0
-            {
-                match co::WM::from_raw(msg.message) {
+                co::PM::REMOVE,
+            ) {
+                rc_sys = windows_sys::Win32::Foundation::RECT {
+                    left: rc.left,
+                    top: rc.top,
+                    right: rc.right,
+                    bottom: rc.bottom,
+                };
+                pt_sys = windows_sys::Win32::Foundation::POINT {
+                    x: msg.pt.x,
+                    y: msg.pt.y,
+                };
+                match msg.message {
                     co::WM::LBUTTONUP => {
-                        if pressed && PtInRect(&rc, msg.pt) != 0 {
+                        if pressed && PtInRect(&rc_sys, pt_sys) != 0 {
                             iButtonCur.store(I_BUTTON_HAPPY, Ordering::Relaxed);
                             DisplayButton(I_BUTTON_HAPPY);
                             StartGame();
@@ -895,7 +907,7 @@ pub fn FLocalButton(l_param: LPARAM) -> bool {
                         return true;
                     }
                     co::WM::MOUSEMOVE => {
-                        if PtInRect(&rc, msg.pt) != 0 {
+                        if PtInRect(&rc_sys, pt_sys) != 0 {
                             if !pressed {
                                 pressed = true;
                                 DisplayButton(I_BUTTON_DOWN);
@@ -1060,59 +1072,40 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         dyWindow.store(dy_window, Ordering::Relaxed);
 
         let menu_visible = menu_is_visible();
-        let mut rect_game = RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
-        let mut rect_help = RECT {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
         let mut menu_extra = 0;
         let mut diff_level = false;
-        if menu_visible
-            && GetMenuItemRect(
-                hwndMain.ptr() as RawHWND,
-                hMenu.ptr() as RawHMENU,
-                0,
-                &mut rect_game,
-            ) != 0
-            && GetMenuItemRect(
-                hwndMain.ptr() as RawHWND,
-                hMenu.ptr() as RawHMENU,
-                1,
-                &mut rect_help,
-            ) != 0
-            && rect_game.top != rect_help.top
-        {
-            diff_level = true;
-            menu_extra = dypMenu.load(Ordering::Relaxed);
+        if menu_visible {
+            if let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt()) {
+                if let (Ok(game_rect), Ok(help_rect)) =
+                    (hwnd.GetMenuItemRect(&menu, 0), hwnd.GetMenuItemRect(&menu, 1))
+                {
+                    if game_rect.top != help_rect.top {
+                        diff_level = true;
+                        menu_extra = dypMenu.load(Ordering::Relaxed);
+                    }
+                }
+            }
         }
 
-        let mut desired = RECT {
+        let desired = RECT {
             left: 0,
             top: 0,
             right: dx_window,
             bottom: dy_window,
         };
-        let raw_hwnd = hwndMain.ptr() as RawHWND;
-        let dw_style = GetWindowLongPtrW(raw_hwnd, GWLP::STYLE.raw()) as u32;
-        let dw_ex_style = GetWindowLongPtrW(raw_hwnd, GWLP::EXSTYLE.raw()) as u32;
+        let hwnd_main = hwndMain.as_opt().unwrap();
+        let dw_style = hwnd_main.GetWindowLongPtr(GWLP::STYLE) as u32;
+        let dw_ex_style = hwnd_main.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
         let mut frame_extra = dxpBorder.load(Ordering::Relaxed);
         let mut dyp_adjust;
-        if AdjustWindowRectEx(
-            &mut desired,
-            dw_style,
-            bool_to_bool(menu_visible) as BOOL,
-            dw_ex_style,
-        ) != 0
-        {
-            let cx_total = desired.right - desired.left;
-            let cy_total = desired.bottom - desired.top;
+        if let Ok(adjusted) = ws_AdjustWindowRectEx(
+            desired,
+            WS::from_raw(dw_style),
+            menu_visible,
+            WS_EX::from_raw(dw_ex_style),
+        ) {
+            let cx_total = adjusted.right - adjusted.left;
+            let cy_total = adjusted.bottom - adjusted.top;
             frame_extra = max(0, cx_total - dx_window);
             dyp_adjust = max(0, cy_total - dy_window);
         } else {
@@ -1141,31 +1134,44 @@ pub fn AdjustWindow(mut f_adjust: i32) {
 
         if !bInitMinimized.load(Ordering::Relaxed) {
             if (f_adjust & F_RESIZE) != 0 {
-                MoveWindow(
-                    raw_hwnd,
-                    Preferences.xWindow,
-                    Preferences.yWindow,
-                    dx_window + frame_extra,
-                    dy_window + dyp_adjust,
-                    TRUE,
+                let _ = hwnd_main.MoveWindow(
+                    POINT {
+                        x: Preferences.xWindow,
+                        y: Preferences.yWindow,
+                    },
+                    SIZE {
+                        cx: dx_window + frame_extra,
+                        cy: dy_window + dyp_adjust,
+                    },
+                    true,
                 );
             }
 
             if diff_level
                 && menu_visible
-                && GetMenuItemRect(raw_hwnd, hMenu.ptr() as RawHMENU, 0, &mut rect_game) != 0
-                && GetMenuItemRect(raw_hwnd, hMenu.ptr() as RawHMENU, 1, &mut rect_help) != 0
-                && rect_game.top == rect_help.top
+                && hMenu.as_opt().is_some()
+                && hMenu
+                    .as_opt()
+                    .and_then(|menu| {
+                        hwnd_main
+                            .GetMenuItemRect(&menu, 0)
+                            .ok()
+                            .zip(hwnd_main.GetMenuItemRect(&menu, 1).ok())
+                    })
+                    .is_some_and(|(g, h)| g.top == h.top)
             {
                 dyp_adjust -= dypMenu.load(Ordering::Relaxed);
                 dypAdjust.store(dyp_adjust, Ordering::Relaxed);
-                MoveWindow(
-                    raw_hwnd,
-                    Preferences.xWindow,
-                    Preferences.yWindow,
-                    dx_window + frame_extra,
-                    dy_window + dyp_adjust,
-                    TRUE,
+                let _ = hwnd_main.MoveWindow(
+                    POINT {
+                        x: Preferences.xWindow,
+                        y: Preferences.yWindow,
+                    },
+                    SIZE {
+                        cx: dx_window + frame_extra,
+                        cy: dy_window + dyp_adjust,
+                    },
+                    true,
                 );
             }
 
@@ -1176,7 +1182,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
                     right: dx_window,
                     bottom: dy_window,
                 };
-                InvalidateRect(raw_hwnd, &rect, TRUE);
+                let _ = hwnd_main.InvalidateRect(Some(&rect), true);
             }
         }
     }
@@ -1218,7 +1224,22 @@ fn command_id(w_param: WPARAM) -> u16 {
 fn set_dtext(h_dlg: RawHWND, id: i32, time: i32, name: *const u16) {
     unsafe {
         let mut buffer = [0u16; CCH_NAME_MAX];
-        wsprintfW(buffer.as_mut_ptr(), addr_of!(szTime) as *const u16, time);
+        let fmt_len = szTime
+            .iter()
+            .position(|&ch| ch == 0)
+            .unwrap_or(szTime.len());
+        let fmt = String::from_utf16_lossy(&szTime[..fmt_len]);
+        let text = fmt.replace("%d", &time.to_string());
+
+        for (i, code_unit) in text
+            .encode_utf16()
+            .chain(Some(0))
+            .take(buffer.len())
+            .enumerate()
+        {
+            *buffer.as_mut_ptr().add(i) = code_unit;
+        }
+
         SetDlgItemTextW(h_dlg, id, buffer.as_ptr());
         SetDlgItemTextW(h_dlg, id + 1, name);
     }
