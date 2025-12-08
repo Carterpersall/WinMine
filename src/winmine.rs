@@ -1090,7 +1090,9 @@ pub fn AdjustWindow(mut f_adjust: i32) {
             right: dx_window,
             bottom: dy_window,
         };
-        let hwnd_main = hwndMain.as_opt().unwrap();
+        let Some(hwnd_main) = hwndMain.as_opt() else {
+            return;
+        };
         let dw_style = hwnd_main.GetWindowLongPtr(GWLP::STYLE) as u32;
         let dw_ex_style = hwnd_main.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
         let mut frame_extra = dxpBorder.load(Ordering::Relaxed);

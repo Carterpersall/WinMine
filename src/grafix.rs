@@ -1,4 +1,3 @@
-use core::ffi::c_void;
 use core::mem::size_of;
 use core::ptr::{addr_of, addr_of_mut, null};
 use core::sync::atomic::Ordering::Relaxed;
@@ -207,7 +206,7 @@ pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
             0,
             0,
             DY_LED as u32,
-            led_bits(i_led),
+            led_bits(i_led) as *const _,
             dib_info(LP_DIB_LED) as *const _ as *const gdi_sys::BITMAPINFO,
             DIB::RGB_COLORS.raw(),
         );
@@ -310,7 +309,7 @@ pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
             0,
             0,
             DY_BUTTON as u32,
-            button_bits(i_button),
+            button_bits(i_button) as *const _,
             dib_info(LP_DIB_BUTTON) as *const _ as *const gdi_sys::BITMAPINFO,
             DIB::RGB_COLORS.raw(),
         );
@@ -542,7 +541,7 @@ fn load_bitmaps_impl() -> bool {
                     0,
                     0,
                     DY_BLK as u32,
-                    block_bits(i as i32),
+                    block_bits(i as i32) as *const _,
                     dib_info(LP_DIB_BLKS) as *const _ as *const gdi_sys::BITMAPINFO,
                     DIB::RGB_COLORS.raw(),
                 );
@@ -582,25 +581,25 @@ fn cb_bitmap(x: i32, y: i32) -> i32 {
     y * stride
 }
 
-fn block_bits(i: i32) -> *const c_void {
+fn block_bits(i: i32) -> *const u8 {
     unsafe {
         let idx = clamp_index(i, I_BLK_MAX);
         // Each offset already points past the BITMAPINFOHEADER to the raw pixel data.
-        LP_DIB_BLKS.add(RG_DIB_OFF[idx] as usize) as *const c_void
+        LP_DIB_BLKS.add(RG_DIB_OFF[idx] as usize)
     }
 }
 
-fn led_bits(i: i32) -> *const c_void {
+fn led_bits(i: i32) -> *const u8 {
     unsafe {
         let idx = clamp_index(i, I_LED_MAX);
-        LP_DIB_LED.add(RG_DIB_LED_OFF[idx] as usize) as *const c_void
+        LP_DIB_LED.add(RG_DIB_LED_OFF[idx] as usize)
     }
 }
 
-fn button_bits(i: i32) -> *const c_void {
+fn button_bits(i: i32) -> *const u8 {
     unsafe {
         let idx = clamp_index(i, I_BUTTON_MAX);
-        LP_DIB_BUTTON.add(RG_DIB_BUTTON_OFF[idx] as usize) as *const c_void
+        LP_DIB_BUTTON.add(RG_DIB_BUTTON_OFF[idx] as usize)
     }
 }
 
