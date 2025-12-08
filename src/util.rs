@@ -121,15 +121,14 @@ pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
         return;
     }
 
-    unsafe {
-        for (i, code_unit) in text
-            .encode_utf16()
-            .chain(Some(0))
-            .take(cch as usize)
-            .enumerate()
-        {
-            *sz.add(i) = code_unit;
-        }
+    if sz.is_null() || cch == 0 {
+        return;
+    }
+
+    let max = cch as usize;
+    let slice = unsafe { core::slice::from_raw_parts_mut(sz, max) };
+    for (i, code_unit) in text.encode_utf16().chain(Some(0)).take(max).enumerate() {
+        slice[i] = code_unit;
     }
 }
 
@@ -171,15 +170,14 @@ pub fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
         _ => default_name,
     };
 
-    unsafe {
-        for (i, code_unit) in value
-            .encode_utf16()
-            .chain(Some(0))
-            .take(CCH_NAME_MAX)
-            .enumerate()
-        {
-            *sz_ret.add(i) = code_unit;
-        }
+    let slice = unsafe { core::slice::from_raw_parts_mut(sz_ret, CCH_NAME_MAX) };
+    for (i, code_unit) in value
+        .encode_utf16()
+        .chain(Some(0))
+        .take(CCH_NAME_MAX)
+        .enumerate()
+    {
+        slice[i] = code_unit;
     }
 }
 

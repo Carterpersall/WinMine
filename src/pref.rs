@@ -267,7 +267,7 @@ pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
 
 pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
     // Stores zero-terminated UTF-16 values such as player names.
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
 
     if handle == w::HKEY::NULL || sz.is_null() {
         return;
@@ -283,7 +283,7 @@ pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
         None => return,
     };
 
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
     let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value));
 }
 
@@ -338,17 +338,15 @@ unsafe fn copy_wide_with_capacity(src: *const u16, dst: *mut u16, capacity: usiz
     }
 
     unsafe {
-        let mut i = 0usize;
-        while i + 1 < capacity {
-            let ch = *src.add(i);
-            *dst.add(i) = ch;
+        let src_slice = core::slice::from_raw_parts(src, capacity);
+        let dst_slice = core::slice::from_raw_parts_mut(dst, capacity);
+        for (i, ch) in src_slice.iter().copied().enumerate() {
+            dst_slice[i] = ch;
             if ch == 0 {
                 return;
             }
-            i += 1;
         }
-
-        *dst.add(capacity - 1) = 0;
+        dst_slice[capacity.saturating_sub(1)] = 0;
     }
 }
 
