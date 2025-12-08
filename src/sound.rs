@@ -3,9 +3,8 @@ use core::ptr::{null, null_mut};
 
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 
-use crate::globals::hInst;
+use crate::globals::global_state;
 use crate::pref::{FSOUND_OFF, FSOUND_ON};
-use crate::rtns::Preferences;
 
 // Tune identifiers passed in from the legacy C code.
 const TUNE_TICK: i32 = 1;
@@ -28,15 +27,13 @@ pub fn FInitTunes() -> i32 {
 }
 
 pub fn EndTunes() {
-    // When exiting, purge the playback queue if the feature is active.
-    if sound_enabled() {
-        let _ = stop_all_sounds();
-    }
+    // Purge the playback queue; callers decide whether sound is enabled.
+    let _ = stop_all_sounds();
 }
 
-pub fn PlayTune(tune: i32) {
-    // Honor the user's preference before attempting to play any sound.
-    if !sound_enabled() {
+pub fn PlayTune(sound_on: bool, tune: i32) {
+    // Honor the caller-provided preference before attempting to play any sound.
+    if !sound_on {
         return;
     }
 
@@ -49,10 +46,6 @@ pub fn PlayTune(tune: i32) {
     }
 }
 
-fn sound_enabled() -> bool {
-    unsafe { Preferences.fSound == FSOUND_ON }
-}
-
 fn stop_all_sounds() -> bool {
     // Passing NULL tells PlaySound to purge the current queue.
     unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
@@ -60,10 +53,16 @@ fn stop_all_sounds() -> bool {
 
 fn play_resource_sound(resource_id: u16) {
     let resource_ptr = make_int_resource(resource_id);
-    let instance = unsafe { hInst.ptr() };
+    let instance_ptr = {
+        let guard = match global_state().h_inst.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard.ptr()
+    };
     // Playback uses the async flag so the UI thread is never blocked.
     unsafe {
-        PlaySoundW(resource_ptr, instance, SND_RESOURCE | SND_ASYNC);
+        PlaySoundW(resource_ptr, instance_ptr, SND_RESOURCE | SND_ASYNC);
     }
 }
 

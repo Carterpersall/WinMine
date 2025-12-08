@@ -1,11 +1,10 @@
 // Registry-backed preference helpers mirrored from pref.c.
-use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use winsafe::{self as w, RegistryValue, co, guard::RegCloseKeyGuard, prelude::*};
+use winsafe::{self as w, RegistryValue, co, guard::RegCloseKeyGuard};
 
-use crate::globals::szDefaultName;
-use crate::rtns::{Preferences, xBoxMac, yBoxMac};
+use crate::globals::global_state;
+use crate::rtns::{preferences_mutex, xBoxMac, yBoxMac};
 use crate::sound::FInitTunes;
 
 pub const CCH_NAME_MAX: usize = 32;
@@ -71,13 +70,15 @@ pub struct Pref {
 // Flag consulted by the C UI layer to decide when to persist settings.
 pub static fUpdateIni: AtomicBool = AtomicBool::new(false);
 
-pub static mut g_hReg: w::HKEY = w::HKEY::NULL;
-
-pub unsafe fn ReadInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
+pub unsafe fn ReadInt(
+    handle: &w::HKEY,
+    isz_pref: i32,
+    val_default: i32,
+    val_min: i32,
+    val_max: i32,
+) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
-    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
-
-    if handle == w::HKEY::NULL {
+    if handle.ptr().is_null() {
         return val_default;
     }
 
@@ -94,15 +95,13 @@ pub unsafe fn ReadInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i3
     clamp_i32(value, val_min, val_max)
 }
 
-pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
+pub unsafe fn ReadSz(handle: &w::HKEY, isz_pref: i32, sz_ret: *mut u16) {
     // Pull a high-score name (or similar) from the hive, falling back to the default string.
     if sz_ret.is_null() {
         return;
     }
 
-    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
-
-    if handle == w::HKEY::NULL {
+    if handle.ptr().is_null() {
         unsafe {
             copy_default_name(sz_ret);
         }
@@ -140,37 +139,39 @@ pub unsafe fn ReadPreferences() {
         Err(_) => return,
     };
 
-    unsafe {
-        g_hReg = key_guard.leak();
-    }
+    let handle = key_guard.leak();
 
-    let prefs = addr_of_mut!(Preferences);
+    let mut prefs = match preferences_mutex().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
     unsafe {
-        let height = ReadInt(2, MINHEIGHT, DEFHEIGHT, 25);
+        let height = ReadInt(&handle, 2, MINHEIGHT, DEFHEIGHT, 25);
         yBoxMac.store(height, Ordering::Relaxed);
-        (*prefs).Height = height;
+        prefs.Height = height;
 
-        let width = ReadInt(3, MINWIDTH, DEFWIDTH, 30);
+        let width = ReadInt(&handle, 3, MINWIDTH, DEFWIDTH, 30);
         xBoxMac.store(width, Ordering::Relaxed);
-        (*prefs).Width = width;
+        prefs.Width = width;
 
-        (*prefs).wGameType = ReadInt(0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;
-        (*prefs).Mines = ReadInt(1, 10, 10, 999);
-        (*prefs).xWindow = ReadInt(4, 80, 0, 1024);
-        (*prefs).yWindow = ReadInt(5, 80, 0, 1024);
+        prefs.wGameType = ReadInt(&handle, 0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;
+        prefs.Mines = ReadInt(&handle, 1, 10, 10, 999);
+        prefs.xWindow = ReadInt(&handle, 4, 80, 0, 1024);
+        prefs.yWindow = ReadInt(&handle, 5, 80, 0, 1024);
 
-        (*prefs).fSound = ReadInt(6, 0, 0, FSOUND_ON);
-        (*prefs).fMark = ReadInt(7, 1, 0, 1) != 0;
-        (*prefs).fTick = ReadInt(9, 0, 0, 1) != 0;
-        (*prefs).fMenu = ReadInt(8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
+        prefs.fSound = ReadInt(&handle, 6, 0, 0, FSOUND_ON);
+        prefs.fMark = ReadInt(&handle, 7, 1, 0, 1) != 0;
+        prefs.fTick = ReadInt(&handle, 9, 0, 0, 1) != 0;
+        prefs.fMenu = ReadInt(&handle, 8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
 
-        (*prefs).rgTime[WGAME_BEGIN as usize] = ReadInt(11, 999, 0, 999);
-        (*prefs).rgTime[WGAME_INTER as usize] = ReadInt(13, 999, 0, 999);
-        (*prefs).rgTime[WGAME_EXPERT as usize] = ReadInt(15, 999, 0, 999);
+        prefs.rgTime[WGAME_BEGIN as usize] = ReadInt(&handle, 11, 999, 0, 999);
+        prefs.rgTime[WGAME_INTER as usize] = ReadInt(&handle, 13, 999, 0, 999);
+        prefs.rgTime[WGAME_EXPERT as usize] = ReadInt(&handle, 15, 999, 0, 999);
 
-        ReadSz(12, addr_of_mut!((*prefs).szBegin[0]));
-        ReadSz(14, addr_of_mut!((*prefs).szInter[0]));
-        ReadSz(16, addr_of_mut!((*prefs).szExpert[0]));
+        ReadSz(&handle, 12, prefs.szBegin.as_mut_ptr());
+        ReadSz(&handle, 14, prefs.szInter.as_mut_ptr());
+        ReadSz(&handle, 16, prefs.szExpert.as_mut_ptr());
     }
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
@@ -185,19 +186,15 @@ pub unsafe fn ReadPreferences() {
         }
         Err(_) => 0,
     };
-    unsafe {
-        (*prefs).fColor = ReadInt(10, default_color, 0, 1) != 0;
-    }
+    prefs.fColor = unsafe { ReadInt(&handle, 10, default_color, 0, 1) } != 0;
 
     // If sound is enabled, verify that the system can actually play the resources.
-    unsafe {
-        if (*prefs).fSound == FSOUND_ON {
-            (*prefs).fSound = FInitTunes();
-        }
+    if prefs.fSound == FSOUND_ON {
+        prefs.fSound = FInitTunes();
     }
 
     unsafe {
-        close_registry_handle();
+        let _ = RegCloseKeyGuard::new(handle);
     }
 }
 
@@ -213,66 +210,57 @@ pub unsafe fn WritePreferences() {
         Ok(result) => result,
         Err(_) => return,
     };
+    let handle = key_guard.leak();
 
-    unsafe {
-        g_hReg = key_guard.leak();
-    }
-
-    let prefs = addr_of!(Preferences);
+    let prefs = match preferences_mutex().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
 
     // Persist the difficulty, board dimensions, and flags exactly as the original did.
     unsafe {
-        WriteInt(0, (*prefs).wGameType as i32);
-        WriteInt(2, (*prefs).Height);
-        WriteInt(3, (*prefs).Width);
-        WriteInt(1, (*prefs).Mines);
-        WriteInt(7, bool_to_i32((*prefs).fMark));
-        WriteInt(17, 1);
+        WriteInt(&handle, 0, prefs.wGameType as i32);
+        WriteInt(&handle, 2, prefs.Height);
+        WriteInt(&handle, 3, prefs.Width);
+        WriteInt(&handle, 1, prefs.Mines);
+        WriteInt(&handle, 7, bool_to_i32(prefs.fMark));
+        WriteInt(&handle, 17, 1);
 
-        WriteInt(10, bool_to_i32((*prefs).fColor));
-        WriteInt(6, (*prefs).fSound);
-        WriteInt(4, (*prefs).xWindow);
-        WriteInt(5, (*prefs).yWindow);
+        WriteInt(&handle, 10, bool_to_i32(prefs.fColor));
+        WriteInt(&handle, 6, prefs.fSound);
+        WriteInt(&handle, 4, prefs.xWindow);
+        WriteInt(&handle, 5, prefs.yWindow);
 
-        WriteInt(11, (*prefs).rgTime[WGAME_BEGIN as usize]);
-        WriteInt(13, (*prefs).rgTime[WGAME_INTER as usize]);
-        WriteInt(15, (*prefs).rgTime[WGAME_EXPERT as usize]);
+        WriteInt(&handle, 11, prefs.rgTime[WGAME_BEGIN as usize]);
+        WriteInt(&handle, 13, prefs.rgTime[WGAME_INTER as usize]);
+        WriteInt(&handle, 15, prefs.rgTime[WGAME_EXPERT as usize]);
 
-        WriteSz(12, addr_of!((*prefs).szBegin[0]));
-        WriteSz(14, addr_of!((*prefs).szInter[0]));
-        WriteSz(16, addr_of!((*prefs).szExpert[0]));
-    }
+        WriteSz(&handle, 12, prefs.szBegin.as_ptr());
+        WriteSz(&handle, 14, prefs.szInter.as_ptr());
+        WriteSz(&handle, 16, prefs.szExpert.as_ptr());
 
-    unsafe {
-        close_registry_handle();
+        let _ = RegCloseKeyGuard::new(handle);
     }
 }
 
-pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
+pub unsafe fn WriteInt(handle: &w::HKEY, isz_pref: i32, val: i32) {
     // Simple DWORD setter used by both the registry migration and the dialog code.
-    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
-
-    if handle == w::HKEY::NULL {
+    if handle.ptr().is_null() {
         return;
     }
-
     let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => return,
     };
 
-    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
     let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Dword(val as u32));
 }
 
-pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
+pub unsafe fn WriteSz(handle: &w::HKEY, isz_pref: i32, sz: *const u16) {
     // Stores zero-terminated UTF-16 values such as player names.
-    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
-
-    if handle == w::HKEY::NULL || sz.is_null() {
+    if handle.ptr().is_null() || sz.is_null() {
         return;
     }
-
     let key_name = match pref_name_string(isz_pref) {
         Some(name) => name,
         None => return,
@@ -283,7 +271,6 @@ pub unsafe fn WriteSz(isz_pref: i32, sz: *const u16) {
         None => return,
     };
 
-    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
     let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value));
 }
 
@@ -304,10 +291,6 @@ fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
 
 fn bool_to_i32(flag: bool) -> i32 {
     if flag { 1 } else { 0 }
-}
-
-unsafe fn default_name_ptr() -> *const u16 {
-    unsafe { addr_of!(szDefaultName[0]) }
 }
 
 unsafe fn copy_str_to_wide(src: &str, dst: *mut u16, capacity: usize) {
@@ -365,17 +348,18 @@ unsafe fn wide_len(mut ptr: *const u16) -> usize {
 }
 
 unsafe fn copy_default_name(dst: *mut u16) {
-    unsafe {
-        copy_wide_with_capacity(default_name_ptr(), dst, CCH_NAME_MAX);
+    if dst.is_null() {
+        return;
     }
-}
 
-pub(crate) unsafe fn close_registry_handle() {
-    if unsafe { g_hReg != w::HKEY::NULL } {
-        let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
-        unsafe {
-            g_hReg = w::HKEY::NULL;
-            let _ = RegCloseKeyGuard::new(handle);
-        }
+    let state = global_state();
+    let guard = match state.sz_default_name.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let src = guard.as_ptr();
+    unsafe {
+        copy_wide_with_capacity(src, dst, CCH_NAME_MAX);
     }
 }

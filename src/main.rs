@@ -2,7 +2,6 @@
 #![allow(non_camel_case_types)]
 #![allow(clippy::missing_safety_doc)]
 #![allow(non_upper_case_globals)]
-#![allow(static_mut_refs)]
 
 mod globals;
 mod grafix;

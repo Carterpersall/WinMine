@@ -1,24 +1,19 @@
-use core::ptr::{addr_of, addr_of_mut};
-
 use std::sync::atomic::{AtomicU32, Ordering};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
+use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, guard::RegCloseKeyGuard, prelude::*};
 
 use crate::globals::{
-    dxpBorder, dypBorder, dypCaption, dypMenu, hInst, hMenu, hwndMain, szClass, szDefaultName,
-    szTime,
+    dxpBorder, dypBorder, dypCaption, dypMenu, global_state,
 };
 use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
     MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
-use crate::pref::{
-    ReadInt, SZ_WINMINE_REG_STR, WritePreferences, close_registry_handle, g_hReg, pref_key_literal,
-};
-use crate::rtns::Preferences;
+use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
+use crate::rtns::preferences_mutex;
 use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, FixMenus};
 
@@ -84,7 +79,12 @@ fn next_rand() -> i32 {
 
 #[inline]
 fn class_ptr() -> *const u16 {
-    unsafe { addr_of!(szClass[0]) }
+    let state = global_state();
+    let guard = match state.sz_class.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.as_ptr()
 }
 
 fn clamp(value: i32, min: i32, max: i32) -> i32 {
@@ -102,20 +102,32 @@ pub fn Rnd(rnd_max: i32) -> i32 {
 
 pub fn ReportErr(id_err: u16) {
     // Format either a catalog string or the "unknown error" template before showing the dialog.
+    let state = global_state();
+    let inst_guard = match state.h_inst.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
     let msg = if (id_err as u32) < ID_ERR_MAX {
-        unsafe { hInst.LoadString(id_err).unwrap_or_default() }
+        inst_guard.LoadString(id_err).unwrap_or_default()
     } else {
-        let template = unsafe { hInst.LoadString(ID_ERR_UNKNOWN as u16).unwrap_or_default() };
+        let template = inst_guard.LoadString(ID_ERR_UNKNOWN as u16).unwrap_or_default();
         template.replace("%d", &id_err.to_string())
     };
 
-    let title = unsafe { hInst.LoadString(ID_ERR_TITLE as u16).unwrap_or_default() };
+    let title = inst_guard.LoadString(ID_ERR_TITLE as u16).unwrap_or_default();
     let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
 }
 
 pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     // Wrapper around LoadString that raises the original fatal error if the resource is missing.
-    let text = unsafe { hInst.LoadString(id).unwrap_or_default() };
+    let state = global_state();
+    let inst_guard = match state.h_inst.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let text = inst_guard.LoadString(id).unwrap_or_default();
     if text.is_empty() {
         ReportErr(1001);
         return;
@@ -161,9 +173,25 @@ pub fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
         None => return,
     };
 
-    let section = utf16_buffer_to_string(unsafe { &szClass });
+    let state = global_state();
+    let class_buf = {
+        let guard = match state.sz_class.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard
+    };
+    let default_buf = {
+        let guard = match state.sz_default_name.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard
+    };
+
+    let section = utf16_buffer_to_string(&class_buf);
     let key_text = key.to_string();
-    let default_name = utf16_buffer_to_string(unsafe { &szDefaultName });
+    let default_name = utf16_buffer_to_string(&default_buf);
 
     let value = match w::GetPrivateProfileString(&section, &key_text, SZ_INI_FILE) {
         Ok(Some(text)) => text,
@@ -186,22 +214,15 @@ pub fn InitConst() {
     let ticks = (w::GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
 
-    unsafe {
-        LoadSz(
-            ID_GAMENAME as u16,
-            addr_of_mut!(szClass[0]),
-            CCH_NAME_MAX as u32,
-        );
-        LoadSz(
-            ID_MSG_SEC as u16,
-            addr_of_mut!(szTime[0]),
-            CCH_NAME_MAX as u32,
-        );
-        LoadSz(
-            ID_NAME_DEFAULT as u16,
-            addr_of_mut!(szDefaultName[0]),
-            CCH_NAME_MAX as u32,
-        );
+    let state = global_state();
+    if let Ok(mut class_buf) = state.sz_class.lock() {
+        LoadSz(ID_GAMENAME as u16, class_buf.as_mut_ptr(), CCH_NAME_MAX as u32);
+    }
+    if let Ok(mut time_buf) = state.sz_time.lock() {
+        LoadSz(ID_MSG_SEC as u16, time_buf.as_mut_ptr(), CCH_NAME_MAX as u32);
+    }
+    if let Ok(mut default_buf) = state.sz_default_name.lock() {
+        LoadSz(ID_NAME_DEFAULT as u16, default_buf.as_mut_ptr(), CCH_NAME_MAX as u32);
     }
 
     dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
@@ -218,10 +239,10 @@ pub fn InitConst() {
         co::KEY::READ,
         None,
     ) {
+        let handle = key_guard.leak();
         unsafe {
-            g_hReg = key_guard.leak();
-            already_played = ReadInt(ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1) != 0;
-            close_registry_handle();
+            already_played = ReadInt(&handle, ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1) != 0;
+            let _ = RegCloseKeyGuard::new(handle);
         }
     }
 
@@ -229,39 +250,40 @@ pub fn InitConst() {
         return;
     }
 
-    unsafe {
-        let prefs = &mut Preferences;
+    let mut prefs = match preferences_mutex().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
 
-        prefs.Height = ReadIniInt(ISZ_PREF_HEIGHT as i32, MINHEIGHT, DEFHEIGHT, 25);
-        prefs.Width = ReadIniInt(ISZ_PREF_WIDTH as i32, MINWIDTH, DEFWIDTH, 30);
-        prefs.wGameType = ReadIniInt(
-            ISZ_PREF_GAME as i32,
-            WGAME_BEGIN,
-            WGAME_BEGIN,
-            WGAME_EXPERT + 1,
-        ) as u16;
-        prefs.Mines = ReadIniInt(ISZ_PREF_MINES as i32, 10, 10, 999);
-        prefs.xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
-        prefs.yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
+    prefs.Height = ReadIniInt(ISZ_PREF_HEIGHT as i32, MINHEIGHT, DEFHEIGHT, 25);
+    prefs.Width = ReadIniInt(ISZ_PREF_WIDTH as i32, MINWIDTH, DEFWIDTH, 30);
+    prefs.wGameType = ReadIniInt(
+        ISZ_PREF_GAME as i32,
+        WGAME_BEGIN,
+        WGAME_BEGIN,
+        WGAME_EXPERT + 1,
+    ) as u16;
+    prefs.Mines = ReadIniInt(ISZ_PREF_MINES as i32, 10, 10, 999);
+    prefs.xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
+    prefs.yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
 
-        prefs.fSound = ReadIniInt(ISZ_PREF_SOUND as i32, 0, 0, FSOUND_ON);
-        prefs.fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
-        prefs.fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
-        prefs.fMenu = ReadIniInt(
-            ISZ_PREF_MENU as i32,
-            FMENU_ALWAYS_ON,
-            FMENU_ALWAYS_ON,
-            FMENU_ON,
-        );
+    prefs.fSound = ReadIniInt(ISZ_PREF_SOUND as i32, 0, 0, FSOUND_ON);
+    prefs.fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
+    prefs.fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
+    prefs.fMenu = ReadIniInt(
+        ISZ_PREF_MENU as i32,
+        FMENU_ALWAYS_ON,
+        FMENU_ALWAYS_ON,
+        FMENU_ON,
+    );
 
-        prefs.rgTime[WGAME_BEGIN as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
-        prefs.rgTime[WGAME_INTER as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
-        prefs.rgTime[WGAME_EXPERT as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
+    prefs.rgTime[WGAME_BEGIN as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
+    prefs.rgTime[WGAME_INTER as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
+    prefs.rgTime[WGAME_EXPERT as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
 
-        ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, prefs.szBegin.as_mut_ptr());
-        ReadIniSz(ISZ_PREF_INTER_NAME as i32, prefs.szInter.as_mut_ptr());
-        ReadIniSz(ISZ_PREF_EXPERT_NAME as i32, prefs.szExpert.as_mut_ptr());
-    }
+    ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, prefs.szBegin.as_mut_ptr());
+    ReadIniSz(ISZ_PREF_INTER_NAME as i32, prefs.szInter.as_mut_ptr());
+    ReadIniSz(ISZ_PREF_EXPERT_NAME as i32, prefs.szExpert.as_mut_ptr());
 
     let desktop = w::HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
@@ -274,8 +296,12 @@ pub fn InitConst() {
         }
         Err(_) => 0,
     };
-    unsafe {
-        let prefs = &mut Preferences;
+    {
+        let mut prefs = match preferences_mutex().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
         prefs.fColor = bool_from_int(ReadIniInt(ISZ_PREF_COLOR as i32, default_color, 0, 1));
 
         if prefs.fSound == FSOUND_ON {
@@ -290,31 +316,54 @@ pub fn InitConst() {
 
 pub fn CheckEm(idm: u16, f_check: bool) {
     // Maintain the old menu checkmark toggles (e.g. question marks, sound).
-    if let Some(menu) = unsafe { hMenu.as_opt() } {
+    let state = global_state();
+    let menu_guard = match state.h_menu.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if let Some(menu) = menu_guard.as_opt() {
         let _ = menu.CheckMenuItem(IdPos::Id(idm), f_check);
     }
 }
 
 pub fn SetMenuBar(f_active: i32) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
-    let (menu_handle, menu_on) = unsafe {
-        Preferences.fMenu = f_active;
-        FixMenus();
-        let menu_on = (Preferences.fMenu & FMENU_FLAG_OFF) == 0;
-        let handle = if menu_on {
-            hMenu.as_opt().unwrap_or(&w::HMENU::NULL)
-        } else {
-            &w::HMENU::NULL
+    let (menu_on, menu_checks);
+    {
+        let mut prefs = match preferences_mutex().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        (handle, menu_on)
+        prefs.fMenu = f_active;
+        menu_on = (prefs.fMenu & FMENU_FLAG_OFF) == 0;
+        menu_checks = (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound);
+    }
+
+    FixMenus(menu_checks.0, menu_checks.1, menu_checks.2, menu_checks.3);
+
+    let state = global_state();
+    let (menu_handle, hwnd_main) = {
+        let menu_handle = {
+            let guard = match state.h_menu.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            unsafe { w::HMENU::from_ptr(guard.ptr()) }
+        };
+        let hwnd_main = {
+            let guard = match state.hwnd_main.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            unsafe { w::HWND::from_ptr(guard.ptr()) }
+        };
+        (menu_handle, hwnd_main)
     };
 
-    if let Some(hwnd) = unsafe { hwndMain.as_opt() } {
-        let menu_arg = if menu_on {
-            menu_handle
-        } else {
-            &w::HMENU::NULL
-        };
+    if let Some(hwnd) = hwnd_main.as_opt() {
+        let null_menu = w::HMENU::NULL;
+        let menu_arg = if menu_on { &menu_handle } else { &null_menu };
         let _ = hwnd.SetMenu(menu_arg);
         AdjustWindow(F_RESIZE);
     }
@@ -322,7 +371,15 @@ pub fn SetMenuBar(f_active: i32) {
 
 pub fn DoAbout() {
     // Show the stock About box with the localized title and credit strings.
-    let hwnd = match unsafe { hwndMain.as_opt() } {
+    let hwnd_guard = {
+        let state = global_state();
+        match state.hwnd_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    };
+
+    let hwnd = match hwnd_guard.as_opt() {
         Some(hwnd) => hwnd,
         None => return,
     };
@@ -343,7 +400,11 @@ pub fn DoAbout() {
 
     let title = utf16_buffer_to_string(&sz_version);
     let credit = utf16_buffer_to_string(&sz_credit);
-    let icon_guard = unsafe { hInst.LoadIcon(w::IdIdiStr::Id(ID_ICON_MAIN)) }.ok();
+    let inst_guard = match global_state().h_inst.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let icon_guard = inst_guard.LoadIcon(w::IdIdiStr::Id(ID_ICON_MAIN)).ok();
     let icon = icon_guard.as_deref();
 
     let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon);
@@ -352,9 +413,13 @@ pub fn DoAbout() {
 pub fn DoHelp(w_command: u16, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
+    let inst_guard = match global_state().h_inst.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
 
     if (w_command as u32) != HELPW::HELPONHELP.raw() {
-        let exe_path = unsafe { hInst.GetModuleFileName() }.unwrap_or_default();
+        let exe_path = inst_guard.GetModuleFileName().unwrap_or_default();
         let mut bytes = exe_path.into_bytes();
         if bytes.len() + 1 > CCH_MAX_PATHNAME {
             bytes.truncate(CCH_MAX_PATHNAME - 1);

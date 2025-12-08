@@ -1,11 +1,12 @@
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use winsafe::prelude::*;
 
-use crate::globals::{fBlock, fStatus, hwndMain};
+use crate::globals::{fBlock, fStatus, global_state};
 use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
-use crate::pref::{CCH_NAME_MAX, Pref};
+use crate::pref::{CCH_NAME_MAX, Pref, FSOUND_ON};
 use crate::sound::{EndTunes, PlayTune};
 use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
@@ -49,7 +50,7 @@ const F_DEMO: i32 = 0x10;
 const F_RESIZE: i32 = 0x02;
 const F_DISPLAY: i32 = 0x04;
 
-pub static mut Preferences: Pref = Pref {
+const PREFERENCES_INIT: Pref = Pref {
     wGameType: 0,
     Mines: 0,
     Height: 0,
@@ -67,6 +68,12 @@ pub static mut Preferences: Pref = Pref {
     szExpert: [0; CCH_NAME_MAX],
 };
 
+static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
+
+pub fn preferences_mutex() -> &'static Mutex<Pref> {
+    PREFERENCES.get_or_init(|| Mutex::new(PREFERENCES_INIT))
+}
+
 pub static xBoxMac: AtomicI32 = AtomicI32::new(0);
 
 pub static yBoxMac: AtomicI32 = AtomicI32::new(0);
@@ -83,7 +90,13 @@ pub static xCur: AtomicI32 = AtomicI32::new(-1);
 
 pub static yCur: AtomicI32 = AtomicI32::new(-1);
 
-pub static mut rgBlk: [i8; C_BLK_MAX] = [I_BLK_BLANK_UP as i8; C_BLK_MAX];
+const RG_BLK_INIT: [i8; C_BLK_MAX] = [I_BLK_BLANK_UP as i8; C_BLK_MAX];
+
+static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
+
+pub fn board_mutex() -> &'static Mutex<[i8; C_BLK_MAX]> {
+    RG_BLK.get_or_init(|| Mutex::new(RG_BLK_INIT))
+}
 
 static CBOMB_START: AtomicI32 = AtomicI32::new(0);
 static CBOX_VISIT_MAC: AtomicI32 = AtomicI32::new(0);
@@ -124,43 +137,55 @@ fn board_index(x: i32, y: i32) -> Option<usize> {
 }
 
 fn block_value(x: i32, y: i32) -> u8 {
+    let guard = match board_mutex().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     board_index(x, y)
-        .and_then(|idx| unsafe { rgBlk.get(idx).copied() })
+        .and_then(|idx| guard.get(idx).copied())
         .unwrap_or(0) as u8
 }
 
 fn set_block_value(x: i32, y: i32, value: u8) {
     if let Some(idx) = board_index(x, y) {
-        unsafe {
-            let prev = rgBlk[idx] as u8;
-            rgBlk[idx] = ((prev & MASK_FLAGS) | (value & MASK_DATA)) as i8;
-        }
+        let mut guard = match board_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let prev = guard[idx] as u8;
+        guard[idx] = ((prev & MASK_FLAGS) | (value & MASK_DATA)) as i8;
     }
 }
 
 fn set_border(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
-        unsafe {
-            rgBlk[idx] = I_BLK_MAX_SENTINEL as i8;
-        }
+        let mut guard = match board_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        guard[idx] = I_BLK_MAX_SENTINEL as i8;
     }
 }
 
 fn set_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
-        unsafe {
-            let prev = rgBlk[idx] as u8;
-            rgBlk[idx] = (prev | MASK_BOMB) as i8;
-        }
+        let mut guard = match board_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let prev = guard[idx] as u8;
+        guard[idx] = (prev | MASK_BOMB) as i8;
     }
 }
 
 fn clear_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
-        unsafe {
-            let prev = rgBlk[idx] as u8;
-            rgBlk[idx] = (prev & MASK_NOT_BOMB) as i8;
-        }
+        let mut guard = match board_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let prev = guard[idx] as u8;
+        guard[idx] = (prev & MASK_NOT_BOMB) as i8;
     }
 }
 
@@ -223,7 +248,15 @@ fn display_bomb_count() {
 }
 
 fn play_tune(which: i32) {
-    PlayTune(which);
+    let sound_on = {
+        let prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        prefs.fSound == FSOUND_ON
+    };
+
+    PlayTune(sound_on, which);
 }
 
 fn stop_all_audio() {
@@ -251,19 +284,6 @@ fn show_bombs(i_blk: i32) {
     display_grid();
 }
 
-fn count_bombs(x_center: i32, y_center: i32) -> i32 {
-    // Count the bombs surrounding the target square.
-    let mut c_bombs = 0;
-    for y in (y_center - 1)..=(y_center + 1) {
-        for x in (x_center - 1)..=(x_center + 1) {
-            if is_bomb(x, y) {
-                c_bombs += 1;
-            }
-        }
-    }
-    c_bombs
-}
-
 fn count_marks(x_center: i32, y_center: i32) -> i32 {
     // Count the number of adjacent flagged squares.
     let mut count = 0;
@@ -285,15 +305,20 @@ fn update_button_for_result(win: bool) {
 }
 
 fn record_win_if_needed() {
-    unsafe {
-        let elapsed = cSec.load(Ordering::Relaxed);
-        if Preferences.wGameType != W_GAME_OTHER as u16
-            && elapsed < Preferences.rgTime[Preferences.wGameType as usize]
-        {
-            Preferences.rgTime[Preferences.wGameType as usize] = elapsed;
-            DoEnterName();
-            DoDisplayBest();
-        }
+    let elapsed = cSec.load(Ordering::Relaxed);
+    let mut prefs = match preferences_mutex().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let game_idx = prefs.wGameType as usize;
+    if prefs.wGameType != W_GAME_OTHER as u16
+        && game_idx < prefs.rgTime.len()
+        && elapsed < prefs.rgTime[game_idx]
+    {
+        prefs.rgTime[game_idx] = elapsed;
+        drop(prefs);
+        DoEnterName();
+        DoDisplayBest();
     }
 }
 
@@ -306,27 +331,40 @@ fn change_blk(x: i32, y: i32, block: i32) {
 fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
     // Visit a square; enqueue it when empty so we flood-fill neighbors later.
     if let Some(idx) = board_index(x, y) {
-        unsafe {
-            let mut blk = rgBlk[idx] as u8;
-            if (blk & MASK_VISIT) != 0 {
-                return;
-            }
+        let mut board = match board_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let mut blk = board[idx] as u8;
+        if (blk & MASK_VISIT) != 0 {
+            return;
+        }
 
-            let data = blk & MASK_DATA;
-            if data == I_BLK_MAX_SENTINEL as u8 || data == I_BLK_BOMB_UP as u8 {
-                return;
-            }
+        let data = blk & MASK_DATA;
+        if data == I_BLK_MAX_SENTINEL as u8 || data == I_BLK_BOMB_UP as u8 {
+            return;
+        }
 
-            C_BOX_VISIT.fetch_add(1, Ordering::Relaxed);
-            let bombs = count_bombs(x, y);
-            blk = MASK_VISIT | (bombs as u8 & MASK_DATA);
-            rgBlk[idx] = blk as i8;
-            display_block(x, y);
+        C_BOX_VISIT.fetch_add(1, Ordering::Relaxed);
+		let mut bombs = 0;
+		for y_n in (y - 1)..=(y + 1) {
+			for x_n in (x - 1)..=(x + 1) {
+				if let Some(nidx) = board_index(x_n, y_n) {
+					let cell = board[nidx] as u8;
+					if (cell & MASK_BOMB) != 0 {
+						bombs += 1;
+					}
+				}
+			}
+		}
+		blk = MASK_VISIT | ((bombs as u8) & MASK_DATA);
+        board[idx] = blk as i8;
+        drop(board);
+        display_block(x, y);
 
-            if bombs == 0 && *tail < I_STEP_MAX {
-                queue[*tail] = (x, y);
-                *tail += 1;
-            }
+        if bombs == 0 && *tail < I_STEP_MAX {
+            queue[*tail] = (x, y);
+            *tail += 1;
         }
     }
 }
@@ -441,30 +479,36 @@ fn step_block(x_center: i32, y_center: i32) {
 
 fn make_guess_internal(x: i32, y: i32) {
     // Cycle through blank -> flag -> question mark states depending on preferences.
-    unsafe {
-        if !f_in_range(x, y) || is_visit(x, y) {
-            return;
-        }
+    if !f_in_range(x, y) || is_visit(x, y) {
+        return;
+    }
 
-        let block = if guessed_bomb(x, y) {
-            update_bomb_count_internal(1);
-            if Preferences.fMark {
-                I_BLK_GUESS_UP
-            } else {
-                I_BLK_BLANK_UP
-            }
-        } else if guessed_mark(x, y) {
-            I_BLK_BLANK_UP
-        } else {
-            update_bomb_count_internal(-1);
-            I_BLK_BOMB_UP
+    let allow_marks = {
+        let prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
         };
+        prefs.fMark
+    };
 
-        change_blk(x, y, block);
-
-        if guessed_bomb(x, y) && check_win() {
-            game_over(true);
+    let block = if guessed_bomb(x, y) {
+        update_bomb_count_internal(1);
+        if allow_marks {
+            I_BLK_GUESS_UP
+        } else {
+            I_BLK_BLANK_UP
         }
+    } else if guessed_mark(x, y) {
+        I_BLK_BLANK_UP
+    } else {
+        update_bomb_count_internal(-1);
+        I_BLK_BOMB_UP
+    };
+
+    change_blk(x, y, block);
+
+    if guessed_bomb(x, y) && check_win() {
+        game_over(true);
     }
 }
 
@@ -502,20 +546,24 @@ fn in_range_step(x: i32, y: i32) -> bool {
 
 pub fn ClearField() {
     // Reset every cell to blank-up and rebuild the sentinel border.
-    unsafe {
-        rgBlk.iter_mut().for_each(|b| *b = I_BLK_BLANK_UP as i8);
+    {
+        let mut board = match board_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        board.iter_mut().for_each(|b| *b = I_BLK_BLANK_UP as i8);
+    }
 
-        let x_max = xBoxMac.load(Ordering::Relaxed);
-        let y_max = yBoxMac.load(Ordering::Relaxed);
+    let x_max = xBoxMac.load(Ordering::Relaxed);
+    let y_max = yBoxMac.load(Ordering::Relaxed);
 
-        for x in 0..=(x_max + 1) {
-            set_border(x, 0);
-            set_border(x, y_max + 1);
-        }
-        for y in 0..=(y_max + 1) {
-            set_border(0, y);
-            set_border(x_max + 1, y);
-        }
+    for x in 0..=(x_max + 1) {
+        set_border(x, 0);
+        set_border(x, y_max + 1);
+    }
+    for y in 0..=(y_max + 1) {
+        set_border(0, y);
+        set_border(x_max + 1, y);
     }
 }
 
@@ -535,8 +583,13 @@ pub fn StartGame() {
     let x_prev = xBoxMac.load(Ordering::Relaxed);
     let y_prev = yBoxMac.load(Ordering::Relaxed);
 
-    let (pref_width, pref_height, pref_mines) =
-        unsafe { (Preferences.Width, Preferences.Height, Preferences.Mines) };
+    let (pref_width, pref_height, pref_mines) = {
+        let prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        (prefs.Width, prefs.Height, prefs.Mines)
+    };
 
     let f_adjust = if pref_width != x_prev || pref_height != y_prev {
         F_RESIZE | F_DISPLAY
@@ -675,7 +728,11 @@ pub fn DoButton1Up() {
             cSec.store(1, Ordering::Relaxed);
             display_time();
             F_TIMER.store(true, Ordering::Relaxed);
-            if let Some(hwnd) = unsafe { hwndMain.as_opt() }
+            let hwnd_guard = match global_state().hwnd_main.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Some(hwnd) = hwnd_guard.as_opt()
                 && hwnd.SetTimer(ID_TIMER, 1000, None).is_err()
             {
                 ReportErr(ID_ERR_TIMER);

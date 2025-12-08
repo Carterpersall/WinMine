@@ -1,6 +1,7 @@
 use core::mem::size_of;
-use core::ptr::{addr_of_mut, null};
+use core::ptr::null;
 use core::sync::atomic::Ordering::Relaxed;
+use std::sync::{Mutex, OnceLock};
 
 use windows_sys::Win32::Graphics::Gdi as gdi_sys;
 use windows_sys::Win32::Graphics::Gdi::{
@@ -13,9 +14,8 @@ use winsafe::{
     prelude::*,
 };
 
-use crate::globals::{dxWindow, dxpBorder, dyWindow, hInst, hwndMain};
-use crate::pref::Pref;
-use crate::rtns::{ClearField, Preferences, cBombLeft, cSec, iButtonCur, rgBlk, xBoxMac, yBoxMac};
+use crate::globals::{dxWindow, dxpBorder, dyWindow, global_state};
+use crate::rtns::{board_mutex, preferences_mutex, ClearField, cBombLeft, cSec, iButtonCur, xBoxMac, yBoxMac};
 use crate::sound::EndTunes;
 
 const DX_BLK: i32 = 16;
@@ -46,37 +46,65 @@ const ID_BMP_BUTTON: u16 = 430;
 const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n";
 const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n";
 
-// Cached offsets into each sprite sheet within its DIB.
-static mut RG_DIB_OFF: [i32; I_BLK_MAX] = [0; I_BLK_MAX];
-static mut RG_DIB_LED_OFF: [i32; I_LED_MAX] = [0; I_LED_MAX];
-static mut RG_DIB_BUTTON_OFF: [i32; I_BUTTON_MAX] = [0; I_BUTTON_MAX];
-
-// Resource handles and locked pointers for the block, LED, and button bitmaps.
-static mut H_RES_BLKS: HRSRCMEM = HRSRCMEM::NULL;
-static mut H_RES_LED: HRSRCMEM = HRSRCMEM::NULL;
-static mut H_RES_BUTTON: HRSRCMEM = HRSRCMEM::NULL;
-
-static mut LP_DIB_BLKS: *const u8 = null();
-static mut LP_DIB_LED: *const u8 = null();
-static mut LP_DIB_BUTTON: *const u8 = null();
-
-static mut H_GRAY_PEN: w::HPEN = w::HPEN::NULL;
-
-// Per-cell memory DIBs so repeated blits avoid calling SetDIBitsToDevice each time.
-static mut MEM_BLK_DC: [w::HDC; I_BLK_MAX] = [w::HDC::NULL; I_BLK_MAX];
-static mut MEM_BLK_BITMAP: [w::HBITMAP; I_BLK_MAX] = [w::HBITMAP::NULL; I_BLK_MAX];
-
-#[inline]
-fn prefs_ptr() -> *mut Pref {
-    addr_of_mut!(Preferences)
+struct GrafixState {
+    rg_dib_off: [i32; I_BLK_MAX],
+    rg_dib_led_off: [i32; I_LED_MAX],
+    rg_dib_button_off: [i32; I_BUTTON_MAX],
+    h_res_blks: HRSRCMEM,
+    h_res_led: HRSRCMEM,
+    h_res_button: HRSRCMEM,
+    lp_dib_blks: *const u8,
+    lp_dib_led: *const u8,
+    lp_dib_button: *const u8,
+    h_gray_pen: w::HPEN,
+    mem_blk_dc: [w::HDC; I_BLK_MAX],
+    mem_blk_bitmap: [w::HBITMAP; I_BLK_MAX],
 }
 
-fn color_enabled() -> bool {
-    unsafe { (*prefs_ptr()).fColor }
+unsafe impl Send for GrafixState {}
+unsafe impl Sync for GrafixState {}
+
+impl Default for GrafixState {
+    fn default() -> Self {
+        Self {
+            rg_dib_off: [0; I_BLK_MAX],
+            rg_dib_led_off: [0; I_LED_MAX],
+            rg_dib_button_off: [0; I_BUTTON_MAX],
+            h_res_blks: HRSRCMEM::NULL,
+            h_res_led: HRSRCMEM::NULL,
+            h_res_button: HRSRCMEM::NULL,
+            lp_dib_blks: null(),
+            lp_dib_led: null(),
+            lp_dib_button: null(),
+            h_gray_pen: w::HPEN::NULL,
+            mem_blk_dc: [w::HDC::NULL; I_BLK_MAX],
+            mem_blk_bitmap: [w::HBITMAP::NULL; I_BLK_MAX],
+        }
+    }
 }
 
-fn main_window() -> Option<&'static w::HWND> {
-    unsafe { hwndMain.as_opt() }
+static GRAFIX_STATE: OnceLock<Mutex<GrafixState>> = OnceLock::new();
+
+fn grafix_state() -> &'static Mutex<GrafixState> {
+    GRAFIX_STATE.get_or_init(|| Mutex::new(GrafixState::default()))
+}
+
+fn current_color_flag() -> bool {
+    let prefs = match preferences_mutex().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    prefs.fColor
+}
+
+fn main_window() -> Option<w::HWND> {
+    let state = global_state();
+    let guard = match state.hwnd_main.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.as_opt()
+        .map(|hwnd| unsafe { w::HWND::from_ptr(hwnd.ptr()) })
 }
 
 pub fn FInitLocal() -> bool {
@@ -96,32 +124,41 @@ pub fn FLoadBitmaps() -> bool {
 
 pub fn FreeBitmaps() {
     // Tear down cached pens, handles, and scratch DCs when leaving the app.
-    unsafe {
-        if H_GRAY_PEN != w::HPEN::NULL {
-            let pen = w::HPEN::from_ptr(H_GRAY_PEN.ptr());
+    let mut state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    if state.h_gray_pen != w::HPEN::NULL {
+        unsafe {
+            let pen = w::HPEN::from_ptr(state.h_gray_pen.ptr());
             let _ = DeleteObjectGuard::new(pen);
-            H_GRAY_PEN = w::HPEN::NULL;
         }
+        state.h_gray_pen = w::HPEN::NULL;
+    }
 
-        H_RES_BLKS = HRSRCMEM::NULL;
-        H_RES_LED = HRSRCMEM::NULL;
-        H_RES_BUTTON = HRSRCMEM::NULL;
+    state.h_res_blks = HRSRCMEM::NULL;
+    state.h_res_led = HRSRCMEM::NULL;
+    state.h_res_button = HRSRCMEM::NULL;
 
-        LP_DIB_BLKS = null();
-        LP_DIB_LED = null();
-        LP_DIB_BUTTON = null();
+    state.lp_dib_blks = null();
+    state.lp_dib_led = null();
+    state.lp_dib_button = null();
 
-        for i in 0..I_BLK_MAX {
-            if MEM_BLK_DC[i] != w::HDC::NULL {
-                let dc_handle = w::HDC::from_ptr(MEM_BLK_DC[i].ptr());
+    for i in 0..I_BLK_MAX {
+        if state.mem_blk_dc[i] != w::HDC::NULL {
+            unsafe {
+                let dc_handle = w::HDC::from_ptr(state.mem_blk_dc[i].ptr());
                 let _ = DeleteDCGuard::new(dc_handle);
-                MEM_BLK_DC[i] = w::HDC::NULL;
             }
-            if MEM_BLK_BITMAP[i] != w::HBITMAP::NULL {
-                let bmp_handle = w::HBITMAP::from_ptr(MEM_BLK_BITMAP[i].ptr());
+            state.mem_blk_dc[i] = w::HDC::NULL;
+        }
+        if state.mem_blk_bitmap[i] != w::HBITMAP::NULL {
+            unsafe {
+                let bmp_handle = w::HBITMAP::from_ptr(state.mem_blk_bitmap[i].ptr());
                 let _ = DeleteObjectGuard::new(bmp_handle);
-                MEM_BLK_BITMAP[i] = w::HBITMAP::NULL;
             }
+            state.mem_blk_bitmap[i] = w::HBITMAP::NULL;
         }
     }
 }
@@ -194,6 +231,10 @@ pub fn DisplayGrid() {
 
 pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
     // LED digits stay as packed DIBs, so we blast them straight from the resource.
+    let state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     unsafe {
         SetDIBitsToDevice(
             hdc.ptr(),
@@ -205,8 +246,8 @@ pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
             0,
             0,
             DY_LED as u32,
-            led_bits(i_led) as *const _,
-            dib_info(LP_DIB_LED) as *const _ as *const gdi_sys::BITMAPINFO,
+            led_bits_with(&state, i_led) as *const _,
+            dib_info(state.lp_dib_led) as *const _ as *const gdi_sys::BITMAPINFO,
             DIB::RGB_COLORS.raw(),
         );
     }
@@ -297,6 +338,10 @@ pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
     // Center the face button and pull the requested state from the button sheet.
     let dx_window = dxWindow.load(Relaxed);
     let x = (dx_window - DX_BUTTON) >> 1;
+    let state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     unsafe {
         SetDIBitsToDevice(
             hdc.ptr(),
@@ -308,8 +353,8 @@ pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
             0,
             0,
             DY_BUTTON as u32,
-            button_bits(i_button) as *const _,
-            dib_info(LP_DIB_BUTTON) as *const _ as *const gdi_sys::BITMAPINFO,
+            button_bits_with(&state, i_button) as *const _,
+            dib_info(state.lp_dib_button) as *const _ as *const gdi_sys::BITMAPINFO,
             DIB::RGB_COLORS.raw(),
         );
     }
@@ -330,10 +375,14 @@ pub fn SetThePen(hdc: &w::HDC, f_normal: i32) {
             SetROP2(hdc.ptr(), R2_WHITE);
         }
     } else {
+        let state = match grafix_state().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
         unsafe {
             SetROP2(hdc.ptr(), R2_COPYPEN);
-            if H_GRAY_PEN != w::HPEN::NULL {
-                let pen = w::HPEN::from_ptr(H_GRAY_PEN.ptr());
+            if state.h_gray_pen != w::HPEN::NULL {
+                let pen = w::HPEN::from_ptr(state.h_gray_pen.ptr());
                 let _ = hdc.SelectObject(&pen).map(|mut guard| guard.leak());
             }
         }
@@ -439,97 +488,102 @@ pub fn DisplayScreen() {
 }
 
 fn load_bitmaps_impl() -> bool {
-    unsafe {
-        // Grab each bitmap resource (color or mono variant) and keep it locked for lifetime of the process.
-        let Some((h_blks, lp_blks)) = load_bitmap_resource(ID_BMP_BLOCKS) else {
-            return false;
-        };
-        let Some((h_led, lp_led)) = load_bitmap_resource(ID_BMP_LED) else {
-            return false;
-        };
-        let Some((h_button, lp_button)) = load_bitmap_resource(ID_BMP_BUTTON) else {
-            return false;
-        };
+    let color_on = current_color_flag();
+    let mut state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
 
-        H_RES_BLKS = h_blks;
-        H_RES_LED = h_led;
-        H_RES_BUTTON = h_button;
+    let Some((h_blks, lp_blks)) = load_bitmap_resource(ID_BMP_BLOCKS, color_on) else {
+        return false;
+    };
+    let Some((h_led, lp_led)) = load_bitmap_resource(ID_BMP_LED, color_on) else {
+        return false;
+    };
+    let Some((h_button, lp_button)) = load_bitmap_resource(ID_BMP_BUTTON, color_on) else {
+        return false;
+    };
 
-        LP_DIB_BLKS = lp_blks;
-        LP_DIB_LED = lp_led;
-        LP_DIB_BUTTON = lp_button;
+    state.h_res_blks = h_blks;
+    state.h_res_led = h_led;
+    state.h_res_button = h_button;
 
-        H_GRAY_PEN = if !color_enabled() {
-            match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
-                Ok(pen) => pen,
-                Err(_) => w::HPEN::NULL,
+    state.lp_dib_blks = lp_blks;
+    state.lp_dib_led = lp_led;
+    state.lp_dib_button = lp_button;
+
+    state.h_gray_pen = if !color_on {
+        match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
+            Ok(pen) => pen,
+            Err(_) => w::HPEN::NULL,
+        }
+    } else {
+        match w::HPEN::CreatePen(PS::SOLID, 1, rgb(128, 128, 128)) {
+            Ok(mut pen) => pen.leak(),
+            Err(_) => w::HPEN::NULL,
+        }
+    };
+
+    if state.h_gray_pen == w::HPEN::NULL {
+        return false;
+    }
+
+    let header = dib_header_size(color_on);
+
+    let cb_blk = cb_bitmap(color_on, DX_BLK, DY_BLK);
+    for (i, off) in state.rg_dib_off.iter_mut().enumerate() {
+        *off = header + (i as i32) * cb_blk;
+    }
+
+    let cb_led = cb_bitmap(color_on, DX_LED, DY_LED);
+    for (i, off) in state.rg_dib_led_off.iter_mut().enumerate() {
+        *off = header + (i as i32) * cb_led;
+    }
+
+    let cb_button = cb_bitmap(color_on, DX_BUTTON, DY_BUTTON);
+    for (i, off) in state.rg_dib_button_off.iter_mut().enumerate() {
+        *off = header + (i as i32) * cb_button;
+    }
+
+    let hwnd = match main_window() {
+        Some(hwnd) => hwnd,
+        None => return false,
+    };
+
+    let hdc = match hwnd.GetDC() {
+        Ok(dc) => dc,
+        Err(_) => return false,
+    };
+
+    // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
+    for i in 0..I_BLK_MAX {
+        state.mem_blk_dc[i] = match hdc.CreateCompatibleDC() {
+            Ok(mut dc_guard) => dc_guard.leak(),
+            Err(_) => {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
+                    w::OutputDebugString(msg);
+                }
+                w::HDC::NULL
             }
-        } else {
-            match w::HPEN::CreatePen(PS::SOLID, 1, rgb(128, 128, 128)) {
-                Ok(mut pen) => pen.leak(),
-                Err(_) => w::HPEN::NULL,
+        };
+
+        state.mem_blk_bitmap[i] = match hdc.CreateCompatibleBitmap(DX_BLK, DX_BLK) {
+            Ok(mut bmp_guard) => bmp_guard.leak(),
+            Err(_) => {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
+                    w::OutputDebugString(msg);
+                }
+                w::HBITMAP::NULL
             }
         };
 
-        if H_GRAY_PEN == w::HPEN::NULL {
-            return false;
-        }
-
-        let header = dib_header_size();
-
-        let cb_blk = cb_bitmap(DX_BLK, DY_BLK);
-        for (i, off) in RG_DIB_OFF.iter_mut().enumerate() {
-            *off = header + (i as i32) * cb_blk;
-        }
-
-        let cb_led = cb_bitmap(DX_LED, DY_LED);
-        for (i, off) in RG_DIB_LED_OFF.iter_mut().enumerate() {
-            *off = header + (i as i32) * cb_led;
-        }
-
-        let cb_button = cb_bitmap(DX_BUTTON, DY_BUTTON);
-        for (i, off) in RG_DIB_BUTTON_OFF.iter_mut().enumerate() {
-            *off = header + (i as i32) * cb_button;
-        }
-
-        let hwnd = match main_window() {
-            Some(hwnd) => hwnd,
-            None => return false,
-        };
-
-        let hdc = match hwnd.GetDC() {
-            Ok(dc) => dc,
-            Err(_) => return false,
-        };
-
-        // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
-        for i in 0..I_BLK_MAX {
-            MEM_BLK_DC[i] = match hdc.CreateCompatibleDC() {
-                Ok(mut dc_guard) => dc_guard.leak(),
-                Err(_) => {
-                    if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
-                        w::OutputDebugString(msg);
-                    }
-                    w::HDC::NULL
-                }
-            };
-
-            MEM_BLK_BITMAP[i] = match hdc.CreateCompatibleBitmap(DX_BLK, DX_BLK) {
-                Ok(mut bmp_guard) => bmp_guard.leak(),
-                Err(_) => {
-                    if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
-                        w::OutputDebugString(msg);
-                    }
-                    w::HBITMAP::NULL
-                }
-            };
-
-            if MEM_BLK_DC[i] != w::HDC::NULL && MEM_BLK_BITMAP[i] != w::HBITMAP::NULL {
-                if let Ok(mut guard) = MEM_BLK_DC[i].SelectObject(&MEM_BLK_BITMAP[i]) {
-                    let _ = guard.leak();
-                }
+        if state.mem_blk_dc[i] != w::HDC::NULL && state.mem_blk_bitmap[i] != w::HBITMAP::NULL {
+            if let Ok(mut guard) = state.mem_blk_dc[i].SelectObject(&state.mem_blk_bitmap[i]) {
+                let _ = guard.leak();
+            }
+            unsafe {
                 SetDIBitsToDevice(
-                    MEM_BLK_DC[i].ptr(),
+                    state.mem_blk_dc[i].ptr(),
                     0,
                     0,
                     DX_BLK as u32,
@@ -538,66 +592,61 @@ fn load_bitmaps_impl() -> bool {
                     0,
                     0,
                     DY_BLK as u32,
-                    block_bits(i as i32) as *const _,
-                    dib_info(LP_DIB_BLKS) as *const _ as *const gdi_sys::BITMAPINFO,
+                    block_bits_with(&state, i as i32) as *const _,
+                    dib_info(state.lp_dib_blks) as *const _ as *const gdi_sys::BITMAPINFO,
                     DIB::RGB_COLORS.raw(),
                 );
             }
         }
-
-        true
     }
+
+    true
 }
 
-fn load_bitmap_resource(id: u16) -> Option<(HRSRCMEM, *const u8)> {
-    let offset = if color_enabled() { 0 } else { 1 };
+fn load_bitmap_resource(id: u16, color_on: bool) -> Option<(HRSRCMEM, *const u8)> {
+    let offset = if color_on { 0 } else { 1 };
     let resource_id = id + offset;
     // Colorless devices load the grayscale resource IDs immediately following the color ones.
-    let res_info = unsafe {
-        hInst
-            .FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))
-            .ok()?
+    let inst_guard = match global_state().h_inst.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
     };
-    let res_loaded = unsafe { hInst.LoadResource(&res_info).ok()? };
-    let lp = unsafe { hInst.LockResource(&res_info, &res_loaded).ok()?.as_ptr() };
+    let res_info = inst_guard
+        .FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))
+        .ok()?;
+    let res_loaded = inst_guard.LoadResource(&res_info).ok()?;
+    let lp = inst_guard.LockResource(&res_info, &res_loaded).ok()?.as_ptr();
     Some((res_loaded, lp))
 }
 
-fn dib_header_size() -> i32 {
-    let palette_entries = if color_enabled() { 16 } else { 2 };
+fn dib_header_size(color_on: bool) -> i32 {
+    let palette_entries = if color_on { 16 } else { 2 };
     (size_of::<BITMAPINFOHEADER>() + (palette_entries as usize) * 4) as i32
 }
 
-fn cb_bitmap(x: i32, y: i32) -> i32 {
+fn cb_bitmap(color_on: bool, x: i32, y: i32) -> i32 {
     // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
     let mut bits = x;
-    if color_enabled() {
+    if color_on {
         bits *= 4;
     }
     let stride = ((bits + 31) >> 5) << 2;
     y * stride
 }
 
-fn block_bits(i: i32) -> *const u8 {
-    unsafe {
-        let idx = clamp_index(i, I_BLK_MAX);
-        // Each offset already points past the BITMAPINFOHEADER to the raw pixel data.
-        LP_DIB_BLKS.add(RG_DIB_OFF[idx] as usize)
-    }
+fn block_bits_with(state: &GrafixState, i: i32) -> *const u8 {
+    let idx = clamp_index(i, I_BLK_MAX);
+    unsafe { state.lp_dib_blks.add(state.rg_dib_off[idx] as usize) }
 }
 
-fn led_bits(i: i32) -> *const u8 {
-    unsafe {
-        let idx = clamp_index(i, I_LED_MAX);
-        LP_DIB_LED.add(RG_DIB_LED_OFF[idx] as usize)
-    }
+fn led_bits_with(state: &GrafixState, i: i32) -> *const u8 {
+    let idx = clamp_index(i, I_LED_MAX);
+    unsafe { state.lp_dib_led.add(state.rg_dib_led_off[idx] as usize) }
 }
 
-fn button_bits(i: i32) -> *const u8 {
-    unsafe {
-        let idx = clamp_index(i, I_BUTTON_MAX);
-        LP_DIB_BUTTON.add(RG_DIB_BUTTON_OFF[idx] as usize)
-    }
+fn button_bits_with(state: &GrafixState, i: i32) -> *const u8 {
+    let idx = clamp_index(i, I_BUTTON_MAX);
+    unsafe { state.lp_dib_button.add(state.rg_dib_button_off[idx] as usize) }
 }
 
 fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
@@ -605,13 +654,15 @@ fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
 }
 
 fn block_dc(x: i32, y: i32) -> w::HDC {
-    unsafe {
-        let idx = block_sprite_index(x, y);
-        if idx < I_BLK_MAX {
-            w::HDC::from_ptr(MEM_BLK_DC[idx].ptr())
-        } else {
-            w::HDC::NULL
-        }
+    let state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let idx = block_sprite_index(x, y);
+    if idx < I_BLK_MAX {
+        unsafe { w::HDC::from_ptr(state.mem_blk_dc[idx].ptr()) }
+    } else {
+        w::HDC::NULL
     }
 }
 
@@ -622,13 +673,15 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
         return 0;
     }
     let idx = offset as usize;
-    unsafe {
-        rgBlk
-            .get(idx)
-            .copied()
-            .map(|value| (value as i32 & MASK_DATA) as usize)
-            .unwrap_or(0)
-    }
+    let board = match board_mutex().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    board
+        .get(idx)
+        .copied()
+        .map(|value| (value as i32 & MASK_DATA) as usize)
+        .unwrap_or(0)
 }
 
 const fn rgb(r: u8, g: u8, b: u8) -> w::COLORREF {

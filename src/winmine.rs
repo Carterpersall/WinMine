@@ -1,5 +1,4 @@
 use core::cmp::{max, min};
-use core::ptr::{addr_of, addr_of_mut};
 use core::sync::atomic::{AtomicI32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
@@ -21,8 +20,7 @@ use winsafe::{
 
 use crate::globals::{
     bInitMinimized, dxFrameExtra, dxWindow, dxpBorder, dyWindow, dypAdjust, dypCaption, dypMenu,
-    fBlock, fButton1Down, fIgnoreClick, fLocalPause, fStatus, hIconMain, hInst, hMenu, hwndMain,
-    szClass, szDefaultName, szTime,
+    fBlock, fButton1Down, fIgnoreClick, fLocalPause, fStatus, global_state,
 };
 use crate::grafix::{
     CleanUp, DisplayButton, DisplayScreen, DrawScreen, FInitLocal, FLoadBitmaps, FreeBitmaps,
@@ -31,10 +29,9 @@ use crate::pref::{
     CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH,
     ReadPreferences, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER, WritePreferences, fUpdateIni,
 };
-use crate::rtns::rgBlk;
 use crate::rtns::{
-    DoButton1Up, DoTimer, MakeGuess, PauseGame, Preferences, ResumeGame, StartGame, TrackMouse,
-    iButtonCur, xBoxMac, xCur, yBoxMac, yCur,
+    DoButton1Up, DoTimer, MakeGuess, PauseGame, ResumeGame, StartGame, TrackMouse, board_mutex,
+    iButtonCur, preferences_mutex, xBoxMac, xCur, yBoxMac, yCur,
 };
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar};
@@ -206,10 +203,23 @@ struct HelpInfo {
 }
 
 fn show_dialog(template_id: u16, proc: DLGPROC) {
-    let hinst_wrap = unsafe { HINSTANCE::from_ptr(hInst.ptr()) };
-    let parent_hwnd = unsafe { hwndMain.as_opt() };
+    let state = global_state();
+    let hinst_wrap = {
+        let guard = match state.h_inst.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        unsafe { HINSTANCE::from_ptr(guard.ptr()) }
+    };
+    let parent_hwnd = {
+        let guard = match state.hwnd_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        unsafe { HWND::from_ptr(guard.ptr()) }
+    };
     unsafe {
-        let _ = hinst_wrap.DialogBoxParam(IdStr::Id(template_id), parent_hwnd, proc, Some(0));
+        let _ = hinst_wrap.DialogBoxParam(IdStr::Id(template_id), parent_hwnd.as_opt(), proc, Some(0));
     }
 }
 
@@ -233,12 +243,33 @@ fn init_common_controls() {
 }
 
 fn register_main_window_class() -> bool {
+    let state = global_state();
+    let (hinst, hicon) = {
+        let inst_guard = match state.h_inst.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let icon_guard = match state.h_icon_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        (
+            unsafe { HINSTANCE::from_ptr(inst_guard.ptr()) },
+            unsafe { HICON::from_ptr(icon_guard.ptr()) },
+        )
+    };
+    let class_buf = {
+        let guard = match state.sz_class.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard
+    };
+
     unsafe {
         let mut wcx = WNDCLASSEX::default();
         wcx.lpfnWndProc = Some(MainWndProc);
-        let hinst = HINSTANCE::from_ptr(hInst.ptr());
-        let hicon = HICON::from_ptr(hIconMain.ptr());
-        let hicon_sm = HICON::from_ptr(hIconMain.ptr());
+        let hicon_sm = HICON::from_ptr(hicon.ptr());
         wcx.hInstance = hinst;
         wcx.hIcon = hicon;
         wcx.hIconSm = hicon_sm;
@@ -248,7 +279,7 @@ fn register_main_window_class() -> bool {
             .unwrap_or(HCURSOR::NULL);
         wcx.hbrBackground = HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY).unwrap_or(HBRUSH::NULL);
 
-        let mut class_name = WString::from_wchars_slice(&szClass);
+        let mut class_name = WString::from_wchars_slice(&class_buf);
         wcx.set_lpszClassName(Some(&mut class_name));
         RegisterClassEx(&wcx).is_ok()
     }
@@ -260,59 +291,101 @@ pub fn run_winmine(
     _lp_cmd_line: *mut u8,
     n_cmd_show: i32,
 ) -> i32 {
+    let state = global_state();
+    {
+        let mut inst_guard = match state.h_inst.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *inst_guard = h_instance;
+    }
+    InitConst();
+
+    bInitMinimized.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
+
+    init_common_controls();
+    let hinst_wrap = {
+        let guard = match state.h_inst.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        unsafe { HINSTANCE::from_ptr(guard.ptr()) }
+    };
+
+    let icon = hinst_wrap
+        .LoadIcon(IdIdiStr::Id(ID_ICON_MAIN))
+        .map(|mut icon| icon.leak())
+        .unwrap_or(HICON::NULL);
+    {
+        let mut icon_guard = match state.h_icon_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *icon_guard = icon;
+    }
+
+    if !register_main_window_class() {
+        return 0;
+    }
+
+    let menu_handle = hinst_wrap
+        .LoadMenu(IdStr::Id(ID_MENU))
+        .map(|mut menu| menu.leak())
+        .unwrap_or(HMENU::NULL);
+    let menu_param_handle = unsafe { HMENU::from_ptr(menu_handle.ptr()) };
+    {
+        let mut menu_guard = match state.h_menu.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *menu_guard = menu_handle;
+    }
+    let h_accel = hinst_wrap
+        .LoadAccelerators(IdStr::Id(ID_MENU_ACCEL))
+        .map(|mut accel| accel.leak())
+        .unwrap_or(HACCEL::NULL);
+
     unsafe {
-        hInst = h_instance;
-        InitConst();
-
-        bInitMinimized.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
-
-        init_common_controls();
-        let hinst_wrap = HINSTANCE::from_ptr(hInst.ptr());
-        hIconMain = hinst_wrap
-            .LoadIcon(IdIdiStr::Id(ID_ICON_MAIN))
-            .map(|mut icon| icon.leak())
-            .unwrap_or(HICON::NULL);
-
-        if !register_main_window_class() {
-            return 0;
-        }
-
-        hMenu = hinst_wrap
-            .LoadMenu(IdStr::Id(ID_MENU))
-            .map(|mut menu| menu.leak())
-            .unwrap_or(HMENU::NULL);
-        let h_accel = hinst_wrap
-            .LoadAccelerators(IdStr::Id(ID_MENU_ACCEL))
-            .map(|mut accel| accel.leak())
-            .unwrap_or(HACCEL::NULL);
-
         ReadPreferences();
+    }
 
-        let dx_window = dxWindow.load(Ordering::Relaxed);
-        let dy_window = dyWindow.load(Ordering::Relaxed);
-        let dxp_border = dxpBorder.load(Ordering::Relaxed);
-        let dyp_adjust = dypAdjust.load(Ordering::Relaxed);
+    let dx_window = dxWindow.load(Ordering::Relaxed);
+    let dy_window = dyWindow.load(Ordering::Relaxed);
+    let dxp_border = dxpBorder.load(Ordering::Relaxed);
+    let dyp_adjust = dypAdjust.load(Ordering::Relaxed);
 
-        let class_name = {
-            let slice = &szClass;
-            let len = slice.iter().position(|&c| c == 0).unwrap_or(slice.len());
-            String::from_utf16_lossy(&slice[..len])
+    let class_name = {
+        let guard = match state.sz_class.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
+        let len = guard.iter().position(|&c| c == 0).unwrap_or(guard.len());
+        String::from_utf16_lossy(&guard[..len])
+    };
 
-        let menu_param = if hMenu == HMENU::NULL {
-            IdMenu::None
-        } else {
-            IdMenu::Menu(&hMenu)
+    let (x_window, y_window, f_menu) = {
+        let prefs_guard = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
         };
+        (prefs_guard.xWindow, prefs_guard.yWindow, prefs_guard.fMenu)
+    };
 
-        hwndMain = HWND::CreateWindowEx(
+    let menu_param = if menu_param_handle == HMENU::NULL {
+        IdMenu::None
+    } else {
+        IdMenu::Menu(&menu_param_handle)
+    };
+
+    let hwnd_main = unsafe {
+        HWND::CreateWindowEx(
             WS_EX::from_raw(0),
             AtomStr::from_str(&class_name),
             Some(&class_name),
             WS::from_raw(WINDOW_STYLE),
             POINT {
-                x: Preferences.xWindow - dxp_border,
-                y: Preferences.yWindow - dyp_adjust,
+                x: x_window - dxp_border,
+                y: y_window - dyp_adjust,
             },
             SIZE {
                 cx: dx_window + dxp_border,
@@ -320,62 +393,81 @@ pub fn run_winmine(
             },
             None,
             menu_param,
-            &hInst,
+            &hinst_wrap,
             None,
         )
-        .unwrap_or(HWND::NULL);
+    }
+    .unwrap_or(HWND::NULL);
 
-        if hwndMain.as_opt().is_none() {
-            ReportErr(1000);
-            return 0;
+    let hwnd_store = unsafe { HWND::from_ptr(hwnd_main.ptr()) };
+
+    {
+        let mut hwnd_guard = match state.hwnd_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *hwnd_guard = hwnd_store;
+    }
+
+    if hwnd_main.as_opt().is_none() {
+        ReportErr(1000);
+        return 0;
+    }
+
+    AdjustWindow(F_CALC);
+
+    if !FInitLocal() {
+        ReportErr(ID_ERR_MEM);
+        return 0;
+    }
+
+    SetMenuBar(f_menu);
+    StartGame();
+
+    if let Some(hwnd_wrap) = hwnd_main.as_opt() {
+        hwnd_wrap.ShowWindow(co::SW::SHOWNORMAL);
+        let _ = hwnd_wrap.UpdateWindow();
+    }
+
+    bInitMinimized.store(false, Ordering::Relaxed);
+
+    let mut msg = MSG::default();
+    while let Ok(has_msg) = GetMessage(&mut msg, None, 0, 0) {
+        if !has_msg {
+            break;
         }
 
-        AdjustWindow(F_CALC);
+        let handled = h_accel
+            .as_opt()
+            .and_then(|accel| {
+                let hwnd_copy = {
+                    let guard = match state.hwnd_main.lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    unsafe { HWND::from_ptr(guard.ptr()) }
+                };
+                hwnd_copy
+                    .as_opt()
+                    .and_then(|hwnd| hwnd.TranslateAccelerator(accel, &mut msg).ok())
+            })
+            .is_some();
 
-        if !FInitLocal() {
-            ReportErr(ID_ERR_MEM);
-            return 0;
+        if !handled {
+            TranslateMessage(&msg);
+            unsafe { let _ = DispatchMessage(&msg); }
         }
+    }
 
-        SetMenuBar(Preferences.fMenu);
-        StartGame();
+    CleanUp();
 
-        if let Some(hwnd_wrap) = hwndMain.as_opt() {
-            hwnd_wrap.ShowWindow(co::SW::SHOWNORMAL);
-            let _ = hwnd_wrap.UpdateWindow();
-        }
-
-        bInitMinimized.store(false, Ordering::Relaxed);
-
-        let mut msg = MSG::default();
-        while let Ok(has_msg) = GetMessage(&mut msg, None, 0, 0) {
-            if !has_msg {
-                break;
-            }
-
-            let handled = h_accel
-                .as_opt()
-                .and_then(|accel| {
-                    hwndMain
-                        .as_opt()
-                        .and_then(|hwnd| hwnd.TranslateAccelerator(accel, &mut msg).ok())
-                })
-                .is_some();
-
-            if !handled {
-                TranslateMessage(&msg);
-                let _ = DispatchMessage(&msg);
-            }
-        }
-
-        CleanUp();
-
-        if fUpdateIni.load(Ordering::Relaxed) {
+    if fUpdateIni.load(Ordering::Relaxed) {
+        unsafe {
             WritePreferences();
         }
-
-        msg.wParam as i32
     }
+
+    msg.wParam as i32
 }
 
 fn x_box_from_xpos(x: i32) -> i32 {
@@ -446,147 +538,284 @@ fn handle_mouse_move(w_param: usize, l_param: isize) {
 }
 
 fn handle_rbutton_down(h_wnd: HWND, w_param: usize, l_param: isize) -> Option<isize> {
-    unsafe {
-        if handle_ignore_click() {
-            return Some(0);
-        }
-
-        if !status_play() {
-            return None;
-        }
-
-        if fButton1Down.load(Ordering::Relaxed) {
-            TrackMouse(-3, -3);
-            set_block_flag(true);
-            let _ = hwndMain.PostMessage(WndMsg::new(co::WM::MOUSEMOVE, w_param, l_param));
-            return Some(0);
-        }
-
-        if (w_param & MK_LBUTTON) != 0 {
-            begin_primary_button_drag(h_wnd);
-            handle_mouse_move(w_param, l_param);
-            return None;
-        }
-
-        if !local_pause() {
-            MakeGuess(
-                x_box_from_xpos(loword(l_param)),
-                y_box_from_ypos(hiword(l_param)),
-            );
-        }
-
-        Some(0)
+    if handle_ignore_click() {
+        return Some(0);
     }
+
+    if !status_play() {
+        return None;
+    }
+
+    if fButton1Down.load(Ordering::Relaxed) {
+        TrackMouse(-3, -3);
+        set_block_flag(true);
+        let hwnd_main = {
+            let state = global_state();
+            let guard = match state.hwnd_main.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            unsafe { HWND::from_ptr(guard.ptr()) }
+        };
+        unsafe { let _ = hwnd_main.PostMessage(WndMsg::new(co::WM::MOUSEMOVE, w_param, l_param)); }
+        return Some(0);
+    }
+
+    if (w_param & MK_LBUTTON) != 0 {
+        begin_primary_button_drag(h_wnd);
+        handle_mouse_move(w_param, l_param);
+        return None;
+    }
+
+    if !local_pause() {
+        MakeGuess(
+            x_box_from_xpos(loword(l_param)),
+            y_box_from_ypos(hiword(l_param)),
+        );
+    }
+
+    Some(0)
 }
 
 fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
-    unsafe {
-        match command_id(w_param) {
-            IDM_NEW => StartGame(),
-            IDM_EXIT => {
-                hwndMain.ShowWindow(co::SW::HIDE);
-                if let Some(hwnd) = hwndMain.as_opt() {
+    match command_id(w_param) {
+        IDM_NEW => StartGame(),
+        IDM_EXIT => {
+            let state = global_state();
+            let hwnd_main = {
+                let guard = match state.hwnd_main.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                unsafe { HWND::from_ptr(guard.ptr()) }
+            };
+            hwnd_main.ShowWindow(co::SW::HIDE);
+            if let Some(hwnd) = hwnd_main.as_opt() {
+                unsafe {
                     let _ = hwnd.SendMessage(WndMsg::new(
                         co::WM::SYSCOMMAND,
                         co::SC::CLOSE.raw() as usize,
                         0,
                     ));
                 }
-                return Some(0);
             }
-            IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
-                let index = (command_id(w_param) - IDM_BEGIN) as usize;
-                Preferences.wGameType = index as u16;
-                Preferences.Mines = LEVEL_DATA[index][0];
-                Preferences.Height = LEVEL_DATA[index][1];
-                Preferences.Width = LEVEL_DATA[index][2];
-                StartGame();
-                update_menu_from_preferences();
-            }
-            IDM_CUSTOM => DoPref(),
-            IDM_SOUND => {
-                if sound_on() {
-                    EndTunes();
-                    Preferences.fSound = FSOUND_OFF;
-                } else {
-                    Preferences.fSound = FInitTunes();
-                }
-                update_menu_from_preferences();
-            }
-            IDM_COLOR => {
-                Preferences.fColor = toggle_bool(Preferences.fColor);
-                FreeBitmaps();
-                if !FLoadBitmaps() {
-                    ReportErr(ID_ERR_MEM);
-                    if let Some(hwnd) = hwndMain.as_opt() {
+            return Some(0);
+        }
+        IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
+            let index = (command_id(w_param) - IDM_BEGIN) as usize;
+            let (game, f_color, f_mark, f_sound, f_menu) = {
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.wGameType = index as u16;
+                prefs.Mines = LEVEL_DATA[index][0];
+                prefs.Height = LEVEL_DATA[index][1];
+                prefs.Width = LEVEL_DATA[index][2];
+                (
+                    prefs.wGameType,
+                    prefs.fColor,
+                    prefs.fMark,
+                    prefs.fSound,
+                    prefs.fMenu,
+                )
+            };
+            StartGame();
+            fUpdateIni.store(true, Ordering::Relaxed);
+            FixMenus(game, f_color, f_mark, f_sound);
+            SetMenuBar(f_menu);
+        }
+        IDM_CUSTOM => DoPref(),
+        IDM_SOUND => {
+            let current_sound = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fSound
+            };
+            let new_sound = if current_sound == FSOUND_ON {
+                EndTunes();
+                FSOUND_OFF
+            } else {
+                FInitTunes()
+            };
+            let (game, f_color, f_mark, f_menu) = {
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fSound = new_sound;
+                (
+                    prefs.wGameType,
+                    prefs.fColor,
+                    prefs.fMark,
+                    prefs.fMenu,
+                )
+            };
+            fUpdateIni.store(true, Ordering::Relaxed);
+            FixMenus(game, f_color, f_mark, new_sound);
+            SetMenuBar(f_menu);
+        }
+        IDM_COLOR => {
+            let (color_enabled, game, f_mark, f_sound, f_menu) = {
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fColor = toggle_bool(prefs.fColor);
+                (
+                    prefs.fColor,
+                    prefs.wGameType,
+                    prefs.fMark,
+                    prefs.fSound,
+                    prefs.fMenu,
+                )
+            };
+            let state = global_state();
+            FreeBitmaps();
+            if !FLoadBitmaps() {
+                ReportErr(ID_ERR_MEM);
+                let hwnd_main = {
+                    let guard = match state.hwnd_main.lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    unsafe { HWND::from_ptr(guard.ptr()) }
+                };
+                if let Some(hwnd) = hwnd_main.as_opt() {
+                    unsafe {
                         let _ = hwnd.SendMessage(WndMsg::new(
                             co::WM::SYSCOMMAND,
                             co::SC::CLOSE.raw() as usize,
                             0,
                         ));
                     }
-                    return Some(0);
                 }
-                DisplayScreen();
-                update_menu_from_preferences();
-            }
-            IDM_MARK => {
-                Preferences.fMark = toggle_bool(Preferences.fMark);
-                update_menu_from_preferences();
-            }
-            IDM_BEST => DoDisplayBest(),
-            IDM_HELP => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
-            IDM_HOW2PLAY => DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32),
-            IDM_HELP_HELP => DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32),
-            IDM_HELP_ABOUT => {
-                DoAbout();
                 return Some(0);
             }
-            _ => {}
+            if color_enabled {
+                DisplayScreen();
+            }
+            fUpdateIni.store(true, Ordering::Relaxed);
+            FixMenus(game, color_enabled, f_mark, f_sound);
+            SetMenuBar(f_menu);
         }
+        IDM_MARK => {
+            let (game, color_enabled, mark_enabled, f_sound, f_menu) = {
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fMark = toggle_bool(prefs.fMark);
+                (
+                    prefs.wGameType,
+                    prefs.fColor,
+                    prefs.fMark,
+                    prefs.fSound,
+                    prefs.fMenu,
+                )
+            };
+            fUpdateIni.store(true, Ordering::Relaxed);
+            FixMenus(game, color_enabled, mark_enabled, f_sound);
+            SetMenuBar(f_menu);
+        }
+        IDM_BEST => DoDisplayBest(),
+        IDM_HELP => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
+        IDM_HOW2PLAY => DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32),
+        IDM_HELP_HELP => DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32),
+        IDM_HELP_ABOUT => {
+            DoAbout();
+            return Some(0);
+        }
+        _ => {}
     }
 
     None
 }
 
 fn handle_keydown(w_param: usize) {
-    unsafe {
-        match w_param as u32 {
-            VK_F4_CODE => {
-                if sound_switchable() {
-                    if sound_on() {
-                        EndTunes();
-                        Preferences.fSound = FSOUND_OFF;
-                    } else {
-                        Preferences.fSound = FInitTunes();
-                    }
-                }
+    match w_param as u32 {
+        VK_F4_CODE => {
+            let current_sound = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fSound
+            };
+
+            if current_sound > 1 {
+                let new_sound = if current_sound == FSOUND_ON {
+                    EndTunes();
+                    FSOUND_OFF
+                } else {
+                    FInitTunes()
+                };
+
+                let (game, color_enabled, mark_enabled, f_menu) = {
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.fSound = new_sound;
+                    (
+                        prefs.wGameType,
+                        prefs.fColor,
+                        prefs.fMark,
+                        prefs.fMenu,
+                    )
+                };
+
+                fUpdateIni.store(true, Ordering::Relaxed);
+                FixMenus(game, color_enabled, mark_enabled, new_sound);
+                SetMenuBar(f_menu);
             }
-            VK_F5_CODE => {
-                if menu_switchable() {
-                    SetMenuBar(FMENU_OFF);
-                }
-            }
-            VK_F6_CODE => {
-                if menu_switchable() {
-                    SetMenuBar(FMENU_ON);
-                }
-            }
-            VK_SHIFT_CODE => handle_xyzzys_shift(),
-            _ => handle_xyzzys_default_key(w_param),
         }
+        VK_F5_CODE => {
+            let menu_value = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fMenu
+            };
+
+            if menu_value != FMENU_ALWAYS_ON {
+                SetMenuBar(FMENU_OFF);
+            }
+        }
+        VK_F6_CODE => {
+            let menu_value = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.fMenu
+            };
+
+            if menu_value != FMENU_ALWAYS_ON {
+                SetMenuBar(FMENU_ON);
+            }
+        }
+        VK_SHIFT_CODE => handle_xyzzys_shift(),
+        _ => handle_xyzzys_default_key(w_param),
     }
 }
 
 fn handle_window_pos_changed(l_param: isize) {
-    unsafe {
-        if status_icon() || l_param == 0 {
-            return;
-        }
+    if status_icon() || l_param == 0 {
+        return;
+    }
 
-        let pos = &*(l_param as *const WINDOWPOS);
-        Preferences.xWindow = pos.x;
-        Preferences.yWindow = pos.y;
+    let pos = unsafe { &*(l_param as *const WINDOWPOS) };
+    if let Ok(mut prefs) = preferences_mutex().lock() {
+        prefs.xWindow = pos.x;
+        prefs.yWindow = pos.y;
+    } else if let Err(poisoned) = preferences_mutex().lock() {
+        let mut guard = poisoned.into_inner();
+        guard.xWindow = pos.x;
+        guard.yWindow = pos.y;
     }
 }
 
@@ -612,25 +841,6 @@ fn local_pause() -> bool {
     fLocalPause.load(Ordering::Relaxed)
 }
 
-fn menu_switchable() -> bool {
-    unsafe { Preferences.fMenu != FMENU_ALWAYS_ON }
-}
-
-fn sound_switchable() -> bool {
-    unsafe { Preferences.fSound > 1 }
-}
-
-fn sound_on() -> bool {
-    unsafe { Preferences.fSound == FSOUND_ON }
-}
-
-fn update_menu_from_preferences() {
-    unsafe {
-        fUpdateIni.store(true, Ordering::Relaxed);
-        SetMenuBar(Preferences.fMenu);
-    }
-}
-
 fn toggle_bool(value: bool) -> bool {
     !value
 }
@@ -651,16 +861,18 @@ fn board_index(x: i32, y: i32) -> usize {
 }
 
 fn cell_is_bomb(x: i32, y: i32) -> bool {
-    unsafe {
-        if !in_range(x, y) {
-            return false;
-        }
-        let idx = board_index(x, y);
-        if idx >= C_BLK_MAX {
-            return false;
-        }
-        (rgBlk[idx] as u8 & MASK_BOMB) != 0
+    if !in_range(x, y) {
+        return false;
     }
+    let idx = board_index(x, y);
+    if idx >= C_BLK_MAX {
+        return false;
+    }
+    let guard = match board_mutex().lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    (guard[idx] as u8 & MASK_BOMB) != 0
 }
 
 const CCH_XYZZY: i32 = 5;
@@ -734,7 +946,7 @@ pub extern "system" fn MainWndProc(
         }
         co::WM::KEYDOWN => handle_keydown(w_param),
         co::WM::DESTROY => {
-            let _ = unsafe { hwndMain.KillTimer(ID_TIMER) };
+            let _ = h_wnd.KillTimer(ID_TIMER);
             PostQuitMessage(0);
         }
         co::WM::MBUTTONDOWN => {
@@ -796,29 +1008,31 @@ pub extern "system" fn MainWndProc(
     unsafe { h_wnd.DefWindowProc(WndMsg::new(message, w_param, l_param)) }
 }
 
-pub fn FixMenus() {
-    unsafe {
-        // Keep the menu checkmarks synchronized with the current difficulty/option flags.
-        let game = Preferences.wGameType;
-        CheckEm(IDM_BEGIN, game == WGAME_BEGIN as u16);
-        CheckEm(IDM_INTER, game == WGAME_INTER as u16);
-        CheckEm(IDM_EXPERT, game == WGAME_EXPERT as u16);
-        CheckEm(IDM_CUSTOM, game == WGAME_OTHER);
+pub fn FixMenus(game: u16, f_color: bool, f_mark: bool, f_sound: i32) {
+    // Keep the menu checkmarks synchronized with the current difficulty/option flags.
+    CheckEm(IDM_BEGIN, game == WGAME_BEGIN as u16);
+    CheckEm(IDM_INTER, game == WGAME_INTER as u16);
+    CheckEm(IDM_EXPERT, game == WGAME_EXPERT as u16);
+    CheckEm(IDM_CUSTOM, game == WGAME_OTHER);
 
-        CheckEm(IDM_COLOR, Preferences.fColor);
-        CheckEm(IDM_MARK, Preferences.fMark);
-        CheckEm(IDM_SOUND, Preferences.fSound == FSOUND_ON);
-    }
+    CheckEm(IDM_COLOR, f_color);
+    CheckEm(IDM_MARK, f_mark);
+    CheckEm(IDM_SOUND, f_sound == FSOUND_ON);
 }
 
 pub fn DoPref() {
     // Launch the custom game dialog, then treat the result as a "Custom" board.
     show_dialog(ID_DLG_PREF, PrefDlgProc);
 
-    unsafe {
-        Preferences.wGameType = WGAME_OTHER;
-    }
-    FixMenus();
+    let (game, f_color, f_mark, f_sound) = {
+        let mut prefs = match preferences_mutex().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        prefs.wGameType = WGAME_OTHER;
+        (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
+    };
+    FixMenus(game, f_color, f_mark, f_sound);
     fUpdateIni.store(true, Ordering::Relaxed);
     StartGame();
 }
@@ -835,86 +1049,93 @@ pub fn DoDisplayBest() {
 }
 
 pub fn FLocalButton(l_param: isize) -> bool {
-    unsafe {
-        // Handle clicks on the smiley face button while providing the pressed animation.
-        let mut msg = MSG::default();
-
-        msg.pt.x = loword(l_param);
-        msg.pt.y = hiword(l_param);
-
-        let dx_window = dxWindow.load(Ordering::Relaxed);
-        let mut rc = RECT {
-            left: (dx_window - DX_BUTTON) >> 1,
-            top: DY_TOP_LED,
-            right: 0,
-            bottom: 0,
+    let state = global_state();
+    let hwnd_main = {
+        let guard = match state.hwnd_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        rc.right = rc.left + DX_BUTTON;
-        rc.bottom = rc.top + DY_BUTTON;
+        unsafe { HWND::from_ptr(guard.ptr()) }
+    };
 
-        let mut rc_sys = windows_sys::Win32::Foundation::RECT {
-            left: rc.left,
-            top: rc.top,
-            right: rc.right,
-            bottom: rc.bottom,
-        };
-        let mut pt_sys = windows_sys::Win32::Foundation::POINT {
-            x: msg.pt.x,
-            y: msg.pt.y,
-        };
-        if PtInRect(&rc_sys, pt_sys) == 0 {
-            return false;
-        }
+    // Handle clicks on the smiley face button while providing the pressed animation.
+    let mut msg = MSG::default();
 
-        let mut capture_guard = hwndMain.as_opt().map(|hwnd| hwnd.SetCapture());
-        DisplayButton(I_BUTTON_DOWN);
-        if let Some(hwnd) = hwndMain.as_opt() {
-            let _ = hwnd.MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc));
-        }
+    msg.pt.x = loword(l_param);
+    msg.pt.y = hiword(l_param);
 
-        let mut pressed = true;
-        let hwnd_opt = hwndMain.as_opt();
-        loop {
-            if PeekMessage(
-                &mut msg,
-                hwnd_opt,
-                co::WM::MOUSEFIRST.raw(),
-                co::WM::MOUSELAST.raw(),
-                co::PM::REMOVE,
-            ) {
-                rc_sys = windows_sys::Win32::Foundation::RECT {
-                    left: rc.left,
-                    top: rc.top,
-                    right: rc.right,
-                    bottom: rc.bottom,
-                };
-                pt_sys = windows_sys::Win32::Foundation::POINT {
-                    x: msg.pt.x,
-                    y: msg.pt.y,
-                };
-                match msg.message {
-                    co::WM::LBUTTONUP => {
-                        if pressed && PtInRect(&rc_sys, pt_sys) != 0 {
-                            iButtonCur.store(I_BUTTON_HAPPY, Ordering::Relaxed);
-                            DisplayButton(I_BUTTON_HAPPY);
-                            StartGame();
-                        }
-                        capture_guard.take();
-                        return true;
+    let dx_window = dxWindow.load(Ordering::Relaxed);
+    let mut rc = RECT {
+        left: (dx_window - DX_BUTTON) >> 1,
+        top: DY_TOP_LED,
+        right: 0,
+        bottom: 0,
+    };
+    rc.right = rc.left + DX_BUTTON;
+    rc.bottom = rc.top + DY_BUTTON;
+
+    let mut rc_sys = windows_sys::Win32::Foundation::RECT {
+        left: rc.left,
+        top: rc.top,
+        right: rc.right,
+        bottom: rc.bottom,
+    };
+    let mut pt_sys = windows_sys::Win32::Foundation::POINT {
+        x: msg.pt.x,
+        y: msg.pt.y,
+    };
+    if unsafe { PtInRect(&rc_sys, pt_sys) } == 0 {
+        return false;
+    }
+
+    let mut capture_guard = hwnd_main.as_opt().map(|hwnd| hwnd.SetCapture());
+    DisplayButton(I_BUTTON_DOWN);
+    if let Some(hwnd) = hwnd_main.as_opt() {
+        let _ = hwnd.MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc));
+    }
+
+    let mut pressed = true;
+    let hwnd_opt = hwnd_main.as_opt();
+    loop {
+        if PeekMessage(
+            &mut msg,
+            hwnd_opt,
+            co::WM::MOUSEFIRST.raw(),
+            co::WM::MOUSELAST.raw(),
+            co::PM::REMOVE,
+        ) {
+            rc_sys = windows_sys::Win32::Foundation::RECT {
+                left: rc.left,
+                top: rc.top,
+                right: rc.right,
+                bottom: rc.bottom,
+            };
+            pt_sys = windows_sys::Win32::Foundation::POINT {
+                x: msg.pt.x,
+                y: msg.pt.y,
+            };
+            match msg.message {
+                co::WM::LBUTTONUP => {
+                    if pressed && unsafe { PtInRect(&rc_sys, pt_sys) } != 0 {
+                        iButtonCur.store(I_BUTTON_HAPPY, Ordering::Relaxed);
+                        DisplayButton(I_BUTTON_HAPPY);
+                        StartGame();
                     }
-                    co::WM::MOUSEMOVE => {
-                        if PtInRect(&rc_sys, pt_sys) != 0 {
-                            if !pressed {
-                                pressed = true;
-                                DisplayButton(I_BUTTON_DOWN);
-                            }
-                        } else if pressed {
-                            pressed = false;
-                            DisplayButton(iButtonCur.load(Ordering::Relaxed));
-                        }
-                    }
-                    _ => {}
+                    capture_guard.take();
+                    return true;
                 }
+                co::WM::MOUSEMOVE => {
+                    if unsafe { PtInRect(&rc_sys, pt_sys) } != 0 {
+                        if !pressed {
+                            pressed = true;
+                            DisplayButton(I_BUTTON_DOWN);
+                        }
+                    } else if pressed {
+                        pressed = false;
+                        DisplayButton(iButtonCur.load(Ordering::Relaxed));
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -930,21 +1151,40 @@ pub extern "system" fn PrefDlgProc(
     let h_dlg_raw = h_dlg.ptr();
     match message {
         co::WM::INITDIALOG => {
+            let (height, width, mines) = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                (prefs.Height, prefs.Width, prefs.Mines)
+            };
             unsafe {
-                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_HEIGHT, Preferences.Height as u32, 0);
-                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_WIDTH, Preferences.Width as u32, 0);
-                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_MINES, Preferences.Mines as u32, 0);
+                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_HEIGHT, height as u32, 0);
+                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_WIDTH, width as u32, 0);
+                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_MINES, mines as u32, 0);
             }
             return 1;
         }
         co::WM::COMMAND => {
             match command_id(w_param) {
-                ID_BTN_OK | IDOK_U16 => unsafe {
-                    Preferences.Height = GetDlgInt(&h_dlg, ID_EDIT_HEIGHT, MINHEIGHT, 24);
-                    Preferences.Width = GetDlgInt(&h_dlg, ID_EDIT_WIDTH, MINWIDTH, 30);
-                    let max_mines = min(999, (Preferences.Height - 1) * (Preferences.Width - 1));
-                    Preferences.Mines = GetDlgInt(&h_dlg, ID_EDIT_MINES, 10, max_mines);
-                },
+                ID_BTN_OK | IDOK_U16 => {
+                    let height = GetDlgInt(&h_dlg, ID_EDIT_HEIGHT, MINHEIGHT, 24);
+                    let width = GetDlgInt(&h_dlg, ID_EDIT_WIDTH, MINWIDTH, 30);
+                    let max_mines = min(999, (height - 1) * (width - 1));
+                    let mines = GetDlgInt(&h_dlg, ID_EDIT_MINES, 10, max_mines);
+
+                    let lock = preferences_mutex().lock();
+                    if let Ok(mut prefs) = lock {
+                        prefs.Height = height;
+                        prefs.Width = width;
+                        prefs.Mines = mines;
+                    } else if let Err(poisoned) = preferences_mutex().lock() {
+                        let mut prefs = poisoned.into_inner();
+                        prefs.Height = height;
+                        prefs.Width = width;
+                        prefs.Mines = mines;
+                    }
+                }
                 ID_BTN_CANCEL | IDCANCEL_U16 => {}
                 _ => return 0,
             }
@@ -975,19 +1215,95 @@ pub extern "system" fn BestDlgProc(
     // High-score dialog with reset + context help support.
     match message {
         co::WM::INITDIALOG => {
-            reset_best_dialog(&h_dlg);
+            let snapshot = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                (
+                    prefs.rgTime[WGAME_BEGIN as usize],
+                    prefs.rgTime[WGAME_INTER as usize],
+                    prefs.rgTime[WGAME_EXPERT as usize],
+                    prefs.szBegin,
+                    prefs.szInter,
+                    prefs.szExpert,
+                )
+            };
+            let (
+                time_begin,
+                time_inter,
+                time_expert,
+                name_begin,
+                name_inter,
+                name_expert,
+            ) = snapshot;
+            reset_best_dialog(
+                &h_dlg,
+                time_begin,
+                time_inter,
+                time_expert,
+                name_begin,
+                name_inter,
+                name_expert,
+            );
             return 1;
         }
         co::WM::COMMAND => match command_id(w_param) {
-            ID_BTN_RESET => unsafe {
-                Preferences.rgTime[WGAME_BEGIN as usize] = 999;
-                Preferences.rgTime[WGAME_INTER as usize] = 999;
-                Preferences.rgTime[WGAME_EXPERT as usize] = 999;
-                copy_from_default(name_ptr_for_game_mut(WGAME_BEGIN));
-                copy_from_default(name_ptr_for_game_mut(WGAME_INTER));
-                copy_from_default(name_ptr_for_game_mut(WGAME_EXPERT));
+            ID_BTN_RESET => {
+                let snapshot = if let Ok(mut prefs) = preferences_mutex().lock() {
+                    prefs.rgTime[WGAME_BEGIN as usize] = 999;
+                    prefs.rgTime[WGAME_INTER as usize] = 999;
+                    prefs.rgTime[WGAME_EXPERT as usize] = 999;
+                    copy_from_default(&mut prefs.szBegin);
+                    copy_from_default(&mut prefs.szInter);
+                    copy_from_default(&mut prefs.szExpert);
+                    (
+                        prefs.rgTime[WGAME_BEGIN as usize],
+                        prefs.rgTime[WGAME_INTER as usize],
+                        prefs.rgTime[WGAME_EXPERT as usize],
+                        prefs.szBegin,
+                        prefs.szInter,
+                        prefs.szExpert,
+                    )
+                } else if let Err(poisoned) = preferences_mutex().lock() {
+                    let mut prefs = poisoned.into_inner();
+                    prefs.rgTime[WGAME_BEGIN as usize] = 999;
+                    prefs.rgTime[WGAME_INTER as usize] = 999;
+                    prefs.rgTime[WGAME_EXPERT as usize] = 999;
+                    copy_from_default(&mut prefs.szBegin);
+                    copy_from_default(&mut prefs.szInter);
+                    copy_from_default(&mut prefs.szExpert);
+                    (
+                        prefs.rgTime[WGAME_BEGIN as usize],
+                        prefs.rgTime[WGAME_INTER as usize],
+                        prefs.rgTime[WGAME_EXPERT as usize],
+                        prefs.szBegin,
+                        prefs.szInter,
+                        prefs.szExpert,
+                    )
+                } else {
+                    (999, 999, 999, [0; CCH_NAME_MAX], [0; CCH_NAME_MAX], [0; CCH_NAME_MAX])
+                };
+
+                let (
+                    time_begin,
+                    time_inter,
+                    time_expert,
+                    name_begin,
+                    name_inter,
+                    name_expert,
+                ) = snapshot;
+
                 fUpdateIni.store(true, Ordering::Relaxed);
-                reset_best_dialog(&h_dlg);
+                reset_best_dialog(
+                    &h_dlg,
+                    time_begin,
+                    time_inter,
+                    time_expert,
+                    name_begin,
+                    name_inter,
+                    name_expert,
+                );
                 return 1;
             },
             ID_BTN_OK | IDOK_U16 | ID_BTN_CANCEL | IDCANCEL_U16 => {
@@ -1021,9 +1337,22 @@ pub extern "system" fn EnterDlgProc(
     let h_dlg_raw = h_dlg.ptr();
     match message {
         co::WM::INITDIALOG => {
+            let (game_type, current_name) = {
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                let name = match prefs.wGameType as i32 {
+                    WGAME_BEGIN => prefs.szBegin,
+                    WGAME_INTER => prefs.szInter,
+                    _ => prefs.szExpert,
+                };
+                (prefs.wGameType, name)
+            };
+
             unsafe {
                 let mut buffer = [0u16; CCH_MSG_MAX];
-                let string_id = Preferences.wGameType + ID_MSG_BEGIN;
+                let string_id = game_type + ID_MSG_BEGIN;
                 LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32);
                 SetDlgItemTextW(h_dlg_raw as _, ID_TEXT_BEST, buffer.as_ptr());
                 if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ID_EDIT_NAME as u16) {
@@ -1033,157 +1362,199 @@ pub extern "system" fn EnterDlgProc(
                         0,
                     ));
                 }
-                SetDlgItemTextW(h_dlg_raw as _, ID_EDIT_NAME, current_name_ptr());
+                SetDlgItemTextW(h_dlg_raw as _, ID_EDIT_NAME, current_name.as_ptr());
             }
             return 1;
         }
         co::WM::COMMAND => match command_id(w_param) {
             ID_BTN_OK | IDOK_U16 | ID_BTN_CANCEL | IDCANCEL_U16 => {
+                let mut buffer = [0u16; CCH_NAME_MAX];
                 unsafe {
                     GetDlgItemTextW(
                         h_dlg_raw as _,
                         ID_EDIT_NAME,
-                        current_name_ptr_mut(),
+                        buffer.as_mut_ptr(),
                         CCH_NAME_MAX as i32,
                     );
-                    let _ = h_dlg.EndDialog(1);
                 }
+
+                let lock = preferences_mutex().lock();
+                if let Ok(mut prefs) = lock {
+                    match prefs.wGameType as i32 {
+                        WGAME_BEGIN => prefs.szBegin = buffer,
+                        WGAME_INTER => prefs.szInter = buffer,
+                        _ => prefs.szExpert = buffer,
+                    }
+                } else if let Err(poisoned) = preferences_mutex().lock() {
+                    let mut prefs = poisoned.into_inner();
+                    match prefs.wGameType as i32 {
+                        WGAME_BEGIN => prefs.szBegin = buffer,
+                        WGAME_INTER => prefs.szInter = buffer,
+                        _ => prefs.szExpert = buffer,
+                    }
+                }
+
+                let _ = h_dlg.EndDialog(1);
                 return 1;
             }
             _ => {}
         },
         _ => {}
     }
+
     0
 }
 
 pub fn AdjustWindow(mut f_adjust: i32) {
-    unsafe {
-        // Recompute the main window rectangle whenever the board or menu state changes.
-        if hwndMain.as_opt().is_none() {
-            return;
-        }
-
-        let x_boxes = xBoxMac.load(Ordering::Relaxed);
-        let y_boxes = yBoxMac.load(Ordering::Relaxed);
-        let dx_window = DX_BLK * x_boxes + DX_GRID_OFF + DX_RIGHT_SPACE;
-        let dy_window = DY_BLK * y_boxes + DY_GRID_OFF + DY_BOTTOM_SPACE;
-        dxWindow.store(dx_window, Ordering::Relaxed);
-        dyWindow.store(dy_window, Ordering::Relaxed);
-
-        let menu_visible = menu_is_visible();
-        let mut menu_extra = 0;
-        let mut diff_level = false;
-        if menu_visible
-            && let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt())
-            && let (Ok(game_rect), Ok(help_rect)) =
-                (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
-            && game_rect.top != help_rect.top
-        {
-            diff_level = true;
-            menu_extra = dypMenu.load(Ordering::Relaxed);
-        }
-
-        let desired = RECT {
-            left: 0,
-            top: 0,
-            right: dx_window,
-            bottom: dy_window,
+    // Recompute the main window rectangle whenever the board or menu state changes.
+    let state = global_state();
+    let hwnd_main = {
+        let guard = match state.hwnd_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let Some(hwnd_main) = hwndMain.as_opt() else {
-            return;
+        unsafe { HWND::from_ptr(guard.ptr()) }
+    };
+    if hwnd_main.as_opt().is_none() {
+        return;
+    }
+
+    let menu_handle = {
+        let guard = match state.h_menu.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let dw_style = hwnd_main.GetWindowLongPtr(GWLP::STYLE) as u32;
-        let dw_ex_style = hwnd_main.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
-        let mut frame_extra = dxpBorder.load(Ordering::Relaxed);
-        let mut dyp_adjust;
-        if let Ok(adjusted) = ws_AdjustWindowRectEx(
+        unsafe { HMENU::from_ptr(guard.ptr()) }
+    };
+
+    let x_boxes = xBoxMac.load(Ordering::Relaxed);
+    let y_boxes = yBoxMac.load(Ordering::Relaxed);
+    let dx_window = DX_BLK * x_boxes + DX_GRID_OFF + DX_RIGHT_SPACE;
+    let dy_window = DY_BLK * y_boxes + DY_GRID_OFF + DY_BOTTOM_SPACE;
+    dxWindow.store(dx_window, Ordering::Relaxed);
+    dyWindow.store(dy_window, Ordering::Relaxed);
+
+    let (mut x_window, mut y_window, f_menu) = {
+        let prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        (prefs.xWindow, prefs.yWindow, prefs.fMenu)
+    };
+
+    let menu_visible = (f_menu & FMENU_FLAG_OFF) == 0 && menu_handle.as_opt().is_some();
+    let mut menu_extra = 0;
+    let mut diff_level = false;
+    if menu_visible
+        && let Some(hwnd) = hwnd_main.as_opt()
+        && let Some(menu) = menu_handle.as_opt()
+        && let (Ok(game_rect), Ok(help_rect)) =
+            (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
+        && game_rect.top != help_rect.top
+    {
+        diff_level = true;
+        menu_extra = dypMenu.load(Ordering::Relaxed);
+    }
+
+    let desired = RECT {
+        left: 0,
+        top: 0,
+        right: dx_window,
+        bottom: dy_window,
+    };
+    let dw_style = hwnd_main.GetWindowLongPtr(GWLP::STYLE) as u32;
+    let dw_ex_style = hwnd_main.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
+    let mut frame_extra = dxpBorder.load(Ordering::Relaxed);
+    let mut dyp_adjust;
+    if let Ok(adjusted) = unsafe {
+        ws_AdjustWindowRectEx(
             desired,
             WS::from_raw(dw_style),
             menu_visible,
             WS_EX::from_raw(dw_ex_style),
-        ) {
-            let cx_total = adjusted.right - adjusted.left;
-            let cy_total = adjusted.bottom - adjusted.top;
-            frame_extra = max(0, cx_total - dx_window);
-            dyp_adjust = max(0, cy_total - dy_window);
-        } else {
-            dyp_adjust = dypCaption.load(Ordering::Relaxed);
-            if menu_visible {
-                dyp_adjust += dypMenu.load(Ordering::Relaxed);
-            }
+        )
+    } {
+        let cx_total = adjusted.right - adjusted.left;
+        let cy_total = adjusted.bottom - adjusted.top;
+        frame_extra = max(0, cx_total - dx_window);
+        dyp_adjust = max(0, cy_total - dy_window);
+    } else {
+        dyp_adjust = dypCaption.load(Ordering::Relaxed);
+        if menu_visible {
+            dyp_adjust += dypMenu.load(Ordering::Relaxed);
+        }
+    }
+
+    dyp_adjust += menu_extra;
+    dypAdjust.store(dyp_adjust, Ordering::Relaxed);
+    dxFrameExtra.store(frame_extra, Ordering::Relaxed);
+
+    let mut excess = x_window + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
+    if excess > 0 {
+        f_adjust |= F_RESIZE;
+        x_window -= excess;
+    }
+    excess = y_window + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
+    if excess > 0 {
+        f_adjust |= F_RESIZE;
+        y_window -= excess;
+    }
+
+    if !bInitMinimized.load(Ordering::Relaxed) {
+        if (f_adjust & F_RESIZE) != 0 {
+            let _ = hwnd_main.MoveWindow(
+                POINT { x: x_window, y: y_window },
+                SIZE {
+                    cx: dx_window + frame_extra,
+                    cy: dy_window + dyp_adjust,
+                },
+                true,
+            );
         }
 
-        dyp_adjust += menu_extra;
-        dypAdjust.store(dyp_adjust, Ordering::Relaxed);
-        dxFrameExtra.store(frame_extra, Ordering::Relaxed);
-
-        let mut excess =
-            Preferences.xWindow + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
-        if excess > 0 {
-            f_adjust |= F_RESIZE;
-            Preferences.xWindow -= excess;
+        if diff_level
+            && menu_visible
+            && menu_handle.as_opt().is_some()
+            && menu_handle
+                .as_opt()
+                .and_then(|menu| {
+                    hwnd_main
+                        .GetMenuItemRect(menu, 0)
+                        .ok()
+                        .zip(hwnd_main.GetMenuItemRect(menu, 1).ok())
+                })
+                .is_some_and(|(g, h)| g.top == h.top)
+        {
+            dyp_adjust -= dypMenu.load(Ordering::Relaxed);
+            dypAdjust.store(dyp_adjust, Ordering::Relaxed);
+            let _ = hwnd_main.MoveWindow(
+                POINT { x: x_window, y: y_window },
+                SIZE {
+                    cx: dx_window + frame_extra,
+                    cy: dy_window + dyp_adjust,
+                },
+                true,
+            );
         }
-        excess =
-            Preferences.yWindow + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
-        if excess > 0 {
-            f_adjust |= F_RESIZE;
-            Preferences.yWindow -= excess;
+
+        if (f_adjust & F_DISPLAY) != 0 {
+            let rect = RECT {
+                left: 0,
+                top: 0,
+                right: dx_window,
+                bottom: dy_window,
+            };
+            let _ = hwnd_main.InvalidateRect(Some(&rect), true);
         }
+    }
 
-        if !bInitMinimized.load(Ordering::Relaxed) {
-            if (f_adjust & F_RESIZE) != 0 {
-                let _ = hwnd_main.MoveWindow(
-                    POINT {
-                        x: Preferences.xWindow,
-                        y: Preferences.yWindow,
-                    },
-                    SIZE {
-                        cx: dx_window + frame_extra,
-                        cy: dy_window + dyp_adjust,
-                    },
-                    true,
-                );
-            }
-
-            if diff_level
-                && menu_visible
-                && hMenu.as_opt().is_some()
-                && hMenu
-                    .as_opt()
-                    .and_then(|menu| {
-                        hwnd_main
-                            .GetMenuItemRect(menu, 0)
-                            .ok()
-                            .zip(hwnd_main.GetMenuItemRect(menu, 1).ok())
-                    })
-                    .is_some_and(|(g, h)| g.top == h.top)
-            {
-                dyp_adjust -= dypMenu.load(Ordering::Relaxed);
-                dypAdjust.store(dyp_adjust, Ordering::Relaxed);
-                let _ = hwnd_main.MoveWindow(
-                    POINT {
-                        x: Preferences.xWindow,
-                        y: Preferences.yWindow,
-                    },
-                    SIZE {
-                        cx: dx_window + frame_extra,
-                        cy: dy_window + dyp_adjust,
-                    },
-                    true,
-                );
-            }
-
-            if (f_adjust & F_DISPLAY) != 0 {
-                let rect = RECT {
-                    left: 0,
-                    top: 0,
-                    right: dx_window,
-                    bottom: dy_window,
-                };
-                let _ = hwnd_main.InvalidateRect(Some(&rect), true);
-            }
-        }
+    if let Ok(mut prefs) = preferences_mutex().lock() {
+        prefs.xWindow = x_window;
+        prefs.yWindow = y_window;
+    } else if let Err(poisoned) = preferences_mutex().lock() {
+        let mut guard = poisoned.into_inner();
+        guard.xWindow = x_window;
+        guard.yWindow = y_window;
     }
 }
 
@@ -1220,96 +1591,65 @@ fn command_id(w_param: usize) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
-fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: *const u16) {
+fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
+    let state = global_state();
+    let time_fmt = {
+        let guard = match state.sz_time.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let len = guard.iter().position(|&ch| ch == 0).unwrap_or(guard.len());
+        String::from_utf16_lossy(&guard[..len])
+    };
+
+    let mut buffer = [0u16; CCH_NAME_MAX];
+    let text = time_fmt.replace("%d", &time.to_string());
+    for (i, code_unit) in text
+        .encode_utf16()
+        .chain(Some(0))
+        .take(buffer.len())
+        .enumerate()
+    {
+        buffer[i] = code_unit;
+    }
+
     unsafe {
-        let mut buffer = [0u16; CCH_NAME_MAX];
-        let fmt_len = szTime
-            .iter()
-            .position(|&ch| ch == 0)
-            .unwrap_or(szTime.len());
-        let fmt = String::from_utf16_lossy(&szTime[..fmt_len]);
-        let text = fmt.replace("%d", &time.to_string());
-
-        for (i, code_unit) in text
-            .encode_utf16()
-            .chain(Some(0))
-            .take(buffer.len())
-            .enumerate()
-        {
-            *buffer.as_mut_ptr().add(i) = code_unit;
-        }
-
         SetDlgItemTextW(h_dlg.ptr() as _, id, buffer.as_ptr());
-        SetDlgItemTextW(h_dlg.ptr() as _, id + 1, name);
+        SetDlgItemTextW(h_dlg.ptr() as _, id + 1, name.as_ptr());
     }
 }
 
-fn reset_best_dialog(h_dlg: &HWND) {
-    unsafe {
-        set_dtext(
-            h_dlg,
-            ID_TIME_BEGIN,
-            Preferences.rgTime[WGAME_BEGIN as usize],
-            name_ptr_for_game(WGAME_BEGIN),
-        );
-        set_dtext(
-            h_dlg,
-            ID_TIME_INTER,
-            Preferences.rgTime[WGAME_INTER as usize],
-            name_ptr_for_game(WGAME_INTER),
-        );
-        set_dtext(
-            h_dlg,
-            ID_TIME_EXPERT,
-            Preferences.rgTime[WGAME_EXPERT as usize],
-            name_ptr_for_game(WGAME_EXPERT),
-        );
-    }
+fn reset_best_dialog(
+    h_dlg: &HWND,
+    time_begin: i32,
+    time_inter: i32,
+    time_expert: i32,
+    name_begin: [u16; CCH_NAME_MAX],
+    name_inter: [u16; CCH_NAME_MAX],
+    name_expert: [u16; CCH_NAME_MAX],
+) {
+    set_dtext(h_dlg, ID_TIME_BEGIN, time_begin, &name_begin);
+    set_dtext(h_dlg, ID_TIME_INTER, time_inter, &name_inter);
+    set_dtext(h_dlg, ID_TIME_EXPERT, time_expert, &name_expert);
 }
 
-fn current_name_ptr() -> *const u16 {
-    unsafe { name_ptr_for_game(Preferences.wGameType as i32) }
-}
+fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {
+    let state = global_state();
+    let source = {
+        let guard = match state.sz_default_name.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        *guard
+    };
 
-fn current_name_ptr_mut() -> *mut u16 {
-    unsafe { name_ptr_for_game_mut(Preferences.wGameType as i32) }
-}
-
-fn name_ptr_for_game(game_type: i32) -> *const u16 {
-    unsafe {
-        match game_type {
-            WGAME_BEGIN => addr_of!(Preferences.szBegin) as *const u16,
-            WGAME_INTER => addr_of!(Preferences.szInter) as *const u16,
-            _ => addr_of!(Preferences.szExpert) as *const u16,
+    for (i, ch) in source.iter().copied().enumerate().take(CCH_NAME_MAX) {
+        dst[i] = ch;
+        if ch == 0 {
+            return;
         }
     }
-}
-
-fn name_ptr_for_game_mut(game_type: i32) -> *mut u16 {
-    unsafe {
-        match game_type {
-            WGAME_BEGIN => addr_of_mut!(Preferences.szBegin) as *mut u16,
-            WGAME_INTER => addr_of_mut!(Preferences.szInter) as *mut u16,
-            _ => addr_of_mut!(Preferences.szExpert) as *mut u16,
-        }
-    }
-}
-
-fn copy_from_default(dst: *mut u16) {
-    if dst.is_null() {
-        return;
-    }
-
-    unsafe {
-        let dst_slice = std::slice::from_raw_parts_mut(dst, CCH_NAME_MAX);
-        for (i, ch) in szDefaultName.iter().copied().enumerate().take(CCH_NAME_MAX) {
-            dst_slice[i] = ch;
-            if ch == 0 {
-                return;
-            }
-        }
-        dst_slice[CCH_NAME_MAX - 1] = 0;
-    }
+    dst[CCH_NAME_MAX - 1] = 0;
 }
 
 fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
@@ -1333,8 +1673,4 @@ fn apply_help_to_hwnd(hwnd: HWND, ids: &[u32]) {
         return;
     }
     let _ = hwnd.WinHelp(HELP_FILE, HELPW::CONTEXTMENU, ids.as_ptr() as usize);
-}
-
-fn menu_is_visible() -> bool {
-    unsafe { (Preferences.fMenu & FMENU_FLAG_OFF) == 0 && hMenu.as_opt().is_some() }
 }
