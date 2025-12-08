@@ -211,7 +211,7 @@ pub fn InitConst() {
     dypBorder.store(w::GetSystemMetrics(SM::CYBORDER) + 1, Ordering::Relaxed);
     dxpBorder.store(w::GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
-    let mut already_played = 0;
+    let mut already_played = false;
 
     if let Ok((mut key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -222,12 +222,12 @@ pub fn InitConst() {
     ) {
         unsafe {
             g_hReg = key_guard.leak();
-            already_played = ReadInt(ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1);
+            already_played = ReadInt(ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1) != 0;
             close_registry_handle();
         }
     }
 
-    if already_played != 0 {
+    if already_played {
         return;
     }
 
@@ -299,19 +299,25 @@ pub fn CheckEm(idm: u16, f_check: bool) {
 
 pub fn SetMenuBar(f_active: i32) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
-    unsafe {
+    let (menu_handle, menu_on) = unsafe {
         Preferences.fMenu = f_active;
-    }
-    FixMenus();
-
-    let menu_on = unsafe { (Preferences.fMenu & FMENU_FLAG_OFF) == 0 };
-    if let Some(hwnd) = unsafe { hwndMain.as_opt() } {
-        let menu_ref = if menu_on {
-            unsafe { hMenu.as_opt() }.unwrap_or(&w::HMENU::NULL)
+        FixMenus();
+        let menu_on = (Preferences.fMenu & FMENU_FLAG_OFF) == 0;
+        let handle = if menu_on {
+            hMenu.as_opt().unwrap_or(&w::HMENU::NULL)
         } else {
             &w::HMENU::NULL
         };
-        let _ = hwnd.SetMenu(menu_ref);
+        (handle, menu_on)
+    };
+
+    if let Some(hwnd) = unsafe { hwndMain.as_opt() } {
+        let menu_arg = if menu_on {
+            menu_handle
+        } else {
+            &w::HMENU::NULL
+        };
+        let _ = hwnd.SetMenu(menu_arg);
         AdjustWindow(F_RESIZE);
     }
 }
@@ -345,7 +351,7 @@ pub fn DoAbout() {
     let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon);
 }
 
-pub unsafe fn DoHelp(w_command: u16, l_param: u32) {
+pub fn DoHelp(w_command: u16, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 

@@ -1,7 +1,6 @@
 // Quick helpers for the small set of winmm-backed tunes used by the UI.
 use core::ptr::{null, null_mut};
 
-use windows_sys::Win32::Foundation::HINSTANCE as RawHINSTANCE;
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 
 use crate::globals::hInst;
@@ -61,7 +60,7 @@ fn stop_all_sounds() -> bool {
 
 fn play_resource_sound(resource_id: u16) {
     let resource_ptr = make_int_resource(resource_id);
-    let instance = unsafe { hInst.ptr() as RawHINSTANCE };
+    let instance = unsafe { hInst.ptr() };
     // Playback uses the async flag so the UI thread is never blocked.
     unsafe {
         PlaySoundW(resource_ptr, instance, SND_RESOURCE | SND_ASYNC);

@@ -491,10 +491,7 @@ fn in_range_step(x: i32, y: i32) -> bool {
 pub fn ClearField() {
     // Reset every cell to blank-up and rebuild the sentinel border.
     unsafe {
-        #[allow(clippy::needless_range_loop)]
-        for idx in 0..C_BLK_MAX {
-            rgBlk[idx] = I_BLK_BLANK_UP as i8;
-        }
+        rgBlk.iter_mut().for_each(|b| *b = I_BLK_BLANK_UP as i8);
 
         let x_max = xBoxMac.load(Ordering::Relaxed);
         let y_max = yBoxMac.load(Ordering::Relaxed);

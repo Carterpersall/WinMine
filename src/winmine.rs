@@ -193,6 +193,8 @@ const BEST_HELP_IDS: [u32; 22] = [
 const EM_SETLIMITTEXT: u32 = 0x00C5;
 const IDOK_U16: u16 = DLGID::OK.raw();
 const IDCANCEL_U16: u16 = DLGID::CANCEL.raw();
+
+// Structure for HELP_WM_HELP message.
 #[repr(C)]
 struct HelpInfo {
     cbSize: u32,
@@ -1072,18 +1074,14 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         let menu_visible = menu_is_visible();
         let mut menu_extra = 0;
         let mut diff_level = false;
-        if menu_visible {
-            if let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt()) {
-                if let (Ok(game_rect), Ok(help_rect)) = (
-                    hwnd.GetMenuItemRect(&menu, 0),
-                    hwnd.GetMenuItemRect(&menu, 1),
-                ) {
-                    if game_rect.top != help_rect.top {
-                        diff_level = true;
-                        menu_extra = dypMenu.load(Ordering::Relaxed);
-                    }
-                }
-            }
+        if menu_visible
+            && let (Some(hwnd), Some(menu)) = (hwndMain.as_opt(), hMenu.as_opt())
+            && let (Ok(game_rect), Ok(help_rect)) =
+                (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
+            && game_rect.top != help_rect.top
+        {
+            diff_level = true;
+            menu_extra = dypMenu.load(Ordering::Relaxed);
         }
 
         let desired = RECT {

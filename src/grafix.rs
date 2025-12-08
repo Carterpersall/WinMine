@@ -76,7 +76,7 @@ fn color_enabled() -> bool {
     unsafe { (*prefs_ptr()).fColor }
 }
 
-unsafe fn main_window() -> Option<&'static w::HWND> {
+fn main_window() -> Option<&'static w::HWND> {
     unsafe { hwndMain.as_opt() }
 }
 
@@ -155,7 +155,7 @@ pub fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
 
 pub fn DisplayBlk(x: i32, y: i32) {
     // Convenience wrapper that repaints one tile directly to the main window.
-    if let Some(hwnd) = unsafe { main_window() }
+    if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
         DrawBlk(&hdc, x, y);
@@ -187,7 +187,7 @@ pub fn DrawGrid(hdc: &w::HDC) {
 }
 
 pub fn DisplayGrid() {
-    if let Some(hwnd) = unsafe { main_window() }
+    if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
         DrawGrid(&hdc);
@@ -243,7 +243,7 @@ pub fn DrawBombCount(hdc: &w::HDC) {
 }
 
 pub fn DisplayBombCount() {
-    if let Some(hwnd) = unsafe { main_window() }
+    if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
         DrawBombCount(&hdc);
@@ -288,7 +288,7 @@ pub fn DrawTime(hdc: &w::HDC) {
 }
 
 pub fn DisplayTime() {
-    if let Some(hwnd) = unsafe { main_window() }
+    if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
         DrawTime(&hdc);
@@ -318,7 +318,7 @@ pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
 }
 
 pub fn DisplayButton(i_button: i32) {
-    if let Some(hwnd) = unsafe { main_window() }
+    if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
         DrawButton(&hdc, i_button);
@@ -435,7 +435,7 @@ pub fn DrawScreen(hdc: &w::HDC) {
 }
 
 pub fn DisplayScreen() {
-    if let Some(hwnd) = unsafe { main_window() }
+    if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
         DrawScreen(&hdc);
@@ -482,21 +482,18 @@ fn load_bitmaps_impl() -> bool {
         let header = dib_header_size();
 
         let cb_blk = cb_bitmap(DX_BLK, DY_BLK);
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..I_BLK_MAX {
-            RG_DIB_OFF[i] = header + (i as i32) * cb_blk;
+        for (i, off) in RG_DIB_OFF.iter_mut().enumerate() {
+            *off = header + (i as i32) * cb_blk;
         }
 
         let cb_led = cb_bitmap(DX_LED, DY_LED);
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..I_LED_MAX {
-            RG_DIB_LED_OFF[i] = header + (i as i32) * cb_led;
+        for (i, off) in RG_DIB_LED_OFF.iter_mut().enumerate() {
+            *off = header + (i as i32) * cb_led;
         }
 
         let cb_button = cb_bitmap(DX_BUTTON, DY_BUTTON);
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..I_BUTTON_MAX {
-            RG_DIB_BUTTON_OFF[i] = header + (i as i32) * cb_button;
+        for (i, off) in RG_DIB_BUTTON_OFF.iter_mut().enumerate() {
+            *off = header + (i as i32) * cb_button;
         }
 
         let hwnd = match main_window() {

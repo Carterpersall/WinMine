@@ -50,8 +50,6 @@ const PREF_STRINGS: [&str; ISZ_PREF_MAX] = [
     "AlreadyPlayed",
 ];
 
-// Rust mirror of the PREF struct so we can mutate the shared C globals.
-#[repr(C)]
 pub struct Pref {
     pub wGameType: u16,
     pub Mines: i32,

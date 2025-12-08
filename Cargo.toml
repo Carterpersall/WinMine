@@ -13,17 +13,11 @@ codegen-units = 1
 
 [dependencies]
 windows-sys = { version = "0.61.2", features = [
-	"Win32_Foundation",
 	"Win32_Media_Audio",
 	"Win32_Graphics_Gdi",
 	"Win32_UI_WindowsAndMessaging",
-	"Win32_UI_Controls",
-	"Win32_System_SystemInformation",
-	"Win32_System_LibraryLoader",
 	"Win32_System_WindowsProgramming",
-	"Win32_System_Diagnostics_Debug",
 	"Win32_Data_HtmlHelp",
-	"Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [dependencies.winsafe]
