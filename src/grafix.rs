@@ -1,5 +1,5 @@
 use core::mem::size_of;
-use core::ptr::{addr_of, addr_of_mut, null};
+use core::ptr::{addr_of_mut, null};
 use core::sync::atomic::Ordering::Relaxed;
 
 use windows_sys::Win32::Graphics::Gdi as gdi_sys;
@@ -97,12 +97,11 @@ pub fn FLoadBitmaps() -> bool {
 pub fn FreeBitmaps() {
     // Tear down cached pens, handles, and scratch DCs when leaving the app.
     unsafe {
-        let pen = addr_of!(H_GRAY_PEN);
-        let handle = core::ptr::read(pen);
-        if handle != w::HPEN::NULL {
-            let _ = DeleteObjectGuard::new(handle);
+        if H_GRAY_PEN != w::HPEN::NULL {
+            let pen = w::HPEN::from_ptr(H_GRAY_PEN.ptr());
+            let _ = DeleteObjectGuard::new(pen);
+            H_GRAY_PEN = w::HPEN::NULL;
         }
-        core::ptr::write(addr_of_mut!(H_GRAY_PEN), w::HPEN::NULL);
 
         H_RES_BLKS = HRSRCMEM::NULL;
         H_RES_LED = HRSRCMEM::NULL;
@@ -114,12 +113,12 @@ pub fn FreeBitmaps() {
 
         for i in 0..I_BLK_MAX {
             if MEM_BLK_DC[i] != w::HDC::NULL {
-                let dc_handle = core::ptr::read(addr_of!(MEM_BLK_DC[i]));
+                let dc_handle = w::HDC::from_ptr(MEM_BLK_DC[i].ptr());
                 let _ = DeleteDCGuard::new(dc_handle);
                 MEM_BLK_DC[i] = w::HDC::NULL;
             }
             if MEM_BLK_BITMAP[i] != w::HBITMAP::NULL {
-                let bmp_handle = core::ptr::read(addr_of!(MEM_BLK_BITMAP[i]));
+                let bmp_handle = w::HBITMAP::from_ptr(MEM_BLK_BITMAP[i].ptr());
                 let _ = DeleteObjectGuard::new(bmp_handle);
                 MEM_BLK_BITMAP[i] = w::HBITMAP::NULL;
             }
@@ -333,12 +332,10 @@ pub fn SetThePen(hdc: &w::HDC, f_normal: i32) {
     } else {
         unsafe {
             SetROP2(hdc.ptr(), R2_COPYPEN);
-            let pen_ptr = addr_of!(H_GRAY_PEN);
-            let pen = core::ptr::read(pen_ptr);
-            if pen != w::HPEN::NULL {
+            if H_GRAY_PEN != w::HPEN::NULL {
+                let pen = w::HPEN::from_ptr(H_GRAY_PEN.ptr());
                 let _ = hdc.SelectObject(&pen).map(|mut guard| guard.leak());
             }
-            core::ptr::write(addr_of_mut!(H_GRAY_PEN), pen);
         }
     }
 }
@@ -619,12 +616,18 @@ fn block_dc(x: i32, y: i32) -> w::HDC {
 }
 
 fn block_sprite_index(x: i32, y: i32) -> usize {
+    // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
+    let offset = ((y as isize) << 5) + x as isize;
+    if offset < 0 {
+        return 0;
+    }
+    let idx = offset as usize;
     unsafe {
-        // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
-        let offset = ((y as isize) << 5) + x as isize;
-        let ptr = addr_of_mut!(rgBlk).cast::<i8>();
-        let value = *ptr.offset(offset) as i32;
-        (value & MASK_DATA) as usize
+        rgBlk
+            .get(idx)
+            .copied()
+            .map(|value| (value as i32 & MASK_DATA) as usize)
+            .unwrap_or(0)
     }
 }
 

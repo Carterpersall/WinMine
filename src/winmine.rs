@@ -1296,17 +1296,19 @@ fn name_ptr_for_game_mut(game_type: i32) -> *mut u16 {
 }
 
 fn copy_from_default(dst: *mut u16) {
+    if dst.is_null() {
+        return;
+    }
+
     unsafe {
-        let mut i = 0;
-        while i < CCH_NAME_MAX {
-            let ch = szDefaultName[i];
-            *dst.add(i) = ch;
+        let dst_slice = std::slice::from_raw_parts_mut(dst, CCH_NAME_MAX);
+        for (i, ch) in szDefaultName.iter().copied().enumerate().take(CCH_NAME_MAX) {
+            dst_slice[i] = ch;
             if ch == 0 {
                 return;
             }
-            i += 1;
         }
-        *dst.add(CCH_NAME_MAX - 1) = 0;
+        dst_slice[CCH_NAME_MAX - 1] = 0;
     }
 }
 

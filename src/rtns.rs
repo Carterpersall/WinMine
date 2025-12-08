@@ -114,42 +114,53 @@ fn clr_status_pause() {
     fStatus.fetch_and(!F_PAUSE, Ordering::Relaxed);
 }
 
-fn board_index(x: i32, y: i32) -> usize {
+fn board_index(x: i32, y: i32) -> Option<usize> {
     let offset = ((y as isize) << 5) + x as isize;
-    offset.max(0) as usize
+    if offset < 0 {
+        return None;
+    }
+    let idx = offset as usize;
+    if idx < C_BLK_MAX { Some(idx) } else { None }
 }
 
 fn block_value(x: i32, y: i32) -> u8 {
-    unsafe { rgBlk[board_index(x, y)] as u8 }
+    board_index(x, y)
+        .and_then(|idx| unsafe { rgBlk.get(idx).copied() })
+        .unwrap_or(0) as u8
 }
 
 fn set_block_value(x: i32, y: i32, value: u8) {
-    unsafe {
-        let idx = board_index(x, y);
-        let prev = rgBlk[idx] as u8;
-        rgBlk[idx] = ((prev & MASK_FLAGS) | (value & MASK_DATA)) as i8;
+    if let Some(idx) = board_index(x, y) {
+        unsafe {
+            let prev = rgBlk[idx] as u8;
+            rgBlk[idx] = ((prev & MASK_FLAGS) | (value & MASK_DATA)) as i8;
+        }
     }
 }
 
 fn set_border(x: i32, y: i32) {
-    unsafe {
-        rgBlk[board_index(x, y)] = I_BLK_MAX_SENTINEL as i8;
+    if let Some(idx) = board_index(x, y) {
+        unsafe {
+            rgBlk[idx] = I_BLK_MAX_SENTINEL as i8;
+        }
     }
 }
 
 fn set_bomb(x: i32, y: i32) {
-    unsafe {
-        let idx = board_index(x, y);
-        let prev = rgBlk[idx] as u8;
-        rgBlk[idx] = (prev | MASK_BOMB) as i8;
+    if let Some(idx) = board_index(x, y) {
+        unsafe {
+            let prev = rgBlk[idx] as u8;
+            rgBlk[idx] = (prev | MASK_BOMB) as i8;
+        }
     }
 }
 
 fn clear_bomb(x: i32, y: i32) {
-    unsafe {
-        let idx = board_index(x, y);
-        let prev = rgBlk[idx] as u8;
-        rgBlk[idx] = (prev & MASK_NOT_BOMB) as i8;
+    if let Some(idx) = board_index(x, y) {
+        unsafe {
+            let prev = rgBlk[idx] as u8;
+            rgBlk[idx] = (prev & MASK_NOT_BOMB) as i8;
+        }
     }
 }
 
@@ -294,27 +305,28 @@ fn change_blk(x: i32, y: i32, block: i32) {
 
 fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
     // Visit a square; enqueue it when empty so we flood-fill neighbors later.
-    unsafe {
-        let idx = board_index(x, y);
-        let mut blk = rgBlk[idx] as u8;
-        if (blk & MASK_VISIT) != 0 {
-            return;
-        }
+    if let Some(idx) = board_index(x, y) {
+        unsafe {
+            let mut blk = rgBlk[idx] as u8;
+            if (blk & MASK_VISIT) != 0 {
+                return;
+            }
 
-        let data = blk & MASK_DATA;
-        if data == I_BLK_MAX_SENTINEL as u8 || data == I_BLK_BOMB_UP as u8 {
-            return;
-        }
+            let data = blk & MASK_DATA;
+            if data == I_BLK_MAX_SENTINEL as u8 || data == I_BLK_BOMB_UP as u8 {
+                return;
+            }
 
-        C_BOX_VISIT.fetch_add(1, Ordering::Relaxed);
-        let bombs = count_bombs(x, y);
-        blk = MASK_VISIT | (bombs as u8 & MASK_DATA);
-        rgBlk[idx] = blk as i8;
-        display_block(x, y);
+            C_BOX_VISIT.fetch_add(1, Ordering::Relaxed);
+            let bombs = count_bombs(x, y);
+            blk = MASK_VISIT | (bombs as u8 & MASK_DATA);
+            rgBlk[idx] = blk as i8;
+            display_block(x, y);
 
-        if bombs == 0 && *tail < I_STEP_MAX {
-            queue[*tail] = (x, y);
-            *tail += 1;
+            if bombs == 0 && *tail < I_STEP_MAX {
+                queue[*tail] = (x, y);
+                *tail += 1;
+            }
         }
     }
 }

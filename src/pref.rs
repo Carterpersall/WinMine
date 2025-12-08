@@ -75,7 +75,7 @@ pub static mut g_hReg: w::HKEY = w::HKEY::NULL;
 
 pub unsafe fn ReadInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
 
     if handle == w::HKEY::NULL {
         return val_default;
@@ -100,7 +100,7 @@ pub unsafe fn ReadSz(isz_pref: i32, sz_ret: *mut u16) {
         return;
     }
 
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
 
     if handle == w::HKEY::NULL {
         unsafe {
@@ -250,7 +250,7 @@ pub unsafe fn WritePreferences() {
 
 pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
     // Simple DWORD setter used by both the registry migration and the dialog code.
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
 
     if handle == w::HKEY::NULL {
         return;
@@ -261,7 +261,7 @@ pub unsafe fn WriteInt(isz_pref: i32, val: i32) {
         None => return,
     };
 
-    let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+    let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
     let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Dword(val as u32));
 }
 
@@ -374,11 +374,9 @@ unsafe fn copy_default_name(dst: *mut u16) {
 
 pub(crate) unsafe fn close_registry_handle() {
     if unsafe { g_hReg != w::HKEY::NULL } {
-        let handle = unsafe { core::ptr::read(addr_of!(g_hReg)) };
+        let handle = unsafe { w::HKEY::from_ptr(g_hReg.ptr()) };
         unsafe {
             g_hReg = w::HKEY::NULL;
-        }
-        unsafe {
             let _ = RegCloseKeyGuard::new(handle);
         }
     }
