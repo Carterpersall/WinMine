@@ -82,38 +82,51 @@ pub enum MenuCommand {
 /// Resource identifier for the out-of-memory error.
 const ID_ERR_MEM: u16 = 5;
 
-/// Dialog resource identifier for the custom game dialog.
-const ID_DLG_PREF: u16 = 80;
-/// Dialog resource identifier for the high-score entry dialog.
-const ID_DLG_ENTER: u16 = 600;
-/// Dialog resource identifier for the best-times dialog.
-const ID_DLG_BEST: u16 = 700;
+/// Dialog templates.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum DialogTemplateId {
+    Pref = 80,
+    Enter = 600,
+    Best = 700,
+}
 
-const ID_EDIT_HEIGHT: i32 = 141;
-const ID_EDIT_WIDTH: i32 = 142;
-const ID_EDIT_MINES: i32 = 143;
-const ID_BTN_OK: u16 = 100;
-const ID_BTN_CANCEL: u16 = 109;
-const ID_BTN_RESET: u16 = 707;
-const ID_TEXT_BEST: i32 = 601;
-const ID_EDIT_NAME: i32 = 602;
-const ID_TIME_BEGIN: i32 = 701;
-const ID_NAME_BEGIN: i32 = 702;
-const ID_TIME_INTER: i32 = 703;
-const ID_NAME_INTER: i32 = 704;
-const ID_TIME_EXPERT: i32 = 705;
-const ID_NAME_EXPERT: i32 = 706;
-const ID_STEXT1: i32 = 708;
-const ID_STEXT2: i32 = 709;
-const ID_STEXT3: i32 = 710;
-const ID_TXT_MINES: i32 = 111;
-const ID_TXT_HEIGHT: i32 = 112;
-const ID_TXT_WIDTH: i32 = 113;
-const IDH_PREF_EDIT_HEIGHT: u32 = 1000;
-const IDH_PREF_EDIT_WIDTH: u32 = 1001;
-const IDH_PREF_EDIT_MINES: u32 = 1002;
-const IDH_BEST_BTN_RESET: u32 = 1003;
-const IDH_STEXT: u32 = 1004;
+/// Control identifiers shared across dialogs.
+#[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum ControlId {
+    EditHeight = 141,
+    EditWidth = 142,
+    EditMines = 143,
+    BtnOk = 100,
+    BtnCancel = 109,
+    BtnReset = 707,
+    TextBest = 601,
+    EditName = 602,
+    TimeBegin = 701,
+    NameBegin = 702,
+    TimeInter = 703,
+    NameInter = 704,
+    TimeExpert = 705,
+    NameExpert = 706,
+    SText1 = 708,
+    SText2 = 709,
+    SText3 = 710,
+    TxtMines = 111,
+    TxtHeight = 112,
+    TxtWidth = 113,
+}
+
+/// Help context identifiers.
+#[repr(u32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum HelpContextId {
+    PrefEditHeight = 1000,
+    PrefEditWidth = 1001,
+    PrefEditMines = 1002,
+    BestBtnReset = 1003,
+    SText = 1004,
+}
 const ID_MSG_BEGIN: u16 = 9;
 const F_CALC: i32 = 0x01;
 
@@ -167,43 +180,43 @@ const COLOR_WHITE: COLORREF = COLORREF::from_rgb(0xFF, 0xFF, 0xFF);
 const HELP_FILE: &str = "winmine.hlp";
 
 const PREF_HELP_IDS: [u32; 14] = [
-    ID_EDIT_HEIGHT as u32,
-    IDH_PREF_EDIT_HEIGHT,
-    ID_EDIT_WIDTH as u32,
-    IDH_PREF_EDIT_WIDTH,
-    ID_EDIT_MINES as u32,
-    IDH_PREF_EDIT_MINES,
-    ID_TXT_HEIGHT as u32,
-    IDH_PREF_EDIT_HEIGHT,
-    ID_TXT_WIDTH as u32,
-    IDH_PREF_EDIT_WIDTH,
-    ID_TXT_MINES as u32,
-    IDH_PREF_EDIT_MINES,
+    ControlId::EditHeight as u32,
+    HelpContextId::PrefEditHeight as u32,
+    ControlId::EditWidth as u32,
+    HelpContextId::PrefEditWidth as u32,
+    ControlId::EditMines as u32,
+    HelpContextId::PrefEditMines as u32,
+    ControlId::TxtHeight as u32,
+    HelpContextId::PrefEditHeight as u32,
+    ControlId::TxtWidth as u32,
+    HelpContextId::PrefEditWidth as u32,
+    ControlId::TxtMines as u32,
+    HelpContextId::PrefEditMines as u32,
     0,
     0,
 ];
 
 const BEST_HELP_IDS: [u32; 22] = [
-    ID_BTN_RESET as u32,
-    IDH_BEST_BTN_RESET,
-    ID_STEXT1 as u32,
-    IDH_STEXT,
-    ID_STEXT2 as u32,
-    IDH_STEXT,
-    ID_STEXT3 as u32,
-    IDH_STEXT,
-    ID_TIME_BEGIN as u32,
-    IDH_STEXT,
-    ID_TIME_INTER as u32,
-    IDH_STEXT,
-    ID_TIME_EXPERT as u32,
-    IDH_STEXT,
-    ID_NAME_BEGIN as u32,
-    IDH_STEXT,
-    ID_NAME_INTER as u32,
-    IDH_STEXT,
-    ID_NAME_EXPERT as u32,
-    IDH_STEXT,
+    ControlId::BtnReset as u32,
+    HelpContextId::BestBtnReset as u32,
+    ControlId::SText1 as u32,
+    HelpContextId::SText as u32,
+    ControlId::SText2 as u32,
+    HelpContextId::SText as u32,
+    ControlId::SText3 as u32,
+    HelpContextId::SText as u32,
+    ControlId::TimeBegin as u32,
+    HelpContextId::SText as u32,
+    ControlId::TimeInter as u32,
+    HelpContextId::SText as u32,
+    ControlId::TimeExpert as u32,
+    HelpContextId::SText as u32,
+    ControlId::NameBegin as u32,
+    HelpContextId::SText as u32,
+    ControlId::NameInter as u32,
+    HelpContextId::SText as u32,
+    ControlId::NameExpert as u32,
+    HelpContextId::SText as u32,
     0,
     0,
 ];
@@ -1075,7 +1088,7 @@ pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState
 
 pub fn DoPref() {
     // Launch the custom game dialog, then treat the result as a "Custom" board.
-    show_dialog(ID_DLG_PREF, PrefDlgProc);
+    show_dialog(DialogTemplateId::Pref as u16, PrefDlgProc);
 
     let (game, f_color, f_mark, f_sound) = {
         let mut prefs = match preferences_mutex().lock() {
@@ -1092,13 +1105,13 @@ pub fn DoPref() {
 
 pub fn DoEnterName() {
     // Show the high-score entry dialog and mark preferences dirty.
-    show_dialog(ID_DLG_ENTER, EnterDlgProc);
+    show_dialog(DialogTemplateId::Enter as u16, EnterDlgProc);
     fUpdateIni.store(true, Ordering::Relaxed);
 }
 
 pub fn DoDisplayBest() {
     // Present the high-score list dialog as-is; no post-processing required here.
-    show_dialog(ID_DLG_BEST, BestDlgProc);
+    show_dialog(DialogTemplateId::Best as u16, BestDlgProc);
 }
 
 pub fn FLocalButton(l_param: isize) -> bool {
@@ -1212,19 +1225,24 @@ pub extern "system" fn PrefDlgProc(
                 (prefs.Height, prefs.Width, prefs.Mines)
             };
             unsafe {
-                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_HEIGHT, height as u32, 0);
-                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_WIDTH, width as u32, 0);
-                SetDlgItemInt(h_dlg_raw as _, ID_EDIT_MINES, mines as u32, 0);
+                SetDlgItemInt(
+                    h_dlg_raw as _,
+                    ControlId::EditHeight as i32,
+                    height as u32,
+                    0,
+                );
+                SetDlgItemInt(h_dlg_raw as _, ControlId::EditWidth as i32, width as u32, 0);
+                SetDlgItemInt(h_dlg_raw as _, ControlId::EditMines as i32, mines as u32, 0);
             }
             return 1;
         }
         co::WM::COMMAND => {
             match command_id(w_param) {
-                ID_BTN_OK | IDOK_U16 => {
-                    let height = GetDlgInt(&h_dlg, ID_EDIT_HEIGHT, MINHEIGHT, 24);
-                    let width = GetDlgInt(&h_dlg, ID_EDIT_WIDTH, MINWIDTH, 30);
+                id if id == ControlId::BtnOk as u16 || id == IDOK_U16 => {
+                    let height = GetDlgInt(&h_dlg, ControlId::EditHeight as i32, MINHEIGHT, 24);
+                    let width = GetDlgInt(&h_dlg, ControlId::EditWidth as i32, MINWIDTH, 30);
                     let max_mines = min(999, (height - 1) * (width - 1));
-                    let mines = GetDlgInt(&h_dlg, ID_EDIT_MINES, 10, max_mines);
+                    let mines = GetDlgInt(&h_dlg, ControlId::EditMines as i32, 10, max_mines);
 
                     let lock = preferences_mutex().lock();
                     if let Ok(mut prefs) = lock {
@@ -1238,7 +1256,7 @@ pub extern "system" fn PrefDlgProc(
                         prefs.Mines = mines;
                     }
                 }
-                ID_BTN_CANCEL | IDCANCEL_U16 => {}
+                id if id == ControlId::BtnCancel as u16 || id == IDCANCEL_U16 => {}
                 _ => return 0,
             }
             let _ = h_dlg.EndDialog(1);
@@ -1296,7 +1314,7 @@ pub extern "system" fn BestDlgProc(
             return 1;
         }
         co::WM::COMMAND => match command_id(w_param) {
-            ID_BTN_RESET => {
+            id if id == ControlId::BtnReset as u16 => {
                 let snapshot = if let Ok(mut prefs) = preferences_mutex().lock() {
                     prefs.rgTime[GameType::Begin as usize] = 999;
                     prefs.rgTime[GameType::Inter as usize] = 999;
@@ -1354,7 +1372,11 @@ pub extern "system" fn BestDlgProc(
                 );
                 return 1;
             }
-            ID_BTN_OK | IDOK_U16 | ID_BTN_CANCEL | IDCANCEL_U16 => {
+            id if id == ControlId::BtnOk as u16
+                || id == IDOK_U16
+                || id == ControlId::BtnCancel as u16
+                || id == IDCANCEL_U16 =>
+            {
                 let _ = h_dlg.EndDialog(1);
                 return 1;
             }
@@ -1402,25 +1424,33 @@ pub extern "system" fn EnterDlgProc(
                 let mut buffer = [0u16; CCH_MSG_MAX];
                 let string_id = ID_MSG_BEGIN + game_type as u16;
                 LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32);
-                SetDlgItemTextW(h_dlg_raw as _, ID_TEXT_BEST, buffer.as_ptr());
-                if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ID_EDIT_NAME as u16) {
+                SetDlgItemTextW(h_dlg_raw as _, ControlId::TextBest as i32, buffer.as_ptr());
+                if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ControlId::EditName as u16) {
                     let _ = edit_hwnd.SendMessage(WndMsg::new(
                         co::WM::from_raw(EM_SETLIMITTEXT),
                         CCH_NAME_MAX,
                         0,
                     ));
                 }
-                SetDlgItemTextW(h_dlg_raw as _, ID_EDIT_NAME, current_name.as_ptr());
+                SetDlgItemTextW(
+                    h_dlg_raw as _,
+                    ControlId::EditName as i32,
+                    current_name.as_ptr(),
+                );
             }
             return 1;
         }
         co::WM::COMMAND => match command_id(w_param) {
-            ID_BTN_OK | IDOK_U16 | ID_BTN_CANCEL | IDCANCEL_U16 => {
+            id if id == ControlId::BtnOk as u16
+                || id == IDOK_U16
+                || id == ControlId::BtnCancel as u16
+                || id == IDCANCEL_U16 =>
+            {
                 let mut buffer = [0u16; CCH_NAME_MAX];
                 unsafe {
                     GetDlgItemTextW(
                         h_dlg_raw as _,
-                        ID_EDIT_NAME,
+                        ControlId::EditName as i32,
                         buffer.as_mut_ptr(),
                         CCH_NAME_MAX as i32,
                     );
@@ -1682,9 +1712,14 @@ fn reset_best_dialog(
     name_inter: [u16; CCH_NAME_MAX],
     name_expert: [u16; CCH_NAME_MAX],
 ) {
-    set_dtext(h_dlg, ID_TIME_BEGIN, time_begin, &name_begin);
-    set_dtext(h_dlg, ID_TIME_INTER, time_inter, &name_inter);
-    set_dtext(h_dlg, ID_TIME_EXPERT, time_expert, &name_expert);
+    set_dtext(h_dlg, ControlId::TimeBegin as i32, time_begin, &name_begin);
+    set_dtext(h_dlg, ControlId::TimeInter as i32, time_inter, &name_inter);
+    set_dtext(
+        h_dlg,
+        ControlId::TimeExpert as i32,
+        time_expert,
+        &name_expert,
+    );
 }
 
 fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {

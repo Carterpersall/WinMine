@@ -69,12 +69,17 @@ pub enum ButtonSprite {
 pub const BUTTON_SPRITE_COUNT: usize = 5;
 /// Mask used to extract the displayable bits from a board cell value.
 pub const MASK_DATA: i32 = 0x1F;
-/// Resource identifier for the packed block spritesheet (color + monochrome variants).
-const ID_BMP_BLOCKS: u16 = 410;
-/// Resource identifier for the LED digit spritesheet (color + monochrome variants).
-const ID_BMP_LED: u16 = 420;
-/// Resource identifier for the face button spritesheet (color + monochrome variants).
-const ID_BMP_BUTTON: u16 = 430;
+/// Bitmap resources embedded in the executable.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum BitmapId {
+    /// Packed block spritesheet (color + monochrome variants).
+    Blocks = 410,
+    /// LED digit spritesheet (color + monochrome variants).
+    Led = 420,
+    /// Face button spritesheet (color + monochrome variants).
+    Button = 430,
+}
 
 /// Debug string emitted when a compatible DC cannot be created.
 const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n";
@@ -538,13 +543,13 @@ fn load_bitmaps_impl() -> bool {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let Some((h_blks, lp_blks)) = load_bitmap_resource(ID_BMP_BLOCKS, color_on) else {
+    let Some((h_blks, lp_blks)) = load_bitmap_resource(BitmapId::Blocks, color_on) else {
         return false;
     };
-    let Some((h_led, lp_led)) = load_bitmap_resource(ID_BMP_LED, color_on) else {
+    let Some((h_led, lp_led)) = load_bitmap_resource(BitmapId::Led, color_on) else {
         return false;
     };
-    let Some((h_button, lp_button)) = load_bitmap_resource(ID_BMP_BUTTON, color_on) else {
+    let Some((h_button, lp_button)) = load_bitmap_resource(BitmapId::Button, color_on) else {
         return false;
     };
 
@@ -647,9 +652,9 @@ fn load_bitmaps_impl() -> bool {
     true
 }
 
-fn load_bitmap_resource(id: u16, color_on: bool) -> Option<(HRSRCMEM, *const u8)> {
+fn load_bitmap_resource(id: BitmapId, color_on: bool) -> Option<(HRSRCMEM, *const u8)> {
     let offset = if color_on { 0 } else { 1 };
-    let resource_id = id + offset;
+    let resource_id = (id as u16) + offset;
     // Colorless devices load the grayscale resource IDs immediately following the color ones.
     let inst_guard = match global_state().h_inst.lock() {
         Ok(g) => g,
