@@ -15,35 +15,71 @@ use winsafe::{
 };
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, global_state};
-use crate::rtns::{board_mutex, preferences_mutex, ClearField, cBombLeft, cSec, iButtonCur, xBoxMac, yBoxMac};
+use crate::rtns::{
+    board_mutex, cBombLeft, cSec, iButtonCur, preferences_mutex, xBoxMac, yBoxMac, ClearField,
+};
 use crate::sound::EndTunes;
 
-const DX_BLK: i32 = 16;
-const DY_BLK: i32 = 16;
-const DX_LED: i32 = 13;
-const DY_LED: i32 = 23;
-const DX_BUTTON: i32 = 24;
-const DY_BUTTON: i32 = 24;
-const DX_LEFT_SPACE: i32 = 12;
-const DX_RIGHT_SPACE: i32 = 12;
-const DY_TOP_SPACE: i32 = 12;
-const DY_BOTTOM_SPACE: i32 = 12;
-const DX_GRID_OFF: i32 = DX_LEFT_SPACE;
-const DY_TOP_LED: i32 = DY_TOP_SPACE + 4;
-const DY_GRID_OFF: i32 = DY_TOP_LED + DY_LED + 16;
-const DX_LEFT_BOMB: i32 = DX_LEFT_SPACE + 5;
-const DX_RIGHT_TIME: i32 = DX_RIGHT_SPACE + 5;
+/// Width of a single board cell sprite in pixels.
+pub const DX_BLK: i32 = 16;
+/// Height of a single board cell sprite in pixels.
+pub const DY_BLK: i32 = 16;
+/// Width of an LED digit in pixels.
+pub const DX_LED: i32 = 13;
+/// Height of an LED digit in pixels.
+pub const DY_LED: i32 = 23;
+/// Width of the face button sprite in pixels.
+pub const DX_BUTTON: i32 = 24;
+/// Height of the face button sprite in pixels.
+pub const DY_BUTTON: i32 = 24;
+/// Left margin between the window frame and the board.
+pub const DX_LEFT_SPACE: i32 = 12;
+/// Right margin between the window frame and the board.
+pub const DX_RIGHT_SPACE: i32 = 12;
+/// Top margin above the LED row.
+pub const DY_TOP_SPACE: i32 = 12;
+/// Bottom margin below the grid.
+pub const DY_BOTTOM_SPACE: i32 = 12;
+/// Horizontal offset to the first cell, accounting for the left margin.
+pub const DX_GRID_OFF: i32 = DX_LEFT_SPACE;
+/// Vertical offset to the LED row.
+pub const DY_TOP_LED: i32 = DY_TOP_SPACE + 4;
+/// Vertical offset to the top of the grid.
+pub const DY_GRID_OFF: i32 = DY_TOP_LED + DY_LED + 16;
+/// X coordinate of the left edge of the bomb counter.
+pub const DX_LEFT_BOMB: i32 = DX_LEFT_SPACE + 5;
+/// X coordinate offset from the right edge for the timer counter.
+pub const DX_RIGHT_TIME: i32 = DX_RIGHT_SPACE + 5;
 
-const I_BLK_MAX: usize = 16;
-const I_LED_MAX: usize = 12;
-const I_BUTTON_MAX: usize = 5;
-const MASK_DATA: i32 = 0x1F;
+/// Number of cell sprites packed into the block bitmap sheet.
+pub const I_BLK_MAX: usize = 16;
+/// Number of digits stored in the LED bitmap sheet.
+pub const I_LED_MAX: usize = 12;
+/// Number of face button sprites in the button bitmap sheet.
+pub const I_BUTTON_MAX: usize = 5;
+/// Mask used to extract the displayable bits from a board cell value.
+pub const MASK_DATA: i32 = 0x1F;
+/// Sprite index for the neutral "happy" face button.
+pub const I_BUTTON_HAPPY: i32 = 0;
+/// Sprite index for the caution/pressed face button used during drags.
+pub const I_BUTTON_CAUTION: i32 = 1;
+/// Sprite index for the loss face shown after detonating a mine.
+pub const I_BUTTON_LOSE: i32 = 2;
+/// Sprite index for the win face shown after clearing the board.
+pub const I_BUTTON_WIN: i32 = 3;
+/// Sprite index for the physically pressed button graphic.
+pub const I_BUTTON_DOWN: i32 = 4;
 
+/// Resource identifier for the packed block spritesheet (color + monochrome variants).
 const ID_BMP_BLOCKS: u16 = 410;
+/// Resource identifier for the LED digit spritesheet (color + monochrome variants).
 const ID_BMP_LED: u16 = 420;
+/// Resource identifier for the face button spritesheet (color + monochrome variants).
 const ID_BMP_BUTTON: u16 = 430;
 
+/// Debug string emitted when a compatible DC cannot be created.
 const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n";
+/// Debug string emitted when a compatible bitmap cannot be created.
 const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n";
 
 struct GrafixState {

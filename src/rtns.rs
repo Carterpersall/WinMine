@@ -5,50 +5,67 @@ use std::sync::{Mutex, OnceLock};
 use winsafe::prelude::*;
 
 use crate::globals::{fBlock, fStatus, global_state};
-use crate::grafix::{DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime};
+use crate::grafix::{
+    DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime, I_BUTTON_HAPPY,
+    I_BUTTON_LOSE, I_BUTTON_WIN,
+};
 use crate::pref::{CCH_NAME_MAX, Pref, FSOUND_ON};
-use crate::sound::{EndTunes, PlayTune};
+use crate::sound::{EndTunes, PlayTune, Tune};
 use crate::util::{ReportErr, Rnd};
-use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
+use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName, WGAME_OTHER};
 
+/// Internal board value used for a completely blank, unrevealed square.
 const I_BLK_BLANK: i32 = 0;
+/// Internal board value for a pressed but still covered guess square.
 const I_BLK_GUESS_DOWN: i32 = 9;
+/// Internal board value for a pressed square that hides a bomb.
 const I_BLK_BOMB_DOWN: i32 = 10;
+/// Internal board value used to mark an incorrect bomb guess.
 const I_BLK_WRONG: i32 = 11;
+/// Internal board value used for the exploding bomb animation.
 const I_BLK_EXPLODE: i32 = 12;
+/// Internal board value for a raised question-mark square.
 const I_BLK_GUESS_UP: i32 = 13;
+/// Internal board value for a raised bomb-flag square.
 const I_BLK_BOMB_UP: i32 = 14;
+/// Internal board value for a raised, uncovered blank square.
 const I_BLK_BLANK_UP: i32 = 15;
+/// Sentinel value used to mark the invisible border around the board.
 const I_BLK_MAX_SENTINEL: i32 = 16;
 
-const I_BUTTON_HAPPY: i32 = 0;
-const I_BUTTON_WIN: i32 = 3;
-const I_BUTTON_LOSE: i32 = 2;
-
-const MASK_BOMB: u8 = 0x80;
+/// Bit mask used to mark a cell that contains a bomb.
+pub const MASK_BOMB: u8 = 0x80;
+/// Bit mask used to mark a cell that has been visited.
 const MASK_VISIT: u8 = 0x40;
+/// Bit mask covering all flag bits in a board cell.
 const MASK_FLAGS: u8 = 0xE0;
+/// Bit mask covering the data bits (adjacent bomb count) in a cell.
 const MASK_DATA: u8 = 0x1F;
+/// Convenience mask used to clear the bomb bit from a cell value.
 const MASK_NOT_BOMB: u8 = !MASK_BOMB;
 
-const C_BLK_MAX: usize = 27 * 32;
+/// Maximum number of board cells (27 columns by 32 rows including border).
+pub const C_BLK_MAX: usize = 27 * 32;
+/// Upper bound on the flood-fill work queue used for empty regions.
 const I_STEP_MAX: usize = 100;
 
-const TUNE_TICK: i32 = 1;
-const TUNE_WINGAME: i32 = 2;
-const TUNE_LOSEGAME: i32 = 3;
-
-const W_GAME_OTHER: i32 = 3;
-
-const ID_TIMER: usize = 1;
+/// Timer identifier used for the per-second gameplay timer.
+pub const ID_TIMER: usize = 1;
+/// Identifier for reporting timer-related errors through ReportErr.
 const ID_ERR_TIMER: u16 = 4;
 
-const F_PLAY: i32 = 0x01;
-const F_PAUSE: i32 = 0x02;
-const F_DEMO: i32 = 0x10;
+/// Status-flag bit indicating that a game is currently in progress.
+/// Status-flag bit indicating that a game is currently in progress.
+pub const F_PLAY: i32 = 0x01;
+/// Status-flag bit indicating that the game is currently paused.
+pub const F_PAUSE: i32 = 0x02;
+/// Status-flag bit indicating that the board is in demo/end state.
+pub const F_DEMO: i32 = 0x10;
 
-const F_RESIZE: i32 = 0x02;
-const F_DISPLAY: i32 = 0x04;
+/// Window-adjustment flag requesting a resize of the client area.
+pub const F_RESIZE: i32 = 0x02;
+/// Window-adjustment flag requesting a full board repaint.
+pub const F_DISPLAY: i32 = 0x04;
 
 const PREFERENCES_INIT: Pref = Pref {
     wGameType: 0,
@@ -247,7 +264,9 @@ fn display_bomb_count() {
     DisplayBombCount();
 }
 
-fn play_tune(which: i32) {
+
+/// Play a logical tune if sound effects are enabled in preferences.
+fn play_tune(tune: Tune) {
     let sound_on = {
         let prefs = match preferences_mutex().lock() {
             Ok(guard) => guard,
@@ -256,7 +275,9 @@ fn play_tune(which: i32) {
         prefs.fSound == FSOUND_ON
     };
 
-    PlayTune(sound_on, which);
+    if sound_on {
+		PlayTune(tune);
+	}
 }
 
 fn stop_all_audio() {
@@ -311,7 +332,7 @@ fn record_win_if_needed() {
         Err(poisoned) => poisoned.into_inner(),
     };
     let game_idx = prefs.wGameType as usize;
-    if prefs.wGameType != W_GAME_OTHER as u16
+    if prefs.wGameType != WGAME_OTHER
         && game_idx < prefs.rgTime.len()
         && elapsed < prefs.rgTime[game_idx]
     {
@@ -408,7 +429,7 @@ fn game_over(win: bool) {
             update_bomb_count_internal(-bombs_left);
         }
     }
-    play_tune(if win { TUNE_WINGAME } else { TUNE_LOSEGAME });
+    play_tune(if win { Tune::WinGame } else { Tune::LoseGame });
     set_status_demo();
 
     if win {
@@ -572,7 +593,7 @@ pub fn DoTimer() {
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         cSec.store(secs + 1, Ordering::Relaxed);
         display_time();
-        play_tune(TUNE_TICK);
+        play_tune(Tune::Tick);
     }
 }
 
@@ -724,7 +745,7 @@ pub fn DoButton1Up() {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         let secs = cSec.load(Ordering::Relaxed);
         if visits == 0 && secs == 0 {
-            play_tune(TUNE_TICK);
+            play_tune(Tune::Tick);
             cSec.store(1, Ordering::Relaxed);
             display_time();
             F_TIMER.store(true, Ordering::Relaxed);

@@ -7,24 +7,38 @@ use crate::globals::global_state;
 use crate::rtns::{preferences_mutex, xBoxMac, yBoxMac};
 use crate::sound::FInitTunes;
 
+/// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
+/// Total count of preference keys mirrored from the WinMine registry hive.
 pub const ISZ_PREF_MAX: usize = 18;
 
+/// Flag value indicating sound is enabled.
 pub const FSOUND_ON: i32 = 3;
+/// Flag value indicating sound is disabled.
 pub const FSOUND_OFF: i32 = 2;
 
+/// Minimum board height allowed by the game.
 pub const MINHEIGHT: i32 = 9;
+/// Default board height used on first run.
 pub const DEFHEIGHT: i32 = 9;
+/// Minimum board width allowed by the game.
 pub const MINWIDTH: i32 = 9;
+/// Default board width used on first run.
 pub const DEFWIDTH: i32 = 9;
 
+/// Difficulty index for the Beginner preset.
 pub const WGAME_BEGIN: i32 = 0;
+/// Difficulty index for the Intermediate preset.
 pub const WGAME_INTER: i32 = 1;
+/// Difficulty index for the Expert preset.
 pub const WGAME_EXPERT: i32 = 2;
 
+/// Menu visibility flag meaning "always show the menu bar".
 pub const FMENU_ALWAYS_ON: i32 = 0;
+/// Menu visibility flag meaning "hideable menu bar".
 pub const FMENU_ON: i32 = 2;
 
+/// Registry key path used to persist preferences.
 pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 // Registry value names, ordered to match the legacy iszPref constants.

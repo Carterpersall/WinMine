@@ -12,31 +12,44 @@ use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
     MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
 };
+use crate::rtns::{preferences_mutex, F_RESIZE};
 use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
-use crate::rtns::preferences_mutex;
 use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, FixMenus};
 
+/// Multiplier used by the linear congruential generator that replicates WinMine's RNG.
 const RNG_MULTIPLIER: u32 = 1_103_515_245;
+/// Increment used by the linear congruential generator.
 const RNG_INCREMENT: u32 = 12_345;
+/// Default seed applied when the RNG would otherwise start at zero.
 const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
 
 static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
 
+/// Resource ID for the window class name string.
 const ID_GAMENAME: u32 = 1;
+/// Resource ID for the "%d seconds" string.
 const ID_MSG_SEC: u32 = 7;
+/// Resource ID for the default high-score name.
 const ID_NAME_DEFAULT: u32 = 8;
+/// Resource ID for the version string used in About.
 const ID_MSG_VERSION: u32 = 12;
+/// Resource ID for the credit string used in About.
 const ID_MSG_CREDIT: u32 = 13;
+/// Resource ID for the main application icon.
 const ID_ICON_MAIN: u16 = 100;
+/// Resource ID for the generic error dialog title.
 const ID_ERR_TITLE: u32 = 3;
+/// Resource ID for the fallback "unknown error" template.
 const ID_ERR_UNKNOWN: u32 = 6;
+/// Maximum resource ID treated as an error string; higher values use the unknown template.
 const ID_ERR_MAX: u32 = 999;
 
 const ISZ_PREF_GAME: usize = 0;
 const ISZ_PREF_MINES: usize = 1;
 const ISZ_PREF_HEIGHT: usize = 2;
 const ISZ_PREF_WIDTH: usize = 3;
+/// Preference key indices matching the legacy .ini layout.
 const ISZ_PREF_XWINDOW: usize = 4;
 const ISZ_PREF_YWINDOW: usize = 5;
 const ISZ_PREF_SOUND: usize = 6;
@@ -52,11 +65,14 @@ const ISZ_PREF_EXPERT_TIME: usize = 15;
 const ISZ_PREF_EXPERT_NAME: usize = 16;
 const ISZ_PREF_ALREADY_PLAYED: usize = 17;
 
-const CCH_MSG_MAX: usize = 128;
+/// Maximum length (UTF-16 code units) of dialog strings.
+pub const CCH_MSG_MAX: usize = 128;
+/// Maximum path buffer used when resolving help files.
 const CCH_MAX_PATHNAME: usize = 250;
-const F_RESIZE: i32 = 0x02;
-const FMENU_FLAG_OFF: i32 = 0x01;
+/// Menu flag bit meaning the menu bar is hidden.
+pub const FMENU_FLAG_OFF: i32 = 0x01;
 
+/// Legacy initialization file name used for first-run migration.
 const SZ_INI_FILE: &str = "entpack.ini";
 
 fn seed_rng(seed: u32) {

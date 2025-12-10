@@ -24,6 +24,8 @@ use crate::globals::{
 };
 use crate::grafix::{
     CleanUp, DisplayButton, DisplayScreen, DrawScreen, FInitLocal, FLoadBitmaps, FreeBitmaps,
+    DX_BLK, DX_BUTTON, DX_GRID_OFF, DX_RIGHT_SPACE, DY_BLK, DY_BUTTON, DY_BOTTOM_SPACE, DY_GRID_OFF,
+    DY_TOP_LED, I_BUTTON_CAUTION, I_BUTTON_DOWN, I_BUTTON_HAPPY,
 };
 use crate::pref::{
     CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH,
@@ -31,36 +33,61 @@ use crate::pref::{
 };
 use crate::rtns::{
     DoButton1Up, DoTimer, MakeGuess, PauseGame, ResumeGame, StartGame, TrackMouse, board_mutex,
-    iButtonCur, preferences_mutex, xBoxMac, xCur, yBoxMac, yCur,
+    iButtonCur, preferences_mutex, xBoxMac, xCur, yBoxMac, yCur, C_BLK_MAX, F_DISPLAY, F_PAUSE,
+    F_PLAY, F_RESIZE, ID_TIMER, MASK_BOMB,
 };
 use crate::sound::{EndTunes, FInitTunes};
-use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar};
+use crate::util::{
+    CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar, CCH_MSG_MAX,
+    FMENU_FLAG_OFF,
+};
 
+/// Main menu resource identifier.
 const ID_MENU: u16 = 500;
+/// Accelerator table resource identifier.
 const ID_MENU_ACCEL: u16 = 501;
+/// Icon resource identifier for the main window.
 const ID_ICON_MAIN: u16 = 100;
+/// Command identifier for starting a new game.
 const IDM_NEW: u16 = 510;
+/// Command identifier for exiting the application.
 const IDM_EXIT: u16 = 512;
+/// Command identifier for the Beginner difficulty.
 const IDM_BEGIN: u16 = 521;
+/// Command identifier for the Intermediate difficulty.
 const IDM_INTER: u16 = 522;
+/// Command identifier for the Expert difficulty.
 const IDM_EXPERT: u16 = 523;
+/// Command identifier for the Custom board dialog.
 const IDM_CUSTOM: u16 = 524;
+/// Command identifier for toggling sound.
 const IDM_SOUND: u16 = 526;
+/// Command identifier for toggling question-mark marks.
 const IDM_MARK: u16 = 527;
+/// Command identifier for showing the best times dialog.
 const IDM_BEST: u16 = 528;
+/// Command identifier for toggling color bitmaps.
 const IDM_COLOR: u16 = 529;
+/// Command identifier for opening help.
 const IDM_HELP: u16 = 590;
+/// Command identifier for showing "How to play" help.
 const IDM_HOW2PLAY: u16 = 591;
+/// Command identifier for the help-about-help entry.
 const IDM_HELP_HELP: u16 = 592;
+/// Command identifier for the About dialog.
 const IDM_HELP_ABOUT: u16 = 593;
+/// Resource identifier for the out-of-memory error.
 const ID_ERR_MEM: u16 = 5;
-const ID_TIMER: usize = 1;
 
+/// Dialog resource identifier for the custom game dialog.
 const ID_DLG_PREF: u16 = 80;
+/// Dialog resource identifier for the high-score entry dialog.
 const ID_DLG_ENTER: u16 = 600;
+/// Dialog resource identifier for the best-times dialog.
 const ID_DLG_BEST: u16 = 700;
 
-const WGAME_OTHER: u16 = 3;
+/// Game-type marker for custom boards that do not match presets.
+pub const WGAME_OTHER: u16 = 3;
 const ID_EDIT_HEIGHT: i32 = 141;
 const ID_EDIT_WIDTH: i32 = 142;
 const ID_EDIT_MINES: i32 = 143;
@@ -87,59 +114,48 @@ const IDH_PREF_EDIT_MINES: u32 = 1002;
 const IDH_BEST_BTN_RESET: u32 = 1003;
 const IDH_STEXT: u32 = 1004;
 const ID_MSG_BEGIN: u16 = 9;
-const CCH_MSG_MAX: usize = 128;
-
-const DX_BLK: i32 = 16;
-const DY_BLK: i32 = 16;
-const DX_LEFT_SPACE: i32 = 12;
-const DX_RIGHT_SPACE: i32 = 12;
-const DY_TOP_SPACE: i32 = 12;
-const DY_BOTTOM_SPACE: i32 = 12;
-const DX_GRID_OFF: i32 = DX_LEFT_SPACE;
-const DY_LED: i32 = 23;
-const DY_TOP_LED: i32 = DY_TOP_SPACE + 4;
-const DY_GRID_OFF: i32 = DY_TOP_LED + DY_LED + 16;
-const DX_BUTTON: i32 = 24;
-const DY_BUTTON: i32 = 24;
-
-const I_BUTTON_HAPPY: i32 = 0;
-const I_BUTTON_CAUTION: i32 = 1;
-const I_BUTTON_DOWN: i32 = 4;
-
-const FMENU_FLAG_OFF: i32 = 0x01;
 const F_CALC: i32 = 0x01;
-const F_RESIZE: i32 = 0x02;
-const F_DISPLAY: i32 = 0x04;
 
 const WINDOW_STYLE: u32 = co::WS::OVERLAPPED.raw()
     | co::WS::MINIMIZEBOX.raw()
     | co::WS::CAPTION.raw()
     | co::WS::SYSMENU.raw();
 
+/// Mines, height, and width tuples for the preset difficulty levels.
 const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
-const F_PLAY: i32 = 0x01;
-const F_PAUSE: i32 = 0x02;
+/// Status bit indicating the window is minimized to an icon.
 const F_ICON: i32 = 0x08;
 
+/// Menu flag used internally to toggle the menu bar off.
 const FMENU_OFF: i32 = 1;
+/// Mask to isolate the system-command identifier from `w_param`.
 const SC_MASK: usize = 0xFFF0;
+/// Activation code used to detect click-activation messages.
 const WA_CLICKACTIVE: u16 = WA::CLICKACTIVE.raw();
 
+/// Mouse flag for the left button in `w_param`.
 const MK_LBUTTON: usize = MK::LBUTTON.raw() as usize;
+/// Mouse flag for the right button in `w_param`.
 const MK_RBUTTON: usize = MK::RBUTTON.raw() as usize;
+/// Mouse flag for the Shift key in `w_param`.
 const MK_SHIFT_FLAG: usize = MK::SHIFT.raw() as usize;
+/// Combined flag for detecting left+right button chords.
 const MK_CHORD_MASK: usize = MK_SHIFT_FLAG | MK_RBUTTON;
+/// Mouse flag for the Control key in `w_param`.
 const MK_CONTROL_FLAG: usize = MK::CONTROL.raw() as usize;
 
+/// Virtual-key code for toggling sound on/off.
 const VK_F4_CODE: u32 = co::VK::F4.raw() as u32;
+/// Virtual-key code for hiding the menu bar.
 const VK_F5_CODE: u32 = co::VK::F5.raw() as u32;
+/// Virtual-key code for showing the menu bar.
 const VK_F6_CODE: u32 = co::VK::F6.raw() as u32;
+/// Virtual-key code used in the XYZZY easter egg sequence.
 const VK_SHIFT_CODE: u32 = co::VK::SHIFT.raw() as u32;
 
-const C_BLK_MAX: usize = 27 * 32;
+/// Shift applied when converting x/y to the packed board index.
 const BOARD_INDEX_SHIFT: usize = 5;
-const MASK_BOMB: u8 = 0x80;
 const COLOR_BLACK: COLORREF = COLORREF::from_rgb(0, 0, 0);
 const COLOR_WHITE: COLORREF = COLORREF::from_rgb(0xFF, 0xFF, 0xFF);
 
