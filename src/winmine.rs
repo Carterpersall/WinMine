@@ -28,8 +28,8 @@ use crate::grafix::{
     DY_TOP_LED, I_BUTTON_CAUTION, I_BUTTON_DOWN, I_BUTTON_HAPPY,
 };
 use crate::pref::{
-    CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, MINHEIGHT, MINWIDTH,
-    ReadPreferences, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER, WritePreferences, fUpdateIni,
+    CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_OFF, FSOUND_ON, GameType, MINHEIGHT, MINWIDTH,
+    ReadPreferences, WritePreferences, fUpdateIni,
 };
 use crate::rtns::{
     DoButton1Up, DoTimer, MakeGuess, PauseGame, ResumeGame, StartGame, TrackMouse, board_mutex,
@@ -86,8 +86,6 @@ const ID_DLG_ENTER: u16 = 600;
 /// Dialog resource identifier for the best-times dialog.
 const ID_DLG_BEST: u16 = 700;
 
-/// Game-type marker for custom boards that do not match presets.
-pub const WGAME_OTHER: u16 = 3;
 const ID_EDIT_HEIGHT: i32 = 141;
 const ID_EDIT_WIDTH: i32 = 142;
 const ID_EDIT_MINES: i32 = 143;
@@ -123,6 +121,15 @@ const WINDOW_STYLE: u32 = co::WS::OVERLAPPED.raw()
 
 /// Mines, height, and width tuples for the preset difficulty levels.
 const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
+
+fn preset_data(game: GameType) -> Option<[i32; 3]> {
+    match game {
+        GameType::Begin => Some(LEVEL_DATA[0]),
+        GameType::Inter => Some(LEVEL_DATA[1]),
+        GameType::Expert => Some(LEVEL_DATA[2]),
+        GameType::Other => None,
+    }
+}
 
 /// Status bit indicating the window is minimized to an icon.
 const F_ICON: i32 = 0x08;
@@ -618,18 +625,25 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             return Some(0);
         }
         IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
-            let index = (command_id(w_param) - IDM_BEGIN) as usize;
-            let (game, f_color, f_mark, f_sound, f_menu) = {
+            let game = match command_id(w_param) {
+                IDM_BEGIN => GameType::Begin,
+                IDM_INTER => GameType::Inter,
+                _ => GameType::Expert,
+            };
+
+            let (preset, f_color, f_mark, f_sound, f_menu) = {
                 let mut prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                prefs.wGameType = index as u16;
-                prefs.Mines = LEVEL_DATA[index][0];
-                prefs.Height = LEVEL_DATA[index][1];
-                prefs.Width = LEVEL_DATA[index][2];
+                if let Some(data) = preset_data(game) {
+                    prefs.wGameType = game;
+                    prefs.Mines = data[0];
+                    prefs.Height = data[1];
+                    prefs.Width = data[2];
+                }
                 (
-                    prefs.wGameType,
+                    game,
                     prefs.fColor,
                     prefs.fMark,
                     prefs.fSound,
@@ -638,7 +652,7 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             };
             StartGame();
             fUpdateIni.store(true, Ordering::Relaxed);
-            FixMenus(game, f_color, f_mark, f_sound);
+            FixMenus(preset, f_color, f_mark, f_sound);
             SetMenuBar(f_menu);
         }
         IDM_CUSTOM => DoPref(),
@@ -1024,12 +1038,12 @@ pub extern "system" fn MainWndProc(
     unsafe { h_wnd.DefWindowProc(WndMsg::new(message, w_param, l_param)) }
 }
 
-pub fn FixMenus(game: u16, f_color: bool, f_mark: bool, f_sound: i32) {
+pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: i32) {
     // Keep the menu checkmarks synchronized with the current difficulty/option flags.
-    CheckEm(IDM_BEGIN, game == WGAME_BEGIN as u16);
-    CheckEm(IDM_INTER, game == WGAME_INTER as u16);
-    CheckEm(IDM_EXPERT, game == WGAME_EXPERT as u16);
-    CheckEm(IDM_CUSTOM, game == WGAME_OTHER);
+    CheckEm(IDM_BEGIN, game == GameType::Begin);
+    CheckEm(IDM_INTER, game == GameType::Inter);
+    CheckEm(IDM_EXPERT, game == GameType::Expert);
+    CheckEm(IDM_CUSTOM, game == GameType::Other);
 
     CheckEm(IDM_COLOR, f_color);
     CheckEm(IDM_MARK, f_mark);
@@ -1045,7 +1059,7 @@ pub fn DoPref() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        prefs.wGameType = WGAME_OTHER;
+        prefs.wGameType = GameType::Other;
         (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
     };
     FixMenus(game, f_color, f_mark, f_sound);
@@ -1237,9 +1251,9 @@ pub extern "system" fn BestDlgProc(
                     Err(poisoned) => poisoned.into_inner(),
                 };
                 (
-                    prefs.rgTime[WGAME_BEGIN as usize],
-                    prefs.rgTime[WGAME_INTER as usize],
-                    prefs.rgTime[WGAME_EXPERT as usize],
+                    prefs.rgTime[GameType::Begin as usize],
+                    prefs.rgTime[GameType::Inter as usize],
+                    prefs.rgTime[GameType::Expert as usize],
                     prefs.szBegin,
                     prefs.szInter,
                     prefs.szExpert,
@@ -1267,32 +1281,32 @@ pub extern "system" fn BestDlgProc(
         co::WM::COMMAND => match command_id(w_param) {
             ID_BTN_RESET => {
                 let snapshot = if let Ok(mut prefs) = preferences_mutex().lock() {
-                    prefs.rgTime[WGAME_BEGIN as usize] = 999;
-                    prefs.rgTime[WGAME_INTER as usize] = 999;
-                    prefs.rgTime[WGAME_EXPERT as usize] = 999;
+                    prefs.rgTime[GameType::Begin as usize] = 999;
+                    prefs.rgTime[GameType::Inter as usize] = 999;
+                    prefs.rgTime[GameType::Expert as usize] = 999;
                     copy_from_default(&mut prefs.szBegin);
                     copy_from_default(&mut prefs.szInter);
                     copy_from_default(&mut prefs.szExpert);
                     (
-                        prefs.rgTime[WGAME_BEGIN as usize],
-                        prefs.rgTime[WGAME_INTER as usize],
-                        prefs.rgTime[WGAME_EXPERT as usize],
+                        prefs.rgTime[GameType::Begin as usize],
+                        prefs.rgTime[GameType::Inter as usize],
+                        prefs.rgTime[GameType::Expert as usize],
                         prefs.szBegin,
                         prefs.szInter,
                         prefs.szExpert,
                     )
                 } else if let Err(poisoned) = preferences_mutex().lock() {
                     let mut prefs = poisoned.into_inner();
-                    prefs.rgTime[WGAME_BEGIN as usize] = 999;
-                    prefs.rgTime[WGAME_INTER as usize] = 999;
-                    prefs.rgTime[WGAME_EXPERT as usize] = 999;
+                    prefs.rgTime[GameType::Begin as usize] = 999;
+                    prefs.rgTime[GameType::Inter as usize] = 999;
+                    prefs.rgTime[GameType::Expert as usize] = 999;
                     copy_from_default(&mut prefs.szBegin);
                     copy_from_default(&mut prefs.szInter);
                     copy_from_default(&mut prefs.szExpert);
                     (
-                        prefs.rgTime[WGAME_BEGIN as usize],
-                        prefs.rgTime[WGAME_INTER as usize],
-                        prefs.rgTime[WGAME_EXPERT as usize],
+                        prefs.rgTime[GameType::Begin as usize],
+                        prefs.rgTime[GameType::Inter as usize],
+                        prefs.rgTime[GameType::Expert as usize],
                         prefs.szBegin,
                         prefs.szInter,
                         prefs.szExpert,
@@ -1358,9 +1372,9 @@ pub extern "system" fn EnterDlgProc(
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                let name = match prefs.wGameType as i32 {
-                    WGAME_BEGIN => prefs.szBegin,
-                    WGAME_INTER => prefs.szInter,
+                let name = match prefs.wGameType {
+                    GameType::Begin => prefs.szBegin,
+                    GameType::Inter => prefs.szInter,
                     _ => prefs.szExpert,
                 };
                 (prefs.wGameType, name)
@@ -1368,7 +1382,7 @@ pub extern "system" fn EnterDlgProc(
 
             unsafe {
                 let mut buffer = [0u16; CCH_MSG_MAX];
-                let string_id = game_type + ID_MSG_BEGIN;
+                let string_id = ID_MSG_BEGIN + game_type as u16;
                 LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32);
                 SetDlgItemTextW(h_dlg_raw as _, ID_TEXT_BEST, buffer.as_ptr());
                 if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ID_EDIT_NAME as u16) {
@@ -1396,16 +1410,16 @@ pub extern "system" fn EnterDlgProc(
 
                 let lock = preferences_mutex().lock();
                 if let Ok(mut prefs) = lock {
-                    match prefs.wGameType as i32 {
-                        WGAME_BEGIN => prefs.szBegin = buffer,
-                        WGAME_INTER => prefs.szInter = buffer,
+                    match prefs.wGameType {
+                        GameType::Begin => prefs.szBegin = buffer,
+                        GameType::Inter => prefs.szInter = buffer,
                         _ => prefs.szExpert = buffer,
                     }
                 } else if let Err(poisoned) = preferences_mutex().lock() {
                     let mut prefs = poisoned.into_inner();
-                    match prefs.wGameType as i32 {
-                        WGAME_BEGIN => prefs.szBegin = buffer,
-                        WGAME_INTER => prefs.szInter = buffer,
+                    match prefs.wGameType {
+                        GameType::Begin => prefs.szBegin = buffer,
+                        GameType::Inter => prefs.szInter = buffer,
                         _ => prefs.szExpert = buffer,
                     }
                 }

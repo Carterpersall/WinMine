@@ -10,7 +10,7 @@ use crate::globals::{
 };
 use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
-    MINHEIGHT, MINWIDTH, WGAME_BEGIN, WGAME_EXPERT, WGAME_INTER,
+    MINHEIGHT, MINWIDTH, GameType,
 };
 use crate::rtns::{preferences_mutex, F_RESIZE};
 use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
@@ -273,12 +273,18 @@ pub fn InitConst() {
 
     prefs.Height = ReadIniInt(ISZ_PREF_HEIGHT as i32, MINHEIGHT, DEFHEIGHT, 25);
     prefs.Width = ReadIniInt(ISZ_PREF_WIDTH as i32, MINWIDTH, DEFWIDTH, 30);
-    prefs.wGameType = ReadIniInt(
+    let game_raw = ReadIniInt(
         ISZ_PREF_GAME as i32,
-        WGAME_BEGIN,
-        WGAME_BEGIN,
-        WGAME_EXPERT + 1,
-    ) as u16;
+        GameType::Begin as i32,
+        GameType::Begin as i32,
+        GameType::Expert as i32 + 1,
+    );
+    prefs.wGameType = match game_raw {
+        0 => GameType::Begin,
+        1 => GameType::Inter,
+        2 => GameType::Expert,
+        _ => GameType::Other,
+    };
     prefs.Mines = ReadIniInt(ISZ_PREF_MINES as i32, 10, 10, 999);
     prefs.xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
     prefs.yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
@@ -293,9 +299,9 @@ pub fn InitConst() {
         FMENU_ON,
     );
 
-    prefs.rgTime[WGAME_BEGIN as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
-    prefs.rgTime[WGAME_INTER as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
-    prefs.rgTime[WGAME_EXPERT as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
+    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
+    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
+    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
 
     ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, prefs.szBegin.as_mut_ptr());
     ReadIniSz(ISZ_PREF_INTER_NAME as i32, prefs.szInter.as_mut_ptr());

@@ -9,10 +9,10 @@ use crate::grafix::{
     DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime, I_BUTTON_HAPPY,
     I_BUTTON_LOSE, I_BUTTON_WIN,
 };
-use crate::pref::{CCH_NAME_MAX, Pref, FSOUND_ON};
+use crate::pref::{CCH_NAME_MAX, GameType, Pref, FSOUND_ON};
 use crate::sound::{EndTunes, PlayTune, Tune};
 use crate::util::{ReportErr, Rnd};
-use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName, WGAME_OTHER};
+use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
 
 /// Internal board value used for a completely blank, unrevealed square.
 const I_BLK_BLANK: i32 = 0;
@@ -68,7 +68,7 @@ pub const F_RESIZE: i32 = 0x02;
 pub const F_DISPLAY: i32 = 0x04;
 
 const PREFERENCES_INIT: Pref = Pref {
-    wGameType: 0,
+    wGameType: GameType::Begin,
     Mines: 0,
     Height: 0,
     Width: 0,
@@ -331,15 +331,15 @@ fn record_win_if_needed() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let game_idx = prefs.wGameType as usize;
-    if prefs.wGameType != WGAME_OTHER
-        && game_idx < prefs.rgTime.len()
-        && elapsed < prefs.rgTime[game_idx]
-    {
-        prefs.rgTime[game_idx] = elapsed;
-        drop(prefs);
-        DoEnterName();
-        DoDisplayBest();
+    let game = prefs.wGameType;
+    if game != GameType::Other {
+        let game_idx = game as usize;
+        if game_idx < prefs.rgTime.len() && elapsed < prefs.rgTime[game_idx] {
+            prefs.rgTime[game_idx] = elapsed;
+            drop(prefs);
+            DoEnterName();
+            DoDisplayBest();
+        }
     }
 }
 

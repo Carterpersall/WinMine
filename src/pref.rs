@@ -26,13 +26,6 @@ pub const MINWIDTH: i32 = 9;
 /// Default board width used on first run.
 pub const DEFWIDTH: i32 = 9;
 
-/// Difficulty index for the Beginner preset.
-pub const WGAME_BEGIN: i32 = 0;
-/// Difficulty index for the Intermediate preset.
-pub const WGAME_INTER: i32 = 1;
-/// Difficulty index for the Expert preset.
-pub const WGAME_EXPERT: i32 = 2;
-
 /// Menu visibility flag meaning "always show the menu bar".
 pub const FMENU_ALWAYS_ON: i32 = 0;
 /// Menu visibility flag meaning "hideable menu bar".
@@ -40,6 +33,16 @@ pub const FMENU_ON: i32 = 2;
 
 /// Registry key path used to persist preferences.
 pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
+
+/// Difficulty presets exposed throughout the game.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum GameType {
+    Begin = 0,
+    Inter = 1,
+    Expert = 2,
+    Other = 3,
+}
 
 // Registry value names, ordered to match the legacy iszPref constants.
 const PREF_STRINGS: [&str; ISZ_PREF_MAX] = [
@@ -64,7 +67,7 @@ const PREF_STRINGS: [&str; ISZ_PREF_MAX] = [
 ];
 
 pub struct Pref {
-    pub wGameType: u16,
+    pub wGameType: GameType,
     pub Mines: i32,
     pub Height: i32,
     pub Width: i32,
@@ -169,7 +172,13 @@ pub unsafe fn ReadPreferences() {
         xBoxMac.store(width, Ordering::Relaxed);
         prefs.Width = width;
 
-        prefs.wGameType = ReadInt(&handle, 0, WGAME_BEGIN, WGAME_BEGIN, WGAME_EXPERT + 1) as u16;
+        let game_raw = ReadInt(&handle, 0, GameType::Begin as i32, GameType::Begin as i32, GameType::Expert as i32 + 1);
+        prefs.wGameType = match game_raw {
+            0 => GameType::Begin,
+            1 => GameType::Inter,
+            2 => GameType::Expert,
+            _ => GameType::Other,
+        };
         prefs.Mines = ReadInt(&handle, 1, 10, 10, 999);
         prefs.xWindow = ReadInt(&handle, 4, 80, 0, 1024);
         prefs.yWindow = ReadInt(&handle, 5, 80, 0, 1024);
@@ -179,9 +188,9 @@ pub unsafe fn ReadPreferences() {
         prefs.fTick = ReadInt(&handle, 9, 0, 0, 1) != 0;
         prefs.fMenu = ReadInt(&handle, 8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
 
-        prefs.rgTime[WGAME_BEGIN as usize] = ReadInt(&handle, 11, 999, 0, 999);
-        prefs.rgTime[WGAME_INTER as usize] = ReadInt(&handle, 13, 999, 0, 999);
-        prefs.rgTime[WGAME_EXPERT as usize] = ReadInt(&handle, 15, 999, 0, 999);
+        prefs.rgTime[GameType::Begin as usize] = ReadInt(&handle, 11, 999, 0, 999);
+        prefs.rgTime[GameType::Inter as usize] = ReadInt(&handle, 13, 999, 0, 999);
+        prefs.rgTime[GameType::Expert as usize] = ReadInt(&handle, 15, 999, 0, 999);
 
         ReadSz(&handle, 12, prefs.szBegin.as_mut_ptr());
         ReadSz(&handle, 14, prefs.szInter.as_mut_ptr());
@@ -245,9 +254,9 @@ pub unsafe fn WritePreferences() {
         WriteInt(&handle, 4, prefs.xWindow);
         WriteInt(&handle, 5, prefs.yWindow);
 
-        WriteInt(&handle, 11, prefs.rgTime[WGAME_BEGIN as usize]);
-        WriteInt(&handle, 13, prefs.rgTime[WGAME_INTER as usize]);
-        WriteInt(&handle, 15, prefs.rgTime[WGAME_EXPERT as usize]);
+        WriteInt(&handle, 11, prefs.rgTime[GameType::Begin as usize]);
+        WriteInt(&handle, 13, prefs.rgTime[GameType::Inter as usize]);
+        WriteInt(&handle, 15, prefs.rgTime[GameType::Expert as usize]);
 
         WriteSz(&handle, 12, prefs.szBegin.as_ptr());
         WriteSz(&handle, 14, prefs.szInter.as_ptr());
