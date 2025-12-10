@@ -14,7 +14,7 @@ use crate::pref::{
 use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
 use crate::rtns::{F_RESIZE, preferences_mutex};
 use crate::sound::FInitTunes;
-use crate::winmine::{AdjustWindow, FixMenus};
+use crate::winmine::{AdjustWindow, FixMenus, MenuCommand};
 
 /// Multiplier used by the linear congruential generator that replicates WinMine's RNG.
 const RNG_MULTIPLIER: u32 = 1_103_515_245;
@@ -25,24 +25,36 @@ const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
 
 static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
 
-/// Resource ID for the window class name string.
-const ID_GAMENAME: u32 = 1;
-/// Resource ID for the "%d seconds" string.
-const ID_MSG_SEC: u32 = 7;
-/// Resource ID for the default high-score name.
-const ID_NAME_DEFAULT: u32 = 8;
-/// Resource ID for the version string used in About.
-const ID_MSG_VERSION: u32 = 12;
-/// Resource ID for the credit string used in About.
-const ID_MSG_CREDIT: u32 = 13;
-/// Resource ID for the main application icon.
-const ID_ICON_MAIN: u16 = 100;
-/// Resource ID for the generic error dialog title.
-const ID_ERR_TITLE: u32 = 3;
-/// Resource ID for the fallback "unknown error" template.
-const ID_ERR_UNKNOWN: u32 = 6;
+/// Localized string resources.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum StringId {
+    /// Window class name string.
+    GameName = 1,
+    /// "%d seconds" string used by the timer dialog.
+    MsgSeconds = 7,
+    /// Default high-score name.
+    NameDefault = 8,
+    /// Version string shown in About.
+    MsgVersion = 12,
+    /// Credit string shown in About.
+    MsgCredit = 13,
+    /// Generic error dialog title.
+    ErrTitle = 3,
+    /// Fallback "unknown error" template.
+    ErrUnknown = 6,
+}
+
+/// Icon resources embedded in the executable.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum IconId {
+    /// Main application icon.
+    Main = 100,
+}
+
 /// Maximum resource ID treated as an error string; higher values use the unknown template.
-const ID_ERR_MAX: u32 = 999;
+pub const ID_ERR_MAX: u16 = 999;
 
 /// Maximum length (UTF-16 code units) of dialog strings.
 pub const CCH_MSG_MAX: usize = 128;
@@ -101,17 +113,17 @@ pub fn ReportErr(id_err: u16) {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let msg = if (id_err as u32) < ID_ERR_MAX {
+    let msg = if id_err < ID_ERR_MAX {
         inst_guard.LoadString(id_err).unwrap_or_default()
     } else {
         let template = inst_guard
-            .LoadString(ID_ERR_UNKNOWN as u16)
+            .LoadString(StringId::ErrUnknown as u16)
             .unwrap_or_default();
         template.replace("%d", &id_err.to_string())
     };
 
     let title = inst_guard
-        .LoadString(ID_ERR_TITLE as u16)
+        .LoadString(StringId::ErrTitle as u16)
         .unwrap_or_default();
     let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
 }
@@ -210,21 +222,21 @@ pub fn InitConst() {
     let state = global_state();
     if let Ok(mut class_buf) = state.sz_class.lock() {
         LoadSz(
-            ID_GAMENAME as u16,
+            StringId::GameName as u16,
             class_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
         );
     }
     if let Ok(mut time_buf) = state.sz_time.lock() {
         LoadSz(
-            ID_MSG_SEC as u16,
+            StringId::MsgSeconds as u16,
             time_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
         );
     }
     if let Ok(mut default_buf) = state.sz_default_name.lock() {
         LoadSz(
-            ID_NAME_DEFAULT as u16,
+            StringId::NameDefault as u16,
             default_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
         );
@@ -340,7 +352,7 @@ pub fn InitConst() {
     }
 }
 
-pub fn CheckEm(idm: u16, f_check: bool) {
+pub fn CheckEm(idm: MenuCommand, f_check: bool) {
     // Maintain the old menu checkmark toggles (e.g. question marks, sound).
     let state = global_state();
     let menu_guard = match state.h_menu.lock() {
@@ -349,7 +361,7 @@ pub fn CheckEm(idm: u16, f_check: bool) {
     };
 
     if let Some(menu) = menu_guard.as_opt() {
-        let _ = menu.CheckMenuItem(IdPos::Id(idm), f_check);
+        let _ = menu.CheckMenuItem(IdPos::Id(idm as u16), f_check);
     }
 }
 
@@ -414,12 +426,12 @@ pub fn DoAbout() {
     let mut sz_credit = [0u16; CCH_MSG_MAX];
 
     LoadSz(
-        ID_MSG_VERSION as u16,
+        StringId::MsgVersion as u16,
         sz_version.as_mut_ptr(),
         CCH_MSG_MAX as u32,
     );
     LoadSz(
-        ID_MSG_CREDIT as u16,
+        StringId::MsgCredit as u16,
         sz_credit.as_mut_ptr(),
         CCH_MSG_MAX as u32,
     );
@@ -430,7 +442,9 @@ pub fn DoAbout() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let icon_guard = inst_guard.LoadIcon(w::IdIdiStr::Id(ID_ICON_MAIN)).ok();
+    let icon_guard = inst_guard
+        .LoadIcon(w::IdIdiStr::Id(IconId::Main as u16))
+        .ok();
     let icon = icon_guard.as_deref();
 
     let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon);

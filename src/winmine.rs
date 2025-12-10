@@ -38,43 +38,47 @@ use crate::rtns::{
 };
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{
-    CCH_MSG_MAX, CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar,
+    CCH_MSG_MAX, CheckEm, DoAbout, DoHelp, GetDlgInt, IconId, InitConst, LoadSz, ReportErr,
+    SetMenuBar,
 };
 
 /// Main menu resource identifier.
 const ID_MENU: u16 = 500;
 /// Accelerator table resource identifier.
 const ID_MENU_ACCEL: u16 = 501;
-/// Icon resource identifier for the main window.
-const ID_ICON_MAIN: u16 = 100;
-/// Command identifier for starting a new game.
-const IDM_NEW: u16 = 510;
-/// Command identifier for exiting the application.
-const IDM_EXIT: u16 = 512;
-/// Command identifier for the Beginner difficulty.
-const IDM_BEGIN: u16 = 521;
-/// Command identifier for the Intermediate difficulty.
-const IDM_INTER: u16 = 522;
-/// Command identifier for the Expert difficulty.
-const IDM_EXPERT: u16 = 523;
-/// Command identifier for the Custom board dialog.
-const IDM_CUSTOM: u16 = 524;
-/// Command identifier for toggling sound.
-const IDM_SOUND: u16 = 526;
-/// Command identifier for toggling question-mark marks.
-const IDM_MARK: u16 = 527;
-/// Command identifier for showing the best times dialog.
-const IDM_BEST: u16 = 528;
-/// Command identifier for toggling color bitmaps.
-const IDM_COLOR: u16 = 529;
-/// Command identifier for opening help.
-const IDM_HELP: u16 = 590;
-/// Command identifier for showing "How to play" help.
-const IDM_HOW2PLAY: u16 = 591;
-/// Command identifier for the help-about-help entry.
-const IDM_HELP_HELP: u16 = 592;
-/// Command identifier for the About dialog.
-const IDM_HELP_ABOUT: u16 = 593;
+/// Menu and accelerator command identifiers.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum MenuCommand {
+    /// Start a new game.
+    New = 510,
+    /// Exit the application.
+    Exit = 512,
+    /// Select the Beginner difficulty.
+    Begin = 521,
+    /// Select the Intermediate difficulty.
+    Inter = 522,
+    /// Select the Expert difficulty.
+    Expert = 523,
+    /// Open the Custom board dialog.
+    Custom = 524,
+    /// Toggle sound effects.
+    Sound = 526,
+    /// Toggle question-mark marks.
+    Mark = 527,
+    /// Show the best times dialog.
+    Best = 528,
+    /// Toggle color bitmaps.
+    Color = 529,
+    /// Open help.
+    Help = 590,
+    /// Show "How to play" help.
+    HowToPlay = 591,
+    /// Open the help-about-help entry.
+    HelpHelp = 592,
+    /// Show the About dialog.
+    HelpAbout = 593,
+}
 /// Resource identifier for the out-of-memory error.
 const ID_ERR_MEM: u16 = 5;
 
@@ -330,7 +334,7 @@ pub fn run_winmine(
     };
 
     let icon = hinst_wrap
-        .LoadIcon(IdIdiStr::Id(ID_ICON_MAIN))
+        .LoadIcon(IdIdiStr::Id(IconId::Main as u16))
         .map(|mut icon| icon.leak())
         .unwrap_or(HICON::NULL);
     {
@@ -608,10 +612,30 @@ fn handle_rbutton_down(h_wnd: HWND, w_param: usize, l_param: isize) -> Option<is
     Some(0)
 }
 
-fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
+fn menu_command(w_param: usize) -> Option<MenuCommand> {
     match command_id(w_param) {
-        IDM_NEW => StartGame(),
-        IDM_EXIT => {
+        510 => Some(MenuCommand::New),
+        512 => Some(MenuCommand::Exit),
+        521 => Some(MenuCommand::Begin),
+        522 => Some(MenuCommand::Inter),
+        523 => Some(MenuCommand::Expert),
+        524 => Some(MenuCommand::Custom),
+        526 => Some(MenuCommand::Sound),
+        527 => Some(MenuCommand::Mark),
+        528 => Some(MenuCommand::Best),
+        529 => Some(MenuCommand::Color),
+        590 => Some(MenuCommand::Help),
+        591 => Some(MenuCommand::HowToPlay),
+        592 => Some(MenuCommand::HelpHelp),
+        593 => Some(MenuCommand::HelpAbout),
+        _ => None,
+    }
+}
+
+fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
+    match menu_command(w_param) {
+        Some(MenuCommand::New) => StartGame(),
+        Some(MenuCommand::Exit) => {
             let state = global_state();
             let hwnd_main = {
                 let guard = match state.hwnd_main.lock() {
@@ -632,11 +656,12 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             }
             return Some(0);
         }
-        IDM_BEGIN | IDM_INTER | IDM_EXPERT => {
-            let game = match command_id(w_param) {
-                IDM_BEGIN => GameType::Begin,
-                IDM_INTER => GameType::Inter,
-                _ => GameType::Expert,
+        Some(command @ (MenuCommand::Begin | MenuCommand::Inter | MenuCommand::Expert)) => {
+            let game = match command {
+                MenuCommand::Begin => GameType::Begin,
+                MenuCommand::Inter => GameType::Inter,
+                MenuCommand::Expert => GameType::Expert,
+                _ => GameType::Other,
             };
 
             let (preset, f_color, f_mark, f_sound, f_menu) = {
@@ -657,8 +682,8 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             FixMenus(preset, f_color, f_mark, f_sound);
             SetMenuBar(f_menu);
         }
-        IDM_CUSTOM => DoPref(),
-        IDM_SOUND => {
+        Some(MenuCommand::Custom) => DoPref(),
+        Some(MenuCommand::Sound) => {
             let current_sound = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -685,7 +710,7 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             FixMenus(game, f_color, f_mark, new_sound);
             SetMenuBar(f_menu);
         }
-        IDM_COLOR => {
+        Some(MenuCommand::Color) => {
             let (color_enabled, game, f_mark, f_sound, f_menu) = {
                 let mut prefs = match preferences_mutex().lock() {
                     Ok(g) => g,
@@ -729,7 +754,7 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             FixMenus(game, color_enabled, f_mark, f_sound);
             SetMenuBar(f_menu);
         }
-        IDM_MARK => {
+        Some(MenuCommand::Mark) => {
             let (game, color_enabled, mark_enabled, f_sound, f_menu) = {
                 let mut prefs = match preferences_mutex().lock() {
                     Ok(g) => g,
@@ -748,15 +773,19 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             FixMenus(game, color_enabled, mark_enabled, f_sound);
             SetMenuBar(f_menu);
         }
-        IDM_BEST => DoDisplayBest(),
-        IDM_HELP => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
-        IDM_HOW2PLAY => DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32),
-        IDM_HELP_HELP => DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32),
-        IDM_HELP_ABOUT => {
+        Some(MenuCommand::Best) => DoDisplayBest(),
+        Some(MenuCommand::Help) => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
+        Some(MenuCommand::HowToPlay) => {
+            DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32)
+        }
+        Some(MenuCommand::HelpHelp) => {
+            DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32)
+        }
+        Some(MenuCommand::HelpAbout) => {
             DoAbout();
             return Some(0);
         }
-        _ => {}
+        None => {}
     }
 
     None
@@ -1034,14 +1063,14 @@ pub extern "system" fn MainWndProc(
 
 pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
     // Keep the menu checkmarks synchronized with the current difficulty/option flags.
-    CheckEm(IDM_BEGIN, game == GameType::Begin);
-    CheckEm(IDM_INTER, game == GameType::Inter);
-    CheckEm(IDM_EXPERT, game == GameType::Expert);
-    CheckEm(IDM_CUSTOM, game == GameType::Other);
+    CheckEm(MenuCommand::Begin, game == GameType::Begin);
+    CheckEm(MenuCommand::Inter, game == GameType::Inter);
+    CheckEm(MenuCommand::Expert, game == GameType::Expert);
+    CheckEm(MenuCommand::Custom, game == GameType::Other);
 
-    CheckEm(IDM_COLOR, f_color);
-    CheckEm(IDM_MARK, f_mark);
-    CheckEm(IDM_SOUND, f_sound == SoundState::On);
+    CheckEm(MenuCommand::Color, f_color);
+    CheckEm(MenuCommand::Mark, f_mark);
+    CheckEm(MenuCommand::Sound, f_sound == SoundState::On);
 }
 
 pub fn DoPref() {
