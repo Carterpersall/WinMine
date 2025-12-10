@@ -1,37 +1,33 @@
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::atomic::AtomicU8;
 use std::sync::{Mutex, OnceLock};
 
 use winsafe::prelude::*;
 
 use crate::globals::{fBlock, fStatus, global_state};
 use crate::grafix::{
-    DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime, I_BUTTON_HAPPY,
-    I_BUTTON_LOSE, I_BUTTON_WIN,
+    ButtonSprite, DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime,
 };
-use crate::pref::{CCH_NAME_MAX, GameType, Pref, FSOUND_ON};
+use crate::pref::{CCH_NAME_MAX, GameType, Pref, SoundState};
 use crate::sound::{EndTunes, PlayTune, Tune};
 use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
 
-/// Internal board value used for a completely blank, unrevealed square.
-const I_BLK_BLANK: i32 = 0;
-/// Internal board value for a pressed but still covered guess square.
-const I_BLK_GUESS_DOWN: i32 = 9;
-/// Internal board value for a pressed square that hides a bomb.
-const I_BLK_BOMB_DOWN: i32 = 10;
-/// Internal board value used to mark an incorrect bomb guess.
-const I_BLK_WRONG: i32 = 11;
-/// Internal board value used for the exploding bomb animation.
-const I_BLK_EXPLODE: i32 = 12;
-/// Internal board value for a raised question-mark square.
-const I_BLK_GUESS_UP: i32 = 13;
-/// Internal board value for a raised bomb-flag square.
-const I_BLK_BOMB_UP: i32 = 14;
-/// Internal board value for a raised, uncovered blank square.
-const I_BLK_BLANK_UP: i32 = 15;
-/// Sentinel value used to mark the invisible border around the board.
-const I_BLK_MAX_SENTINEL: i32 = 16;
+/// Encoded board values used to track each tile state.
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum BlockCell {
+    Blank = 0,
+    GuessDown = 9,
+    BombDown = 10,
+    Wrong = 11,
+    Explode = 12,
+    GuessUp = 13,
+    BombUp = 14,
+    BlankUp = 15,
+    Border = 16,
+}
 
 /// Bit mask used to mark a cell that contains a bomb.
 pub const MASK_BOMB: u8 = 0x80;
@@ -74,7 +70,7 @@ const PREFERENCES_INIT: Pref = Pref {
     Width: 0,
     xWindow: 0,
     yWindow: 0,
-    fSound: 0,
+    fSound: SoundState::Off,
     fMark: false,
     fTick: false,
     fMenu: 0,
@@ -95,7 +91,7 @@ pub static xBoxMac: AtomicI32 = AtomicI32::new(0);
 
 pub static yBoxMac: AtomicI32 = AtomicI32::new(0);
 
-pub static iButtonCur: AtomicI32 = AtomicI32::new(I_BUTTON_HAPPY);
+pub static iButtonCur: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
 
 pub static cBombLeft: AtomicI32 = AtomicI32::new(0);
 
@@ -107,7 +103,7 @@ pub static xCur: AtomicI32 = AtomicI32::new(-1);
 
 pub static yCur: AtomicI32 = AtomicI32::new(-1);
 
-const RG_BLK_INIT: [i8; C_BLK_MAX] = [I_BLK_BLANK_UP as i8; C_BLK_MAX];
+const RG_BLK_INIT: [i8; C_BLK_MAX] = [BlockCell::BlankUp as i8; C_BLK_MAX];
 
 static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
 
@@ -180,7 +176,7 @@ fn set_border(x: i32, y: i32) {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        guard[idx] = I_BLK_MAX_SENTINEL as i8;
+        guard[idx] = BlockCell::Border as i8;
     }
 }
 
@@ -215,11 +211,11 @@ fn is_visit(x: i32, y: i32) -> bool {
 }
 
 fn guessed_bomb(x: i32, y: i32) -> bool {
-    block_value(x, y) & MASK_DATA == I_BLK_BOMB_UP as u8
+    block_value(x, y) & MASK_DATA == BlockCell::BombUp as u8
 }
 
 fn guessed_mark(x: i32, y: i32) -> bool {
-    block_value(x, y) & MASK_DATA == I_BLK_GUESS_UP as u8
+    block_value(x, y) & MASK_DATA == BlockCell::GuessUp as u8
 }
 
 fn f_in_range(x: i32, y: i32) -> bool {
@@ -252,7 +248,7 @@ fn display_grid() {
     DisplayGrid();
 }
 
-fn display_button(state: i32) {
+fn display_button(state: ButtonSprite) {
     DisplayButton(state);
 }
 
@@ -264,7 +260,6 @@ fn display_bomb_count() {
     DisplayBombCount();
 }
 
-
 /// Play a logical tune if sound effects are enabled in preferences.
 fn play_tune(tune: Tune) {
     let sound_on = {
@@ -272,19 +267,19 @@ fn play_tune(tune: Tune) {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        prefs.fSound == FSOUND_ON
+        prefs.fSound == SoundState::On
     };
 
     if sound_on {
-		PlayTune(tune);
-	}
+        PlayTune(tune);
+    }
 }
 
 fn stop_all_audio() {
     EndTunes();
 }
 
-fn show_bombs(i_blk: i32) {
+fn show_bombs(cell: BlockCell) {
     // Display hidden bombs and mark incorrect guesses.
     let x_max = xBoxMac.load(Ordering::Relaxed);
     let y_max = yBoxMac.load(Ordering::Relaxed);
@@ -294,10 +289,10 @@ fn show_bombs(i_blk: i32) {
             if !is_visit(x, y) {
                 if is_bomb(x, y) {
                     if !guessed_bomb(x, y) {
-                        set_raw_block(x, y, i_blk);
+                        set_raw_block(x, y, cell as i32);
                     }
                 } else if guessed_bomb(x, y) {
-                    set_raw_block(x, y, I_BLK_WRONG);
+                    set_raw_block(x, y, BlockCell::Wrong as i32);
                 }
             }
         }
@@ -320,8 +315,12 @@ fn count_marks(x_center: i32, y_center: i32) -> i32 {
 
 fn update_button_for_result(win: bool) {
     // Mirror the original happy/win/lose button logic when the game ends.
-    let state = if win { I_BUTTON_WIN } else { I_BUTTON_LOSE };
-    iButtonCur.store(state, Ordering::Relaxed);
+    let state = if win {
+        ButtonSprite::Win
+    } else {
+        ButtonSprite::Lose
+    };
+    iButtonCur.store(state as u8, Ordering::Relaxed);
     display_button(state);
 }
 
@@ -362,23 +361,23 @@ fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i3
         }
 
         let data = blk & MASK_DATA;
-        if data == I_BLK_MAX_SENTINEL as u8 || data == I_BLK_BOMB_UP as u8 {
+        if data == BlockCell::Border as u8 || data == BlockCell::BombUp as u8 {
             return;
         }
 
         C_BOX_VISIT.fetch_add(1, Ordering::Relaxed);
-		let mut bombs = 0;
-		for y_n in (y - 1)..=(y + 1) {
-			for x_n in (x - 1)..=(x + 1) {
-				if let Some(nidx) = board_index(x_n, y_n) {
-					let cell = board[nidx] as u8;
-					if (cell & MASK_BOMB) != 0 {
-						bombs += 1;
-					}
-				}
-			}
-		}
-		blk = MASK_VISIT | ((bombs as u8) & MASK_DATA);
+        let mut bombs = 0;
+        for y_n in (y - 1)..=(y + 1) {
+            for x_n in (x - 1)..=(x + 1) {
+                if let Some(nidx) = board_index(x_n, y_n) {
+                    let cell = board[nidx] as u8;
+                    if (cell & MASK_BOMB) != 0 {
+                        bombs += 1;
+                    }
+                }
+            }
+        }
+        blk = MASK_VISIT | ((bombs as u8) & MASK_DATA);
         board[idx] = blk as i8;
         drop(board);
         display_block(x, y);
@@ -422,7 +421,11 @@ fn game_over(win: bool) {
     // Stop the timer, reveal bombs, update the face, and record wins if needed.
     F_TIMER.store(false, Ordering::Relaxed);
     update_button_for_result(win);
-    show_bombs(if win { I_BLK_BOMB_UP } else { I_BLK_BOMB_DOWN });
+    show_bombs(if win {
+        BlockCell::BombUp
+    } else {
+        BlockCell::BombDown
+    });
     if win {
         let bombs_left = cBombLeft.load(Ordering::Relaxed);
         if bombs_left != 0 {
@@ -455,7 +458,7 @@ fn step_square(x: i32, y: i32) {
                 }
             }
         } else {
-            change_blk(x, y, (MASK_VISIT | I_BLK_EXPLODE as u8) as i32);
+            change_blk(x, y, (MASK_VISIT | BlockCell::Explode as u8) as i32);
             game_over(false);
         }
     } else {
@@ -484,7 +487,7 @@ fn step_block(x_center: i32, y_center: i32) {
 
             if is_bomb(x, y) {
                 lose = true;
-                change_blk(x, y, (MASK_VISIT | I_BLK_EXPLODE as u8) as i32);
+                change_blk(x, y, (MASK_VISIT | BlockCell::Explode as u8) as i32);
             } else {
                 step_box(x, y);
             }
@@ -515,15 +518,15 @@ fn make_guess_internal(x: i32, y: i32) {
     let block = if guessed_bomb(x, y) {
         update_bomb_count_internal(1);
         if allow_marks {
-            I_BLK_GUESS_UP
+            BlockCell::GuessUp as i32
         } else {
-            I_BLK_BLANK_UP
+            BlockCell::BlankUp as i32
         }
     } else if guessed_mark(x, y) {
-        I_BLK_BLANK_UP
+        BlockCell::BlankUp as i32
     } else {
         update_bomb_count_internal(-1);
-        I_BLK_BOMB_UP
+        BlockCell::BombUp as i32
     };
 
     change_blk(x, y, block);
@@ -537,8 +540,8 @@ fn push_box_down(x: i32, y: i32) {
     // Depress covered neighbors while tracking mouse drags.
     let mut blk = block_data(x, y);
     blk = match blk {
-        b if b == I_BLK_GUESS_UP => I_BLK_GUESS_DOWN,
-        b if b == I_BLK_BLANK_UP => I_BLK_BLANK,
+        b if b == BlockCell::GuessUp as i32 => BlockCell::GuessDown as i32,
+        b if b == BlockCell::BlankUp as i32 => BlockCell::Blank as i32,
         _ => blk,
     };
     set_raw_block(x, y, blk);
@@ -548,8 +551,8 @@ fn pop_box_up(x: i32, y: i32) {
     // Restore a previously pushed square back to its raised variant.
     let mut blk = block_data(x, y);
     blk = match blk {
-        b if b == I_BLK_GUESS_DOWN => I_BLK_GUESS_UP,
-        b if b == I_BLK_BLANK => I_BLK_BLANK_UP,
+        b if b == BlockCell::GuessDown as i32 => BlockCell::GuessUp as i32,
+        b if b == BlockCell::Blank as i32 => BlockCell::BlankUp as i32,
         _ => blk,
     };
     set_raw_block(x, y, blk);
@@ -572,7 +575,7 @@ pub fn ClearField() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        board.iter_mut().for_each(|b| *b = I_BLK_BLANK_UP as i8);
+        board.iter_mut().for_each(|b| *b = BlockCell::BlankUp as i8);
     }
 
     let x_max = xBoxMac.load(Ordering::Relaxed);
@@ -622,7 +625,7 @@ pub fn StartGame() {
     yBoxMac.store(pref_height, Ordering::Relaxed);
 
     ClearField();
-    iButtonCur.store(I_BUTTON_HAPPY, Ordering::Relaxed);
+    iButtonCur.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
 
     CBOMB_START.store(pref_mines, Ordering::Relaxed);
 
@@ -772,7 +775,13 @@ pub fn DoButton1Up() {
         }
     }
 
-    let button = iButtonCur.load(Ordering::Relaxed);
+    let button = match iButtonCur.load(Ordering::Relaxed) {
+        0 => ButtonSprite::Happy,
+        1 => ButtonSprite::Caution,
+        2 => ButtonSprite::Lose,
+        3 => ButtonSprite::Win,
+        _ => ButtonSprite::Down,
+    };
     display_button(button);
 }
 

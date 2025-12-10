@@ -12,10 +12,13 @@ pub const CCH_NAME_MAX: usize = 32;
 /// Total count of preference keys mirrored from the WinMine registry hive.
 pub const ISZ_PREF_MAX: usize = 18;
 
-/// Flag value indicating sound is enabled.
-pub const FSOUND_ON: i32 = 3;
-/// Flag value indicating sound is disabled.
-pub const FSOUND_OFF: i32 = 2;
+/// Discrete sound preference persisted to the registry.
+#[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum SoundState {
+    Off = 2,
+    On = 3,
+}
 
 /// Minimum board height allowed by the game.
 pub const MINHEIGHT: i32 = 9;
@@ -73,7 +76,7 @@ pub struct Pref {
     pub Width: i32,
     pub xWindow: i32,
     pub yWindow: i32,
-    pub fSound: i32,
+    pub fSound: SoundState,
     pub fMark: bool,
     pub fTick: bool,
     pub fMenu: i32,
@@ -172,7 +175,13 @@ pub unsafe fn ReadPreferences() {
         xBoxMac.store(width, Ordering::Relaxed);
         prefs.Width = width;
 
-        let game_raw = ReadInt(&handle, 0, GameType::Begin as i32, GameType::Begin as i32, GameType::Expert as i32 + 1);
+        let game_raw = ReadInt(
+            &handle,
+            0,
+            GameType::Begin as i32,
+            GameType::Begin as i32,
+            GameType::Expert as i32 + 1,
+        );
         prefs.wGameType = match game_raw {
             0 => GameType::Begin,
             1 => GameType::Inter,
@@ -183,7 +192,18 @@ pub unsafe fn ReadPreferences() {
         prefs.xWindow = ReadInt(&handle, 4, 80, 0, 1024);
         prefs.yWindow = ReadInt(&handle, 5, 80, 0, 1024);
 
-        prefs.fSound = ReadInt(&handle, 6, 0, 0, FSOUND_ON);
+        let sound_raw = ReadInt(
+            &handle,
+            6,
+            SoundState::Off as i32,
+            SoundState::Off as i32,
+            SoundState::On as i32,
+        );
+        prefs.fSound = if sound_raw == SoundState::On as i32 {
+            SoundState::On
+        } else {
+            SoundState::Off
+        };
         prefs.fMark = ReadInt(&handle, 7, 1, 0, 1) != 0;
         prefs.fTick = ReadInt(&handle, 9, 0, 0, 1) != 0;
         prefs.fMenu = ReadInt(&handle, 8, FMENU_ALWAYS_ON, FMENU_ALWAYS_ON, FMENU_ON);
@@ -212,7 +232,7 @@ pub unsafe fn ReadPreferences() {
     prefs.fColor = unsafe { ReadInt(&handle, 10, default_color, 0, 1) } != 0;
 
     // If sound is enabled, verify that the system can actually play the resources.
-    if prefs.fSound == FSOUND_ON {
+    if prefs.fSound == SoundState::On {
         prefs.fSound = FInitTunes();
     }
 
@@ -250,7 +270,7 @@ pub unsafe fn WritePreferences() {
         WriteInt(&handle, 17, 1);
 
         WriteInt(&handle, 10, bool_to_i32(prefs.fColor));
-        WriteInt(&handle, 6, prefs.fSound);
+        WriteInt(&handle, 6, prefs.fSound as i32);
         WriteInt(&handle, 4, prefs.xWindow);
         WriteInt(&handle, 5, prefs.yWindow);
 

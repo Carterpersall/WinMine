@@ -4,7 +4,7 @@ use core::ptr::{null, null_mut};
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 
 use crate::globals::global_state;
-use crate::pref::{FSOUND_OFF, FSOUND_ON};
+use crate::pref::SoundState;
 
 /// Logical UI tunes that map to embedded wave resources.
 pub enum Tune {
@@ -16,13 +16,13 @@ pub enum Tune {
     LoseGame,
 }
 
-pub fn FInitTunes() -> i32 {
+pub fn FInitTunes() -> SoundState {
     // Attempt to stop any playing sounds; if the API fails we assume the
     // machine cannot play audio and disable sound effects in preferences.
     if stop_all_sounds() {
-        FSOUND_ON
+        SoundState::On
     } else {
-        FSOUND_OFF
+        SoundState::Off
     }
 }
 

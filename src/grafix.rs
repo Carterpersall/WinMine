@@ -16,7 +16,7 @@ use winsafe::{
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, global_state};
 use crate::rtns::{
-    board_mutex, cBombLeft, cSec, iButtonCur, preferences_mutex, xBoxMac, yBoxMac, ClearField,
+    ClearField, board_mutex, cBombLeft, cSec, iButtonCur, preferences_mutex, xBoxMac, yBoxMac,
 };
 use crate::sound::EndTunes;
 
@@ -55,21 +55,20 @@ pub const DX_RIGHT_TIME: i32 = DX_RIGHT_SPACE + 5;
 pub const I_BLK_MAX: usize = 16;
 /// Number of digits stored in the LED bitmap sheet.
 pub const I_LED_MAX: usize = 12;
-/// Number of face button sprites in the button bitmap sheet.
-pub const I_BUTTON_MAX: usize = 5;
+/// Face button sprites available in the bitmap sheet.
+#[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum ButtonSprite {
+    Happy = 0,
+    Caution = 1,
+    Lose = 2,
+    Win = 3,
+    Down = 4,
+}
+/// Number of face button sprites.
+pub const BUTTON_SPRITE_COUNT: usize = 5;
 /// Mask used to extract the displayable bits from a board cell value.
 pub const MASK_DATA: i32 = 0x1F;
-/// Sprite index for the neutral "happy" face button.
-pub const I_BUTTON_HAPPY: i32 = 0;
-/// Sprite index for the caution/pressed face button used during drags.
-pub const I_BUTTON_CAUTION: i32 = 1;
-/// Sprite index for the loss face shown after detonating a mine.
-pub const I_BUTTON_LOSE: i32 = 2;
-/// Sprite index for the win face shown after clearing the board.
-pub const I_BUTTON_WIN: i32 = 3;
-/// Sprite index for the physically pressed button graphic.
-pub const I_BUTTON_DOWN: i32 = 4;
-
 /// Resource identifier for the packed block spritesheet (color + monochrome variants).
 const ID_BMP_BLOCKS: u16 = 410;
 /// Resource identifier for the LED digit spritesheet (color + monochrome variants).
@@ -85,7 +84,7 @@ const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n";
 struct GrafixState {
     rg_dib_off: [i32; I_BLK_MAX],
     rg_dib_led_off: [i32; I_LED_MAX],
-    rg_dib_button_off: [i32; I_BUTTON_MAX],
+    rg_dib_button_off: [i32; BUTTON_SPRITE_COUNT],
     h_res_blks: HRSRCMEM,
     h_res_led: HRSRCMEM,
     h_res_button: HRSRCMEM,
@@ -105,7 +104,7 @@ impl Default for GrafixState {
         Self {
             rg_dib_off: [0; I_BLK_MAX],
             rg_dib_led_off: [0; I_LED_MAX],
-            rg_dib_button_off: [0; I_BUTTON_MAX],
+            rg_dib_button_off: [0; BUTTON_SPRITE_COUNT],
             h_res_blks: HRSRCMEM::NULL,
             h_res_led: HRSRCMEM::NULL,
             h_res_button: HRSRCMEM::NULL,
@@ -139,7 +138,8 @@ fn main_window() -> Option<w::HWND> {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    guard.as_opt()
+    guard
+        .as_opt()
         .map(|hwnd| unsafe { w::HWND::from_ptr(hwnd.ptr()) })
 }
 
@@ -370,7 +370,7 @@ pub fn DisplayTime() {
     }
 }
 
-pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
+pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
     // Center the face button and pull the requested state from the button sheet.
     let dx_window = dxWindow.load(Relaxed);
     let x = (dx_window - DX_BUTTON) >> 1;
@@ -378,6 +378,7 @@ pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
+    let sprite_idx = sprite as i32;
     unsafe {
         SetDIBitsToDevice(
             hdc.ptr(),
@@ -389,18 +390,18 @@ pub fn DrawButton(hdc: &w::HDC, i_button: i32) {
             0,
             0,
             DY_BUTTON as u32,
-            button_bits_with(&state, i_button) as *const _,
+            button_bits_with(&state, sprite_idx) as *const _,
             dib_info(state.lp_dib_button) as *const _ as *const gdi_sys::BITMAPINFO,
             DIB::RGB_COLORS.raw(),
         );
     }
 }
 
-pub fn DisplayButton(i_button: i32) {
+pub fn DisplayButton(sprite: ButtonSprite) {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
-        DrawButton(&hdc, i_button);
+        DrawButton(&hdc, sprite);
     }
 }
 
@@ -510,7 +511,14 @@ pub fn DrawScreen(hdc: &w::HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
     DrawBombCount(hdc);
-    DrawButton(hdc, iButtonCur.load(Relaxed));
+    let sprite = match iButtonCur.load(Relaxed) {
+        0 => ButtonSprite::Happy,
+        1 => ButtonSprite::Caution,
+        2 => ButtonSprite::Lose,
+        3 => ButtonSprite::Win,
+        _ => ButtonSprite::Down,
+    };
+    DrawButton(hdc, sprite);
     DrawTime(hdc);
     DrawGrid(hdc);
 }
@@ -651,7 +659,10 @@ fn load_bitmap_resource(id: u16, color_on: bool) -> Option<(HRSRCMEM, *const u8)
         .FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))
         .ok()?;
     let res_loaded = inst_guard.LoadResource(&res_info).ok()?;
-    let lp = inst_guard.LockResource(&res_info, &res_loaded).ok()?.as_ptr();
+    let lp = inst_guard
+        .LockResource(&res_info, &res_loaded)
+        .ok()?
+        .as_ptr();
     Some((res_loaded, lp))
 }
 
@@ -681,8 +692,12 @@ fn led_bits_with(state: &GrafixState, i: i32) -> *const u8 {
 }
 
 fn button_bits_with(state: &GrafixState, i: i32) -> *const u8 {
-    let idx = clamp_index(i, I_BUTTON_MAX);
-    unsafe { state.lp_dib_button.add(state.rg_dib_button_off[idx] as usize) }
+    let idx = clamp_index(i, BUTTON_SPRITE_COUNT);
+    unsafe {
+        state
+            .lp_dib_button
+            .add(state.rg_dib_button_off[idx] as usize)
+    }
 }
 
 fn dib_info(ptr: *const u8) -> *const BITMAPINFO {

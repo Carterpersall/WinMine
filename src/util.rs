@@ -3,17 +3,17 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, guard::RegCloseKeyGuard, prelude::*};
+use winsafe::{
+    self as w, IdPos, WString, co, co::HELPW, co::SM, guard::RegCloseKeyGuard, prelude::*,
+};
 
-use crate::globals::{
-    dxpBorder, dypBorder, dypCaption, dypMenu, global_state,
-};
+use crate::globals::{dxpBorder, dypBorder, dypCaption, dypMenu, global_state};
 use crate::pref::{
-    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, FSOUND_ON, ISZ_PREF_MAX,
-    MINHEIGHT, MINWIDTH, GameType,
+    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, GameType, ISZ_PREF_MAX,
+    MINHEIGHT, MINWIDTH, SoundState,
 };
-use crate::rtns::{preferences_mutex, F_RESIZE};
 use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
+use crate::rtns::{F_RESIZE, preferences_mutex};
 use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, FixMenus};
 
@@ -127,11 +127,15 @@ pub fn ReportErr(id_err: u16) {
     let msg = if (id_err as u32) < ID_ERR_MAX {
         inst_guard.LoadString(id_err).unwrap_or_default()
     } else {
-        let template = inst_guard.LoadString(ID_ERR_UNKNOWN as u16).unwrap_or_default();
+        let template = inst_guard
+            .LoadString(ID_ERR_UNKNOWN as u16)
+            .unwrap_or_default();
         template.replace("%d", &id_err.to_string())
     };
 
-    let title = inst_guard.LoadString(ID_ERR_TITLE as u16).unwrap_or_default();
+    let title = inst_guard
+        .LoadString(ID_ERR_TITLE as u16)
+        .unwrap_or_default();
     let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
 }
 
@@ -232,13 +236,25 @@ pub fn InitConst() {
 
     let state = global_state();
     if let Ok(mut class_buf) = state.sz_class.lock() {
-        LoadSz(ID_GAMENAME as u16, class_buf.as_mut_ptr(), CCH_NAME_MAX as u32);
+        LoadSz(
+            ID_GAMENAME as u16,
+            class_buf.as_mut_ptr(),
+            CCH_NAME_MAX as u32,
+        );
     }
     if let Ok(mut time_buf) = state.sz_time.lock() {
-        LoadSz(ID_MSG_SEC as u16, time_buf.as_mut_ptr(), CCH_NAME_MAX as u32);
+        LoadSz(
+            ID_MSG_SEC as u16,
+            time_buf.as_mut_ptr(),
+            CCH_NAME_MAX as u32,
+        );
     }
     if let Ok(mut default_buf) = state.sz_default_name.lock() {
-        LoadSz(ID_NAME_DEFAULT as u16, default_buf.as_mut_ptr(), CCH_NAME_MAX as u32);
+        LoadSz(
+            ID_NAME_DEFAULT as u16,
+            default_buf.as_mut_ptr(),
+            CCH_NAME_MAX as u32,
+        );
     }
 
     dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
@@ -289,7 +305,17 @@ pub fn InitConst() {
     prefs.xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
     prefs.yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
 
-    prefs.fSound = ReadIniInt(ISZ_PREF_SOUND as i32, 0, 0, FSOUND_ON);
+    let sound_raw = ReadIniInt(
+        ISZ_PREF_SOUND as i32,
+        SoundState::Off as i32,
+        SoundState::Off as i32,
+        SoundState::On as i32,
+    );
+    prefs.fSound = if sound_raw == SoundState::On as i32 {
+        SoundState::On
+    } else {
+        SoundState::Off
+    };
     prefs.fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
     prefs.fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
     prefs.fMenu = ReadIniInt(
@@ -326,7 +352,7 @@ pub fn InitConst() {
 
         prefs.fColor = bool_from_int(ReadIniInt(ISZ_PREF_COLOR as i32, default_color, 0, 1));
 
-        if prefs.fSound == FSOUND_ON {
+        if prefs.fSound == SoundState::On {
             prefs.fSound = FInitTunes();
         }
     }

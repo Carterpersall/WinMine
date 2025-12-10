@@ -55,31 +55,31 @@ pub static fStatus: AtomicI32 = AtomicI32::new(F_ICON_BIT | F_DEMO_BIT);
 
 /// Shared Win32 handles and string buffers used throughout the app.
 pub struct GlobalState {
-	pub h_inst: Mutex<HINSTANCE>,
-	pub hwnd_main: Mutex<HWND>,
-	pub h_menu: Mutex<HMENU>,
-	pub h_icon_main: Mutex<HICON>,
-	pub sz_class: Mutex<[u16; CCH_NAME_MAX]>,
-	pub sz_time: Mutex<[u16; CCH_NAME_MAX]>,
-	pub sz_default_name: Mutex<[u16; CCH_NAME_MAX]>,
+    pub h_inst: Mutex<HINSTANCE>,
+    pub hwnd_main: Mutex<HWND>,
+    pub h_menu: Mutex<HMENU>,
+    pub h_icon_main: Mutex<HICON>,
+    pub sz_class: Mutex<[u16; CCH_NAME_MAX]>,
+    pub sz_time: Mutex<[u16; CCH_NAME_MAX]>,
+    pub sz_default_name: Mutex<[u16; CCH_NAME_MAX]>,
 }
 
 impl Default for GlobalState {
-	fn default() -> Self {
-		Self {
-			h_inst: Mutex::new(HINSTANCE::NULL),
-			hwnd_main: Mutex::new(HWND::NULL),
-			h_menu: Mutex::new(HMENU::NULL),
-			h_icon_main: Mutex::new(HICON::NULL),
-			sz_class: Mutex::new([0; CCH_NAME_MAX]),
-			sz_time: Mutex::new([0; CCH_NAME_MAX]),
-			sz_default_name: Mutex::new([0; CCH_NAME_MAX]),
-		}
-	}
+    fn default() -> Self {
+        Self {
+            h_inst: Mutex::new(HINSTANCE::NULL),
+            hwnd_main: Mutex::new(HWND::NULL),
+            h_menu: Mutex::new(HMENU::NULL),
+            h_icon_main: Mutex::new(HICON::NULL),
+            sz_class: Mutex::new([0; CCH_NAME_MAX]),
+            sz_time: Mutex::new([0; CCH_NAME_MAX]),
+            sz_default_name: Mutex::new([0; CCH_NAME_MAX]),
+        }
+    }
 }
 
 static GLOBAL_STATE: OnceLock<GlobalState> = OnceLock::new();
 
 pub fn global_state() -> &'static GlobalState {
-	GLOBAL_STATE.get_or_init(GlobalState::default)
+    GLOBAL_STATE.get_or_init(GlobalState::default)
 }
