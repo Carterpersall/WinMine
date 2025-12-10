@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 
 use winsafe::prelude::*;
 
-use crate::globals::{fBlock, fStatus, global_state};
+use crate::globals::{StatusFlag, fBlock, fStatus, global_state};
 use crate::grafix::{
     ButtonSprite, DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime,
 };
@@ -49,14 +49,6 @@ const I_STEP_MAX: usize = 100;
 pub const ID_TIMER: usize = 1;
 /// Identifier for reporting timer-related errors through ReportErr.
 const ID_ERR_TIMER: u16 = 4;
-
-/// Status-flag bit indicating that a game is currently in progress.
-/// Status-flag bit indicating that a game is currently in progress.
-pub const F_PLAY: i32 = 0x01;
-/// Status-flag bit indicating that the game is currently paused.
-pub const F_PAUSE: i32 = 0x02;
-/// Status-flag bit indicating that the board is in demo/end state.
-pub const F_DEMO: i32 = 0x10;
 
 /// Window-adjustment flag requesting a resize of the client area.
 pub const F_RESIZE: i32 = 0x02;
@@ -117,27 +109,27 @@ static F_TIMER: AtomicBool = AtomicBool::new(false);
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 
 fn status_play() -> bool {
-    (fStatus.load(Ordering::Relaxed) & F_PLAY) != 0
+    (fStatus.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0
 }
 
 fn status_pause() -> bool {
-    (fStatus.load(Ordering::Relaxed) & F_PAUSE) != 0
+    (fStatus.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) != 0
 }
 
 fn set_status_play() {
-    fStatus.store(F_PLAY, Ordering::Relaxed)
+    fStatus.store(StatusFlag::Play as i32, Ordering::Relaxed)
 }
 
 fn set_status_demo() {
-    fStatus.store(F_DEMO, Ordering::Relaxed)
+    fStatus.store(StatusFlag::Demo as i32, Ordering::Relaxed)
 }
 
 fn set_status_pause() {
-    fStatus.fetch_or(F_PAUSE, Ordering::Relaxed);
+    fStatus.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
 }
 
 fn clr_status_pause() {
-    fStatus.fetch_and(!F_PAUSE, Ordering::Relaxed);
+    fStatus.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
 }
 
 fn board_index(x: i32, y: i32) -> Option<usize> {

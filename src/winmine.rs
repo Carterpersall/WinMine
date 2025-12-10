@@ -19,8 +19,8 @@ use winsafe::{
 };
 
 use crate::globals::{
-    bInitMinimized, dxFrameExtra, dxWindow, dxpBorder, dyWindow, dypAdjust, dypCaption, dypMenu,
-    fBlock, fButton1Down, fIgnoreClick, fLocalPause, fStatus, global_state,
+    StatusFlag, bInitMinimized, dxFrameExtra, dxWindow, dxpBorder, dyWindow, dypAdjust, dypCaption,
+    dypMenu, fBlock, fButton1Down, fIgnoreClick, fLocalPause, fStatus, global_state,
 };
 use crate::grafix::{
     ButtonSprite, CleanUp, DX_BLK, DX_BUTTON, DX_GRID_OFF, DX_RIGHT_SPACE, DY_BLK, DY_BOTTOM_SPACE,
@@ -32,9 +32,9 @@ use crate::pref::{
     SoundState, WritePreferences, fUpdateIni,
 };
 use crate::rtns::{
-    C_BLK_MAX, DoButton1Up, DoTimer, F_DISPLAY, F_PAUSE, F_PLAY, F_RESIZE, ID_TIMER, MASK_BOMB,
-    MakeGuess, PauseGame, ResumeGame, StartGame, TrackMouse, board_mutex, iButtonCur,
-    preferences_mutex, xBoxMac, xCur, yBoxMac, yCur,
+    C_BLK_MAX, DoButton1Up, DoTimer, F_DISPLAY, F_RESIZE, ID_TIMER, MASK_BOMB, MakeGuess,
+    PauseGame, ResumeGame, StartGame, TrackMouse, board_mutex, iButtonCur, preferences_mutex,
+    xBoxMac, xCur, yBoxMac, yCur,
 };
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{
@@ -130,9 +130,6 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
         GameType::Other => None,
     }
 }
-
-/// Status bit indicating the window is minimized to an icon.
-const F_ICON: i32 = 0x08;
 
 /// Menu flag used internally to toggle the menu bar off.
 const FMENU_OFF: i32 = 1;
@@ -504,27 +501,27 @@ fn y_box_from_ypos(y: i32) -> i32 {
 }
 
 fn status_icon() -> bool {
-    fStatus.load(Ordering::Relaxed) & F_ICON != 0
+    fStatus.load(Ordering::Relaxed) & (StatusFlag::Icon as i32) != 0
 }
 
 fn status_play() -> bool {
-    fStatus.load(Ordering::Relaxed) & F_PLAY != 0
+    fStatus.load(Ordering::Relaxed) & (StatusFlag::Play as i32) != 0
 }
 
 fn set_status_pause() {
-    fStatus.fetch_or(F_PAUSE, Ordering::Relaxed);
+    fStatus.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
 }
 
 fn clr_status_pause() {
-    fStatus.fetch_and(!F_PAUSE, Ordering::Relaxed);
+    fStatus.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
 }
 
 fn set_status_icon() {
-    fStatus.fetch_or(F_ICON, Ordering::Relaxed);
+    fStatus.fetch_or(StatusFlag::Icon as i32, Ordering::Relaxed);
 }
 
 fn clr_status_icon() {
-    fStatus.fetch_and(!F_ICON, Ordering::Relaxed);
+    fStatus.fetch_and(!(StatusFlag::Icon as i32), Ordering::Relaxed);
 }
 
 fn set_block_flag(active: bool) {

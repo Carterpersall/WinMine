@@ -6,10 +6,15 @@ use winsafe::{HICON, HINSTANCE, HMENU, HWND};
 
 use crate::pref::CCH_NAME_MAX;
 
-/// Bit flag indicating the window is currently minimized to an icon.
-const F_ICON_BIT: i32 = 0x08;
-/// Bit flag indicating the game is showing the demo/end-state.
-const F_DEMO_BIT: i32 = 0x10;
+/// Aggregated status flags shared between modules.
+#[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum StatusFlag {
+    Play = 0x01,
+    Pause = 0x02,
+    Icon = 0x08,
+    Demo = 0x10,
+}
 
 /// True while the process starts minimized.
 pub static bInitMinimized: AtomicBool = AtomicBool::new(false);
@@ -51,7 +56,7 @@ pub static dypAdjust: AtomicI32 = AtomicI32::new(0);
 pub static dxFrameExtra: AtomicI32 = AtomicI32::new(0);
 
 /// Aggregated status flags shared between modules.
-pub static fStatus: AtomicI32 = AtomicI32::new(F_ICON_BIT | F_DEMO_BIT);
+pub static fStatus: AtomicI32 = AtomicI32::new(StatusFlag::Icon as i32 | StatusFlag::Demo as i32);
 
 /// Shared Win32 handles and string buffers used throughout the app.
 pub struct GlobalState {
