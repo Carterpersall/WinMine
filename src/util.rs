@@ -9,8 +9,7 @@ use winsafe::{
 
 use crate::globals::{dxpBorder, dypBorder, dypCaption, dypMenu, global_state};
 use crate::pref::{
-    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, FMENU_ALWAYS_ON, FMENU_ON, GameType, ISZ_PREF_MAX,
-    MINHEIGHT, MINWIDTH, SoundState,
+    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, SoundState,
 };
 use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
 use crate::rtns::{F_RESIZE, preferences_mutex};
@@ -45,32 +44,10 @@ const ID_ERR_UNKNOWN: u32 = 6;
 /// Maximum resource ID treated as an error string; higher values use the unknown template.
 const ID_ERR_MAX: u32 = 999;
 
-const ISZ_PREF_GAME: usize = 0;
-const ISZ_PREF_MINES: usize = 1;
-const ISZ_PREF_HEIGHT: usize = 2;
-const ISZ_PREF_WIDTH: usize = 3;
-/// Preference key indices matching the legacy .ini layout.
-const ISZ_PREF_XWINDOW: usize = 4;
-const ISZ_PREF_YWINDOW: usize = 5;
-const ISZ_PREF_SOUND: usize = 6;
-const ISZ_PREF_MARK: usize = 7;
-const ISZ_PREF_MENU: usize = 8;
-const ISZ_PREF_TICK: usize = 9;
-const ISZ_PREF_COLOR: usize = 10;
-const ISZ_PREF_BEGIN_TIME: usize = 11;
-const ISZ_PREF_BEGIN_NAME: usize = 12;
-const ISZ_PREF_INTER_TIME: usize = 13;
-const ISZ_PREF_INTER_NAME: usize = 14;
-const ISZ_PREF_EXPERT_TIME: usize = 15;
-const ISZ_PREF_EXPERT_NAME: usize = 16;
-const ISZ_PREF_ALREADY_PLAYED: usize = 17;
-
 /// Maximum length (UTF-16 code units) of dialog strings.
 pub const CCH_MSG_MAX: usize = 128;
 /// Maximum path buffer used when resolving help files.
 const CCH_MAX_PATHNAME: usize = 250;
-/// Menu flag bit meaning the menu bar is hidden.
-pub const FMENU_FLAG_OFF: i32 = 0x01;
 
 /// Legacy initialization file name used for first-run migration.
 const SZ_INI_FILE: &str = "entpack.ini";
@@ -164,13 +141,9 @@ pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     }
 }
 
-pub fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -> i32 {
+pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Pull an integer from the legacy .ini file, honoring the same clamp the game always used.
-    if isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
-        return val_default;
-    }
-
-    let key = match pref_key_literal(isz_pref) {
+    let key = match pref_key_literal(pref) {
         Some(name) => WString::from_str(name),
         None => return val_default,
     };
@@ -182,13 +155,13 @@ pub fn ReadIniInt(isz_pref: i32, val_default: i32, val_min: i32, val_max: i32) -
     clamp(value, val_min, val_max)
 }
 
-pub fn ReadIniSz(isz_pref: i32, sz_ret: *mut u16) {
+pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
     // Grab the string from entpack.ini or fall back to the default Hall of Fame name.
-    if sz_ret.is_null() || isz_pref < 0 || (isz_pref as usize) >= ISZ_PREF_MAX {
+    if sz_ret.is_null() {
         return;
     }
 
-    let key = match pref_key_literal(isz_pref) {
+    let key = match pref_key_literal(pref) {
         Some(name) => WString::from_str(name),
         None => return,
     };
@@ -273,7 +246,7 @@ pub fn InitConst() {
     ) {
         let handle = key_guard.leak();
         unsafe {
-            already_played = ReadInt(&handle, ISZ_PREF_ALREADY_PLAYED as i32, 0, 0, 1) != 0;
+            already_played = ReadInt(&handle, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
             let _ = RegCloseKeyGuard::new(handle);
         }
     }
@@ -287,10 +260,10 @@ pub fn InitConst() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    prefs.Height = ReadIniInt(ISZ_PREF_HEIGHT as i32, MINHEIGHT, DEFHEIGHT, 25);
-    prefs.Width = ReadIniInt(ISZ_PREF_WIDTH as i32, MINWIDTH, DEFWIDTH, 30);
+    prefs.Height = ReadIniInt(PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
+    prefs.Width = ReadIniInt(PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
     let game_raw = ReadIniInt(
-        ISZ_PREF_GAME as i32,
+        PrefKey::Difficulty,
         GameType::Begin as i32,
         GameType::Begin as i32,
         GameType::Expert as i32 + 1,
@@ -301,12 +274,12 @@ pub fn InitConst() {
         2 => GameType::Expert,
         _ => GameType::Other,
     };
-    prefs.Mines = ReadIniInt(ISZ_PREF_MINES as i32, 10, 10, 999);
-    prefs.xWindow = ReadIniInt(ISZ_PREF_XWINDOW as i32, 80, 0, 1024);
-    prefs.yWindow = ReadIniInt(ISZ_PREF_YWINDOW as i32, 80, 0, 1024);
+    prefs.Mines = ReadIniInt(PrefKey::Mines, 10, 10, 999);
+    prefs.xWindow = ReadIniInt(PrefKey::Xpos, 80, 0, 1024);
+    prefs.yWindow = ReadIniInt(PrefKey::Ypos, 80, 0, 1024);
 
     let sound_raw = ReadIniInt(
-        ISZ_PREF_SOUND as i32,
+        PrefKey::Sound,
         SoundState::Off as i32,
         SoundState::Off as i32,
         SoundState::On as i32,
@@ -316,22 +289,27 @@ pub fn InitConst() {
     } else {
         SoundState::Off
     };
-    prefs.fMark = bool_from_int(ReadIniInt(ISZ_PREF_MARK as i32, 1, 0, 1));
-    prefs.fTick = bool_from_int(ReadIniInt(ISZ_PREF_TICK as i32, 0, 0, 1));
-    prefs.fMenu = ReadIniInt(
-        ISZ_PREF_MENU as i32,
-        FMENU_ALWAYS_ON,
-        FMENU_ALWAYS_ON,
-        FMENU_ON,
+    prefs.fMark = bool_from_int(ReadIniInt(PrefKey::Mark, 1, 0, 1));
+    prefs.fTick = bool_from_int(ReadIniInt(PrefKey::Tick, 0, 0, 1));
+    let menu_raw = ReadIniInt(
+        PrefKey::Menu,
+        MenuMode::AlwaysOn as i32,
+        MenuMode::AlwaysOn as i32,
+        MenuMode::On as i32,
     );
+    prefs.fMenu = match menu_raw {
+        1 => MenuMode::Hidden,
+        2 => MenuMode::On,
+        _ => MenuMode::AlwaysOn,
+    };
 
-    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(ISZ_PREF_BEGIN_TIME as i32, 999, 0, 999);
-    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(ISZ_PREF_INTER_TIME as i32, 999, 0, 999);
-    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(ISZ_PREF_EXPERT_TIME as i32, 999, 0, 999);
+    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(PrefKey::Time1, 999, 0, 999);
+    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999);
+    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999);
 
-    ReadIniSz(ISZ_PREF_BEGIN_NAME as i32, prefs.szBegin.as_mut_ptr());
-    ReadIniSz(ISZ_PREF_INTER_NAME as i32, prefs.szInter.as_mut_ptr());
-    ReadIniSz(ISZ_PREF_EXPERT_NAME as i32, prefs.szExpert.as_mut_ptr());
+    ReadIniSz(PrefKey::Name1, prefs.szBegin.as_mut_ptr());
+    ReadIniSz(PrefKey::Name2, prefs.szInter.as_mut_ptr());
+    ReadIniSz(PrefKey::Name3, prefs.szExpert.as_mut_ptr());
 
     let desktop = w::HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
@@ -350,7 +328,7 @@ pub fn InitConst() {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        prefs.fColor = bool_from_int(ReadIniInt(ISZ_PREF_COLOR as i32, default_color, 0, 1));
+        prefs.fColor = bool_from_int(ReadIniInt(PrefKey::Color, default_color, 0, 1));
 
         if prefs.fSound == SoundState::On {
             prefs.fSound = FInitTunes();
@@ -375,7 +353,7 @@ pub fn CheckEm(idm: u16, f_check: bool) {
     }
 }
 
-pub fn SetMenuBar(f_active: i32) {
+pub fn SetMenuBar(f_active: MenuMode) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
     let (menu_on, menu_checks);
     {
@@ -384,7 +362,7 @@ pub fn SetMenuBar(f_active: i32) {
             Err(poisoned) => poisoned.into_inner(),
         };
         prefs.fMenu = f_active;
-        menu_on = (prefs.fMenu & FMENU_FLAG_OFF) == 0;
+        menu_on = !matches!(prefs.fMenu, MenuMode::Hidden);
         menu_checks = (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound);
     }
 

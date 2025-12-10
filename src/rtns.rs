@@ -9,7 +9,7 @@ use crate::globals::{StatusFlag, fBlock, fStatus, global_state};
 use crate::grafix::{
     ButtonSprite, DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime,
 };
-use crate::pref::{CCH_NAME_MAX, GameType, Pref, SoundState};
+use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
 use crate::sound::{EndTunes, PlayTune, Tune};
 use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
@@ -65,7 +65,7 @@ const PREFERENCES_INIT: Pref = Pref {
     fSound: SoundState::Off,
     fMark: false,
     fTick: false,
-    fMenu: 0,
+    fMenu: MenuMode::AlwaysOn,
     fColor: false,
     rgTime: [0; 3],
     szBegin: [0; CCH_NAME_MAX],

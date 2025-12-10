@@ -28,8 +28,8 @@ use crate::grafix::{
     FLoadBitmaps, FreeBitmaps,
 };
 use crate::pref::{
-    CCH_NAME_MAX, FMENU_ALWAYS_ON, FMENU_ON, GameType, MINHEIGHT, MINWIDTH, ReadPreferences,
-    SoundState, WritePreferences, fUpdateIni,
+    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, ReadPreferences, SoundState,
+    WritePreferences, fUpdateIni,
 };
 use crate::rtns::{
     C_BLK_MAX, DoButton1Up, DoTimer, F_DISPLAY, F_RESIZE, ID_TIMER, MASK_BOMB, MakeGuess,
@@ -38,8 +38,7 @@ use crate::rtns::{
 };
 use crate::sound::{EndTunes, FInitTunes};
 use crate::util::{
-    CCH_MSG_MAX, CheckEm, DoAbout, DoHelp, FMENU_FLAG_OFF, GetDlgInt, InitConst, LoadSz, ReportErr,
-    SetMenuBar,
+    CCH_MSG_MAX, CheckEm, DoAbout, DoHelp, GetDlgInt, InitConst, LoadSz, ReportErr, SetMenuBar,
 };
 
 /// Main menu resource identifier.
@@ -131,8 +130,6 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
     }
 }
 
-/// Menu flag used internally to toggle the menu bar off.
-const FMENU_OFF: i32 = 1;
 /// Mask to isolate the system-command identifier from `w_param`.
 const SC_MASK: usize = 0xFFF0;
 /// Activation code used to detect click-activation messages.
@@ -808,8 +805,8 @@ fn handle_keydown(w_param: usize) {
                 prefs.fMenu
             };
 
-            if menu_value != FMENU_ALWAYS_ON {
-                SetMenuBar(FMENU_OFF);
+            if !matches!(menu_value, MenuMode::AlwaysOn) {
+                SetMenuBar(MenuMode::Hidden);
             }
         }
         VK_F6_CODE => {
@@ -821,8 +818,8 @@ fn handle_keydown(w_param: usize) {
                 prefs.fMenu
             };
 
-            if menu_value != FMENU_ALWAYS_ON {
-                SetMenuBar(FMENU_ON);
+            if !matches!(menu_value, MenuMode::AlwaysOn) {
+                SetMenuBar(MenuMode::On);
             }
         }
         VK_SHIFT_CODE => handle_xyzzys_shift(),
@@ -1464,7 +1461,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         (prefs.xWindow, prefs.yWindow, prefs.fMenu)
     };
 
-    let menu_visible = (f_menu & FMENU_FLAG_OFF) == 0 && menu_handle.as_opt().is_some();
+    let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.as_opt().is_some();
     let mut menu_extra = 0;
     let mut diff_level = false;
     if menu_visible
