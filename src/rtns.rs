@@ -29,16 +29,21 @@ enum BlockCell {
     Border = 16,
 }
 
-/// Bit mask used to mark a cell that contains a bomb.
-pub const MASK_BOMB: u8 = 0x80;
-/// Bit mask used to mark a cell that has been visited.
-const MASK_VISIT: u8 = 0x40;
-/// Bit mask covering all flag bits in a board cell.
-const MASK_FLAGS: u8 = 0xE0;
-/// Bit mask covering the data bits (adjacent bomb count) in a cell.
-pub const MASK_DATA: u8 = 0x1F;
-/// Convenience mask used to clear the bomb bit from a cell value.
-const MASK_NOT_BOMB: u8 = !MASK_BOMB;
+/// Bit masks applied to the packed board cell value.
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum BlockMask {
+    /// Marks a cell that contains a bomb.
+    Bomb = 0x80,
+    /// Marks a cell that has been visited.
+    Visit = 0x40,
+    /// Covers all flag bits in a board cell.
+    Flags = 0xE0,
+    /// Covers the data bits (adjacent bomb count) in a cell.
+    Data = 0x1F,
+    /// Clears the bomb bit from a cell value.
+    NotBomb = 0x7F,
+}
 
 /// Maximum number of board cells (27 columns by 32 rows including border).
 pub const C_BLK_MAX: usize = 27 * 32;
@@ -50,10 +55,16 @@ pub const ID_TIMER: usize = 1;
 /// Identifier for reporting timer-related errors through ReportErr.
 const ID_ERR_TIMER: u16 = 4;
 
-/// Window-adjustment flag requesting a resize of the client area.
-pub const F_RESIZE: i32 = 0x02;
-/// Window-adjustment flag requesting a full board repaint.
-pub const F_DISPLAY: i32 = 0x04;
+/// Window-adjustment flags mirrored from the Win16 sources.
+#[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum AdjustFlag {
+    Resize = 0x02,
+    Display = 0x04,
+}
+
+/// Shift applied when converting x/y to the packed board index.
+pub const BOARD_INDEX_SHIFT: isize = 5;
 
 const PREFERENCES_INIT: Pref = Pref {
     wGameType: GameType::Begin,
@@ -133,7 +144,7 @@ fn clr_status_pause() {
 }
 
 fn board_index(x: i32, y: i32) -> Option<usize> {
-    let offset = ((y as isize) << 5) + x as isize;
+    let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
         return None;
     }
@@ -158,7 +169,7 @@ fn set_block_value(x: i32, y: i32, value: u8) {
             Err(poisoned) => poisoned.into_inner(),
         };
         let prev = guard[idx] as u8;
-        guard[idx] = ((prev & MASK_FLAGS) | (value & MASK_DATA)) as i8;
+        guard[idx] = ((prev & BlockMask::Flags as u8) | (value & BlockMask::Data as u8)) as i8;
     }
 }
 
@@ -179,7 +190,7 @@ fn set_bomb(x: i32, y: i32) {
             Err(poisoned) => poisoned.into_inner(),
         };
         let prev = guard[idx] as u8;
-        guard[idx] = (prev | MASK_BOMB) as i8;
+        guard[idx] = (prev | BlockMask::Bomb as u8) as i8;
     }
 }
 
@@ -190,24 +201,24 @@ fn clear_bomb(x: i32, y: i32) {
             Err(poisoned) => poisoned.into_inner(),
         };
         let prev = guard[idx] as u8;
-        guard[idx] = (prev & MASK_NOT_BOMB) as i8;
+        guard[idx] = (prev & BlockMask::NotBomb as u8) as i8;
     }
 }
 
 fn is_bomb(x: i32, y: i32) -> bool {
-    (block_value(x, y) & MASK_BOMB) != 0
+    (block_value(x, y) & BlockMask::Bomb as u8) != 0
 }
 
 fn is_visit(x: i32, y: i32) -> bool {
-    (block_value(x, y) & MASK_VISIT) != 0
+    (block_value(x, y) & BlockMask::Visit as u8) != 0
 }
 
 fn guessed_bomb(x: i32, y: i32) -> bool {
-    block_value(x, y) & MASK_DATA == BlockCell::BombUp as u8
+    block_value(x, y) & BlockMask::Data as u8 == BlockCell::BombUp as u8
 }
 
 fn guessed_mark(x: i32, y: i32) -> bool {
-    block_value(x, y) & MASK_DATA == BlockCell::GuessUp as u8
+    block_value(x, y) & BlockMask::Data as u8 == BlockCell::GuessUp as u8
 }
 
 fn f_in_range(x: i32, y: i32) -> bool {
@@ -217,7 +228,7 @@ fn f_in_range(x: i32, y: i32) -> bool {
 }
 
 fn clamp_board_value(value: i32) -> u8 {
-    (value & MASK_DATA as i32) as u8
+    (value & BlockMask::Data as i32) as u8
 }
 
 fn set_raw_block(x: i32, y: i32, block: i32) {
@@ -225,7 +236,7 @@ fn set_raw_block(x: i32, y: i32, block: i32) {
 }
 
 fn block_data(x: i32, y: i32) -> i32 {
-    (block_value(x, y) & MASK_DATA) as i32
+    (block_value(x, y) & BlockMask::Data as u8) as i32
 }
 
 fn check_win() -> bool {
@@ -348,11 +359,11 @@ fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i3
             Err(poisoned) => poisoned.into_inner(),
         };
         let mut blk = board[idx] as u8;
-        if (blk & MASK_VISIT) != 0 {
+        if (blk & BlockMask::Visit as u8) != 0 {
             return;
         }
 
-        let data = blk & MASK_DATA;
+        let data = blk & BlockMask::Data as u8;
         if data == BlockCell::Border as u8 || data == BlockCell::BombUp as u8 {
             return;
         }
@@ -363,13 +374,13 @@ fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i3
             for x_n in (x - 1)..=(x + 1) {
                 if let Some(nidx) = board_index(x_n, y_n) {
                     let cell = board[nidx] as u8;
-                    if (cell & MASK_BOMB) != 0 {
+                    if (cell & BlockMask::Bomb as u8) != 0 {
                         bombs += 1;
                     }
                 }
             }
         }
-        blk = MASK_VISIT | ((bombs as u8) & MASK_DATA);
+        blk = BlockMask::Visit as u8 | ((bombs as u8) & BlockMask::Data as u8);
         board[idx] = blk as i8;
         drop(board);
         display_block(x, y);
@@ -450,7 +461,11 @@ fn step_square(x: i32, y: i32) {
                 }
             }
         } else {
-            change_blk(x, y, (MASK_VISIT | BlockCell::Explode as u8) as i32);
+            change_blk(
+                x,
+                y,
+                (BlockMask::Visit as u8 | BlockCell::Explode as u8) as i32,
+            );
             game_over(false);
         }
     } else {
@@ -479,7 +494,11 @@ fn step_block(x_center: i32, y_center: i32) {
 
             if is_bomb(x, y) {
                 lose = true;
-                change_blk(x, y, (MASK_VISIT | BlockCell::Explode as u8) as i32);
+                change_blk(
+                    x,
+                    y,
+                    (BlockMask::Visit as u8 | BlockCell::Explode as u8) as i32,
+                );
             } else {
                 step_box(x, y);
             }
@@ -608,9 +627,9 @@ pub fn StartGame() {
     };
 
     let f_adjust = if pref_width != x_prev || pref_height != y_prev {
-        F_RESIZE | F_DISPLAY
+        AdjustFlag::Resize as i32 | AdjustFlag::Display as i32
     } else {
-        F_DISPLAY
+        AdjustFlag::Display as i32
     };
 
     xBoxMac.store(pref_width, Ordering::Relaxed);

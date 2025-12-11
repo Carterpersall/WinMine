@@ -7,7 +7,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
 };
 
-use winsafe::co::{self, DLGID, GWLP, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, WA, WS, WS_EX};
+use winsafe::co::{self, GWLP, HELPW, ICC, IDC, SM, STOCK_BRUSH, WS, WS_EX};
 use winsafe::msg::WndMsg;
 use winsafe::prelude::Handle;
 use winsafe::{
@@ -32,7 +32,7 @@ use crate::pref::{
     WritePreferences, fUpdateIni,
 };
 use crate::rtns::{
-    C_BLK_MAX, DoButton1Up, DoTimer, F_DISPLAY, F_RESIZE, ID_TIMER, MASK_BOMB, MakeGuess,
+    AdjustFlag, BOARD_INDEX_SHIFT, BlockMask, C_BLK_MAX, DoButton1Up, DoTimer, ID_TIMER, MakeGuess,
     PauseGame, ResumeGame, StartGame, TrackMouse, board_mutex, iButtonCur, preferences_mutex,
     xBoxMac, xCur, yBoxMac, yCur,
 };
@@ -133,7 +133,6 @@ enum HelpContextId {
     SText = 1004,
 }
 const ID_MSG_BEGIN: u16 = 9;
-const F_CALC: i32 = 0x01;
 
 const WINDOW_STYLE: u32 = co::WS::OVERLAPPED.raw()
     | co::WS::MINIMIZEBOX.raw()
@@ -152,24 +151,6 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
     }
 }
 
-/// Mask to isolate the system-command identifier from `w_param`.
-const SC_MASK: usize = 0xFFF0;
-/// Activation code used to detect click-activation messages.
-const WA_CLICKACTIVE: u16 = WA::CLICKACTIVE.raw();
-
-/// Mouse flag for the left button in `w_param`.
-const MK_LBUTTON: usize = MK::LBUTTON.raw() as usize;
-/// Mouse flag for the right button in `w_param`.
-const MK_RBUTTON: usize = MK::RBUTTON.raw() as usize;
-/// Mouse flag for the Shift key in `w_param`.
-const MK_SHIFT_FLAG: usize = MK::SHIFT.raw() as usize;
-/// Combined flag for detecting left+right button chords.
-const MK_CHORD_MASK: usize = MK_SHIFT_FLAG | MK_RBUTTON;
-/// Mouse flag for the Control key in `w_param`.
-const MK_CONTROL_FLAG: usize = MK::CONTROL.raw() as usize;
-
-/// Shift applied when converting x/y to the packed board index.
-const BOARD_INDEX_SHIFT: usize = 5;
 const COLOR_BLACK: COLORREF = COLORREF::from_rgb(0, 0, 0);
 const COLOR_WHITE: COLORREF = COLORREF::from_rgb(0xFF, 0xFF, 0xFF);
 
@@ -216,10 +197,6 @@ const BEST_HELP_IDS: [u32; 22] = [
     0,
     0,
 ];
-
-const EM_SETLIMITTEXT: u32 = 0x00C5;
-const IDOK_U16: u16 = DLGID::OK.raw();
-const IDCANCEL_U16: u16 = DLGID::CANCEL.raw();
 
 // Structure for HELP_WM_HELP message.
 #[repr(C)]
@@ -444,7 +421,7 @@ pub fn run_winmine(
         return 0;
     }
 
-    AdjustWindow(F_CALC);
+    AdjustWindow(0);
 
     if !FInitLocal() {
         ReportErr(ID_ERR_MEM);
@@ -605,7 +582,7 @@ fn handle_rbutton_down(h_wnd: HWND, w_param: usize, l_param: isize) -> Option<is
         return Some(0);
     }
 
-    if (w_param & MK_LBUTTON) != 0 {
+    if (w_param & co::MK::LBUTTON.raw() as usize) != 0 {
         begin_primary_button_drag(h_wnd);
         handle_mouse_move(w_param, l_param);
         return None;
@@ -882,7 +859,8 @@ fn handle_window_pos_changed(l_param: isize) {
 }
 
 fn handle_syscommand(w_param: usize) {
-    let command = (w_param & SC_MASK) as u32;
+    // Isolate the system command identifier by masking out the lower 4 bits.
+    let command = (w_param & 0xFFF0) as u32;
     if command == co::SC::MINIMIZE.raw() {
         PauseGame();
         set_status_pause();
@@ -934,7 +912,7 @@ fn cell_is_bomb(x: i32, y: i32) -> bool {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
-    (guard[idx] as u8 & MASK_BOMB) != 0
+    (guard[idx] as u8 & BlockMask::Bomb as u8) != 0
 }
 
 const CCH_XYZZY: i32 = 5;
@@ -971,7 +949,7 @@ fn handle_xyzzys_mouse(w_param: usize, l_param: isize) {
         return;
     }
 
-    let control_down = (w_param & MK_CONTROL_FLAG) != 0;
+    let control_down = (w_param & co::MK::CONTROL.raw() as usize) != 0;
     if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
         let x_pos = x_box_from_xpos(loword(l_param));
         let y_pos = y_box_from_ypos(hiword(l_param));
@@ -1030,7 +1008,10 @@ pub extern "system" fn MainWndProc(
                 return 0;
             }
             if status_play() {
-                set_block_flag((w_param & MK_CHORD_MASK) != 0);
+                // Mask SHIFT and RBUTTON to indicate a "chord" operation.
+                set_block_flag(
+                    (w_param & (co::MK::SHIFT.raw() | co::MK::RBUTTON.raw()) as usize) != 0,
+                );
                 let hwnd_copy = unsafe { HWND::from_ptr(h_wnd.ptr()) };
                 begin_primary_button_drag(hwnd_copy);
                 handle_mouse_move(w_param, l_param);
@@ -1049,7 +1030,7 @@ pub extern "system" fn MainWndProc(
             }
         }
         co::WM::ACTIVATE => {
-            if get_activate_state(w_param) == WA_CLICKACTIVE {
+            if get_activate_state(w_param) == co::WA::CLICKACTIVE.raw() {
                 fIgnoreClick.store(true, Ordering::Relaxed);
             }
         }
@@ -1234,7 +1215,7 @@ pub extern "system" fn PrefDlgProc(
         }
         co::WM::COMMAND => {
             match command_id(w_param) {
-                id if id == ControlId::BtnOk as u16 || id == IDOK_U16 => {
+                id if id == ControlId::BtnOk as u16 || id == co::DLGID::OK.raw() => {
                     let height = GetDlgInt(&h_dlg, ControlId::EditHeight as i32, MINHEIGHT, 24);
                     let width = GetDlgInt(&h_dlg, ControlId::EditWidth as i32, MINWIDTH, 30);
                     let max_mines = min(999, (height - 1) * (width - 1));
@@ -1252,7 +1233,7 @@ pub extern "system" fn PrefDlgProc(
                         prefs.Mines = mines;
                     }
                 }
-                id if id == ControlId::BtnCancel as u16 || id == IDCANCEL_U16 => {}
+                id if id == ControlId::BtnCancel as u16 || id == co::DLGID::CANCEL.raw() => {}
                 _ => return 0,
             }
             let _ = h_dlg.EndDialog(1);
@@ -1369,9 +1350,9 @@ pub extern "system" fn BestDlgProc(
                 return 1;
             }
             id if id == ControlId::BtnOk as u16
-                || id == IDOK_U16
+                || id == co::DLGID::OK.raw()
                 || id == ControlId::BtnCancel as u16
-                || id == IDCANCEL_U16 =>
+                || id == co::DLGID::CANCEL.raw() =>
             {
                 let _ = h_dlg.EndDialog(1);
                 return 1;
@@ -1423,7 +1404,7 @@ pub extern "system" fn EnterDlgProc(
                 SetDlgItemTextW(h_dlg_raw as _, ControlId::TextBest as i32, buffer.as_ptr());
                 if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ControlId::EditName as u16) {
                     let _ = edit_hwnd.SendMessage(WndMsg::new(
-                        co::WM::from_raw(EM_SETLIMITTEXT),
+                        co::WM::from_raw(co::EM::SETLIMITTEXT.raw()),
                         CCH_NAME_MAX,
                         0,
                     ));
@@ -1438,9 +1419,9 @@ pub extern "system" fn EnterDlgProc(
         }
         co::WM::COMMAND => match command_id(w_param) {
             id if id == ControlId::BtnOk as u16
-                || id == IDOK_U16
+                || id == co::DLGID::OK.raw()
                 || id == ControlId::BtnCancel as u16
-                || id == IDCANCEL_U16 =>
+                || id == co::DLGID::CANCEL.raw() =>
             {
                 let mut buffer = [0u16; CCH_NAME_MAX];
                 unsafe {
@@ -1565,17 +1546,17 @@ pub fn AdjustWindow(mut f_adjust: i32) {
 
     let mut excess = x_window + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
     if excess > 0 {
-        f_adjust |= F_RESIZE;
+        f_adjust |= AdjustFlag::Resize as i32;
         x_window -= excess;
     }
     excess = y_window + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
     if excess > 0 {
-        f_adjust |= F_RESIZE;
+        f_adjust |= AdjustFlag::Resize as i32;
         y_window -= excess;
     }
 
     if !bInitMinimized.load(Ordering::Relaxed) {
-        if (f_adjust & F_RESIZE) != 0 {
+        if (f_adjust & AdjustFlag::Resize as i32) != 0 {
             let _ = hwnd_main.MoveWindow(
                 POINT {
                     x: x_window,
@@ -1617,7 +1598,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
             );
         }
 
-        if (f_adjust & F_DISPLAY) != 0 {
+        if (f_adjust & AdjustFlag::Display as i32) != 0 {
             let rect = RECT {
                 left: 0,
                 top: 0,

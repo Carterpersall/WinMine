@@ -12,7 +12,7 @@ use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, SoundState,
 };
 use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
-use crate::rtns::{F_RESIZE, preferences_mutex};
+use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, FixMenus, MenuCommand};
 
@@ -403,7 +403,7 @@ pub fn SetMenuBar(f_active: MenuMode) {
         let null_menu = w::HMENU::NULL;
         let menu_arg = if menu_on { &menu_handle } else { &null_menu };
         let _ = hwnd.SetMenu(menu_arg);
-        AdjustWindow(F_RESIZE);
+        AdjustWindow(AdjustFlag::Resize as i32);
     }
 }
 

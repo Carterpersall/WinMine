@@ -16,8 +16,8 @@ use winsafe::{
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, global_state};
 use crate::rtns::{
-    ClearField, MASK_DATA, board_mutex, cBombLeft, cSec, iButtonCur, preferences_mutex, xBoxMac,
-    yBoxMac,
+    BOARD_INDEX_SHIFT, BlockMask, ClearField, board_mutex, cBombLeft, cSec, iButtonCur,
+    preferences_mutex, xBoxMac, yBoxMac,
 };
 use crate::sound::EndTunes;
 
@@ -723,7 +723,7 @@ fn block_dc(x: i32, y: i32) -> w::HDC {
 
 fn block_sprite_index(x: i32, y: i32) -> usize {
     // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
-    let offset = ((y as isize) << 5) + x as isize;
+    let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
         return 0;
     }
@@ -735,7 +735,7 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
     board
         .get(idx)
         .copied()
-        .map(|value| (value & MASK_DATA as i8) as usize)
+        .map(|value| (value & BlockMask::Data as i8) as usize)
         .unwrap_or(0)
 }
 

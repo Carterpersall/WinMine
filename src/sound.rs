@@ -7,13 +7,14 @@ use crate::globals::global_state;
 use crate::pref::SoundState;
 
 /// Logical UI tunes that map to embedded wave resources.
+#[repr(u16)]
 pub enum Tune {
     /// Short tick used for timer and click feedback.
-    Tick,
+    Tick = 432,
     /// Win jingle played after successfully clearing the board.
-    WinGame,
+    WinGame = 433,
     /// Loss sound played after detonating a mine.
-    LoseGame,
+    LoseGame = 434,
 }
 
 pub fn FInitTunes() -> SoundState {
@@ -38,13 +39,7 @@ fn stop_all_sounds() -> bool {
 
 /// Play a specific UI tune using the sounds in the resource file
 pub fn PlayTune(tune: Tune) {
-    let resource_id: u16 = match tune {
-        Tune::Tick => 432,
-        Tune::WinGame => 433,
-        Tune::LoseGame => 434,
-    };
-
-    let resource_ptr = make_int_resource(resource_id);
+    let resource_ptr = make_int_resource(tune as u16);
     let instance_ptr = {
         let guard = match global_state().h_inst.lock() {
             Ok(g) => g,
