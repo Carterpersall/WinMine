@@ -42,10 +42,15 @@ use crate::util::{
     SetMenuBar,
 };
 
-/// Main menu resource identifier.
-const ID_MENU: u16 = 500;
-/// Accelerator table resource identifier.
-const ID_MENU_ACCEL: u16 = 501;
+/// Menu and accelerator resource identifiers.
+#[repr(u16)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum MenuResourceId {
+    /// Main menu resource.
+    Menu = 500,
+    /// Accelerator table resource.
+    Accelerators = 501,
+}
 /// Menu and accelerator command identifiers.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -162,15 +167,6 @@ const MK_SHIFT_FLAG: usize = MK::SHIFT.raw() as usize;
 const MK_CHORD_MASK: usize = MK_SHIFT_FLAG | MK_RBUTTON;
 /// Mouse flag for the Control key in `w_param`.
 const MK_CONTROL_FLAG: usize = MK::CONTROL.raw() as usize;
-
-/// Virtual-key code for toggling sound on/off.
-const VK_F4_CODE: u32 = co::VK::F4.raw() as u32;
-/// Virtual-key code for hiding the menu bar.
-const VK_F5_CODE: u32 = co::VK::F5.raw() as u32;
-/// Virtual-key code for showing the menu bar.
-const VK_F6_CODE: u32 = co::VK::F6.raw() as u32;
-/// Virtual-key code used in the XYZZY easter egg sequence.
-const VK_SHIFT_CODE: u32 = co::VK::SHIFT.raw() as u32;
 
 /// Shift applied when converting x/y to the packed board index.
 const BOARD_INDEX_SHIFT: usize = 5;
@@ -363,7 +359,7 @@ pub fn run_winmine(
     }
 
     let menu_handle = hinst_wrap
-        .LoadMenu(IdStr::Id(ID_MENU))
+        .LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))
         .map(|mut menu| menu.leak())
         .unwrap_or(HMENU::NULL);
     let menu_param_handle = unsafe { HMENU::from_ptr(menu_handle.ptr()) };
@@ -375,7 +371,7 @@ pub fn run_winmine(
         *menu_guard = menu_handle;
     }
     let h_accel = hinst_wrap
-        .LoadAccelerators(IdStr::Id(ID_MENU_ACCEL))
+        .LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))
         .map(|mut accel| accel.leak())
         .unwrap_or(HACCEL::NULL);
 
@@ -806,7 +802,7 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
 
 fn handle_keydown(w_param: usize) {
     match w_param as u32 {
-        VK_F4_CODE => {
+        code if code == co::VK::F4.raw() as u32 => {
             let current_sound = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -838,7 +834,7 @@ fn handle_keydown(w_param: usize) {
                 SetMenuBar(f_menu);
             }
         }
-        VK_F5_CODE => {
+        code if code == co::VK::F5.raw() as u32 => {
             let menu_value = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -851,7 +847,7 @@ fn handle_keydown(w_param: usize) {
                 SetMenuBar(MenuMode::Hidden);
             }
         }
-        VK_F6_CODE => {
+        code if code == co::VK::F6.raw() as u32 => {
             let menu_value = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -864,7 +860,7 @@ fn handle_keydown(w_param: usize) {
                 SetMenuBar(MenuMode::On);
             }
         }
-        VK_SHIFT_CODE => handle_xyzzys_shift(),
+        code if code == co::VK::SHIFT.raw() as u32 => handle_xyzzys_shift(),
         _ => handle_xyzzys_default_key(w_param),
     }
 }

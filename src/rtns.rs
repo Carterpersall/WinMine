@@ -36,7 +36,7 @@ const MASK_VISIT: u8 = 0x40;
 /// Bit mask covering all flag bits in a board cell.
 const MASK_FLAGS: u8 = 0xE0;
 /// Bit mask covering the data bits (adjacent bomb count) in a cell.
-const MASK_DATA: u8 = 0x1F;
+pub const MASK_DATA: u8 = 0x1F;
 /// Convenience mask used to clear the bomb bit from a cell value.
 const MASK_NOT_BOMB: u8 = !MASK_BOMB;
 

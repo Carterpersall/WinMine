@@ -16,7 +16,8 @@ use winsafe::{
 
 use crate::globals::{dxWindow, dxpBorder, dyWindow, global_state};
 use crate::rtns::{
-    ClearField, board_mutex, cBombLeft, cSec, iButtonCur, preferences_mutex, xBoxMac, yBoxMac,
+    ClearField, MASK_DATA, board_mutex, cBombLeft, cSec, iButtonCur, preferences_mutex, xBoxMac,
+    yBoxMac,
 };
 use crate::sound::EndTunes;
 
@@ -67,8 +68,6 @@ pub enum ButtonSprite {
 }
 /// Number of face button sprites.
 pub const BUTTON_SPRITE_COUNT: usize = 5;
-/// Mask used to extract the displayable bits from a board cell value.
-pub const MASK_DATA: i32 = 0x1F;
 /// Bitmap resources embedded in the executable.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -736,7 +735,7 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
     board
         .get(idx)
         .copied()
-        .map(|value| (value as i32 & MASK_DATA) as usize)
+        .map(|value| (value & MASK_DATA as i8) as usize)
         .unwrap_or(0)
 }
 
