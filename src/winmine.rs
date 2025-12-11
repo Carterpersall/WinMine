@@ -1,7 +1,9 @@
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicI32, Ordering};
 
-use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
+use windows_sys::Win32::Data::HtmlHelp::{
+    HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
+};
 use windows_sys::Win32::Graphics::Gdi::{PtInRect, SetPixel};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
@@ -154,7 +156,7 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
 const COLOR_BLACK: COLORREF = COLORREF::from_rgb(0, 0, 0);
 const COLOR_WHITE: COLORREF = COLORREF::from_rgb(0xFF, 0xFF, 0xFF);
 
-const HELP_FILE: &str = "winmine.hlp";
+const HELP_FILE: &[u8] = b"winmine.chm\0";
 
 const PREF_HELP_IDS: [u32; 14] = [
     ControlId::EditHeight as u32,
@@ -1719,24 +1721,36 @@ fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {
 }
 
 fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
-    unsafe {
-        if l_param == 0 {
-            return false;
-        }
-        let info = &*(l_param as *const HelpInfo);
-        if info.hItemHandle.as_opt().is_none() {
-            return false;
-        }
-        let _ = info
-            .hItemHandle
-            .WinHelp(HELP_FILE, HELPW::WM_HELP, ids.as_ptr() as usize);
-        true
+    if l_param == 0 {
+        return false;
     }
+
+    let info = unsafe { &*(l_param as *const HelpInfo) };
+    let Some(hwnd) = info.hItemHandle.as_opt() else {
+        return false;
+    };
+
+    unsafe {
+        HtmlHelpA(
+            hwnd.ptr() as _,
+            HELP_FILE.as_ptr() as _,
+            HH_TP_HELP_WM_HELP as _,
+            ids.as_ptr() as usize,
+        );
+    }
+
+    true
 }
 
 fn apply_help_to_hwnd(hwnd: HWND, ids: &[u32]) {
-    if hwnd.as_opt().is_none() {
-        return;
+    if let Some(control) = hwnd.as_opt() {
+        unsafe {
+            HtmlHelpA(
+                control.ptr() as _,
+                HELP_FILE.as_ptr() as _,
+                HH_TP_HELP_CONTEXTMENU as _,
+                ids.as_ptr() as usize,
+            );
+        }
     }
-    let _ = hwnd.WinHelp(HELP_FILE, HELPW::CONTEXTMENU, ids.as_ptr() as usize);
 }

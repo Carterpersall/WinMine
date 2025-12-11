@@ -3,7 +3,6 @@ use core::ptr::null;
 use core::sync::atomic::Ordering::Relaxed;
 use std::sync::{Mutex, OnceLock};
 
-use windows_sys::Win32::Graphics::Gdi as gdi_sys;
 use windows_sys::Win32::Graphics::Gdi::{
     GDI_ERROR, GetLayout, R2_COPYPEN, R2_WHITE, SetDIBitsToDevice, SetLayout, SetROP2,
 };
@@ -287,14 +286,14 @@ pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
             0,
             DY_LED as u32,
             led_bits_with(&state, i_led) as *const _,
-            dib_info(state.lp_dib_led) as *const _ as *const gdi_sys::BITMAPINFO,
+            dib_info(state.lp_dib_led) as *const _,
             DIB::RGB_COLORS.raw(),
         );
     }
 }
 
 pub fn DrawBombCount(hdc: &w::HDC) {
-    // Match the C logic: handle negatives, honor RTL mirroring, then paint three digits.
+    // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
@@ -303,6 +302,7 @@ pub fn DrawBombCount(hdc: &w::HDC) {
         }
     }
 
+    // Calculate the three LED digits to display for the bomb counter.
     let bombs = cBombLeft.load(Relaxed);
     let (i_led, c_bombs) = if bombs < 0 {
         (11, (-bombs) % 100)
@@ -310,10 +310,12 @@ pub fn DrawBombCount(hdc: &w::HDC) {
         (bombs / 100, bombs % 100)
     };
 
+    // Draw each of the three digits in sequence.
     DrawLed(hdc, DX_LEFT_BOMB, i_led);
     DrawLed(hdc, DX_LEFT_BOMB + DX_LED, c_bombs / 10);
     DrawLed(hdc, DX_LEFT_BOMB + DX_LED * 2, c_bombs % 10);
 
+    // Restore the original layout if it was mirrored
     if mirrored {
         unsafe {
             SetLayout(hdc.ptr(), layout);
@@ -395,7 +397,7 @@ pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
             0,
             DY_BUTTON as u32,
             button_bits_with(&state, sprite_idx) as *const _,
-            dib_info(state.lp_dib_button) as *const _ as *const gdi_sys::BITMAPINFO,
+            dib_info(state.lp_dib_button) as *const _,
             DIB::RGB_COLORS.raw(),
         );
     }
@@ -641,7 +643,7 @@ fn load_bitmaps_impl() -> bool {
                     0,
                     DY_BLK as u32,
                     block_bits_with(&state, i as i32) as *const _,
-                    dib_info(state.lp_dib_blks) as *const _ as *const gdi_sys::BITMAPINFO,
+                    dib_info(state.lp_dib_blks) as *const _,
                     DIB::RGB_COLORS.raw(),
                 );
             }
