@@ -169,7 +169,12 @@ fn set_block_value(x: i32, y: i32, value: u8) {
             Err(poisoned) => poisoned.into_inner(),
         };
         let prev = guard[idx] as u8;
-        guard[idx] = ((prev & BlockMask::Flags as u8) | (value & BlockMask::Data as u8)) as i8;
+
+        // Preserve existing flag bits, but allow callers to explicitly set the Visit bit.
+        // (Bomb placement is handled separately via set_bomb/clear_bomb.)
+        let flags = (prev & BlockMask::Flags as u8) | (value & BlockMask::Visit as u8);
+        let data = value & BlockMask::Data as u8;
+        guard[idx] = (flags | data) as i8;
     }
 }
 
@@ -227,12 +232,10 @@ fn f_in_range(x: i32, y: i32) -> bool {
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
-fn clamp_board_value(value: i32) -> u8 {
-    (value & BlockMask::Data as i32) as u8
-}
-
 fn set_raw_block(x: i32, y: i32, block: i32) {
-    set_block_value(x, y, clamp_board_value(block));
+    // Keep only the data bits plus the Visit bit (when present).
+    let masked = (block & (BlockMask::Data as i32 | BlockMask::Visit as i32)) as u8;
+    set_block_value(x, y, masked);
 }
 
 fn block_data(x: i32, y: i32) -> i32 {

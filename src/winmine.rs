@@ -735,9 +735,9 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
                 }
                 return Some(0);
             }
-            if color_enabled {
-                DisplayScreen();
-            }
+
+            // Repaint immediately so toggling color off updates without restarting.
+            DisplayScreen();
             fUpdateIni.store(true, Ordering::Relaxed);
             FixMenus(game, color_enabled, f_mark, f_sound);
             SetMenuBar(f_menu);
