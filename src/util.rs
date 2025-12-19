@@ -227,25 +227,28 @@ pub fn InitConst() {
             StringId::GameName as u16,
             class_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
-        ) {
-            eprintln!("Failed to load game name string: {}", e);
-        }
+        )
+    {
+        eprintln!("Failed to load game name string: {}", e);
+    }
     if let Ok(mut time_buf) = state.sz_time.lock()
         && let Err(e) = LoadSz(
             StringId::MsgSeconds as u16,
             time_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
-        ) {
-            eprintln!("Failed to load time format string: {}", e);
-        }
+        )
+    {
+        eprintln!("Failed to load time format string: {}", e);
+    }
     if let Ok(mut default_buf) = state.sz_default_name.lock()
         && let Err(e) = LoadSz(
             StringId::NameDefault as u16,
             default_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
-        ) {
-            eprintln!("Failed to load default name string: {}", e);
-        }
+        )
+    {
+        eprintln!("Failed to load default name string: {}", e);
+    }
 
     dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
     dypMenu.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
@@ -367,7 +370,7 @@ pub fn CheckEm(idm: MenuCommand, f_check: bool) {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    if let Some(menu) = menu_guard.as_opt() {
+    if let Some(menu) = menu_guard.as_ref() {
         let _ = menu.CheckMenuItem(IdPos::Id(idm as u16), f_check);
     }
 }
@@ -394,7 +397,10 @@ pub fn SetMenuBar(f_active: MenuMode) {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            unsafe { w::HMENU::from_ptr(guard.ptr()) }
+            guard
+                .as_ref()
+                .map(|menu| unsafe { w::HMENU::from_ptr(menu.ptr()) })
+                .unwrap_or(w::HMENU::NULL)
         };
         let hwnd_main = {
             let guard = match state.hwnd_main.lock() {

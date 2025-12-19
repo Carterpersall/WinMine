@@ -1,8 +1,9 @@
 use core::sync::atomic::{AtomicBool, AtomicI32};
 use std::sync::{Mutex, OnceLock};
 
+use winsafe::guard::{DestroyIconGuard, DestroyMenuGuard};
 use winsafe::prelude::Handle;
-use winsafe::{HICON, HINSTANCE, HMENU, HWND};
+use winsafe::{HINSTANCE, HWND};
 
 use crate::pref::CCH_NAME_MAX;
 
@@ -62,8 +63,8 @@ pub static fStatus: AtomicI32 = AtomicI32::new(StatusFlag::Icon as i32 | StatusF
 pub struct GlobalState {
     pub h_inst: Mutex<HINSTANCE>,
     pub hwnd_main: Mutex<HWND>,
-    pub h_menu: Mutex<HMENU>,
-    pub h_icon_main: Mutex<HICON>,
+    pub h_menu: Mutex<Option<DestroyMenuGuard>>,
+    pub h_icon_main: Mutex<Option<DestroyIconGuard>>,
     pub sz_class: Mutex<[u16; CCH_NAME_MAX]>,
     pub sz_time: Mutex<[u16; CCH_NAME_MAX]>,
     pub sz_default_name: Mutex<[u16; CCH_NAME_MAX]>,
@@ -74,8 +75,8 @@ impl Default for GlobalState {
         Self {
             h_inst: Mutex::new(HINSTANCE::NULL),
             hwnd_main: Mutex::new(HWND::NULL),
-            h_menu: Mutex::new(HMENU::NULL),
-            h_icon_main: Mutex::new(HICON::NULL),
+            h_menu: Mutex::new(None),
+            h_icon_main: Mutex::new(None),
             sz_class: Mutex::new([0; CCH_NAME_MAX]),
             sz_time: Mutex::new([0; CCH_NAME_MAX]),
             sz_default_name: Mutex::new([0; CCH_NAME_MAX]),

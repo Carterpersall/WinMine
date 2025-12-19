@@ -263,9 +263,11 @@ fn register_main_window_class() -> bool {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        (unsafe { HINSTANCE::from_ptr(inst_guard.ptr()) }, unsafe {
-            HICON::from_ptr(icon_guard.ptr())
-        })
+        let hicon = icon_guard
+            .as_ref()
+            .map(|icon| unsafe { HICON::from_ptr(icon.ptr()) })
+            .unwrap_or(HICON::NULL);
+        (unsafe { HINSTANCE::from_ptr(inst_guard.ptr()) }, hicon)
     };
     let class_buf = {
         let guard = match state.sz_class.lock() {
@@ -321,10 +323,7 @@ pub fn run_winmine(
         unsafe { HINSTANCE::from_ptr(guard.ptr()) }
     };
 
-    let icon = hinst_wrap
-        .LoadIcon(IdIdiStr::Id(IconId::Main as u16))
-        .map(|mut icon| icon.leak())
-        .unwrap_or(HICON::NULL);
+    let icon = hinst_wrap.LoadIcon(IdIdiStr::Id(IconId::Main as u16)).ok();
     {
         let mut icon_guard = match state.h_icon_main.lock() {
             Ok(g) => g,
@@ -337,17 +336,19 @@ pub fn run_winmine(
         return 0;
     }
 
-    let menu_handle = hinst_wrap
+    let menu = hinst_wrap
         .LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))
-        .map(|mut menu| menu.leak())
+        .ok();
+    let menu_param_handle = menu
+        .as_ref()
+        .map(|m| unsafe { HMENU::from_ptr(m.ptr()) })
         .unwrap_or(HMENU::NULL);
-    let menu_param_handle = unsafe { HMENU::from_ptr(menu_handle.ptr()) };
     {
         let mut menu_guard = match state.h_menu.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        *menu_guard = menu_handle;
+        *menu_guard = menu;
     }
     let h_accel = hinst_wrap
         .LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))
@@ -1488,7 +1489,10 @@ pub fn AdjustWindow(mut f_adjust: i32) {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        unsafe { HMENU::from_ptr(guard.ptr()) }
+        guard
+            .as_ref()
+            .map(|menu| unsafe { HMENU::from_ptr(menu.ptr()) })
+            .unwrap_or(HMENU::NULL)
     };
 
     let x_boxes = xBoxMac.load(Ordering::Relaxed);
