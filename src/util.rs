@@ -128,7 +128,7 @@ pub fn ReportErr(id_err: u16) {
     let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
 }
 
-pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
+pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) -> Result<(), Box<dyn std::error::Error>> {
     // Wrapper around LoadString that raises the original fatal error if the resource is missing.
     let state = global_state();
     let inst_guard = match state.h_inst.lock() {
@@ -136,14 +136,15 @@ pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let text = inst_guard.LoadString(id).unwrap_or_default();
+    let text = inst_guard
+        .LoadString(id)
+        .map_err(|e| format!("Failed to load string resource {}: {}", id, e))?;
     if text.is_empty() {
-        ReportErr(1001);
-        return;
+        return Err(format!("Empty string resource {}", id).into());
     }
 
     if sz.is_null() || cch == 0 {
-        return;
+        return Err("Invalid buffer parameters".into());
     }
 
     let max = cch as usize;
@@ -151,6 +152,7 @@ pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) {
     for (i, code_unit) in text.encode_utf16().chain(Some(0)).take(max).enumerate() {
         slice[i] = code_unit;
     }
+    Ok(())
 }
 
 pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
@@ -220,27 +222,30 @@ pub fn InitConst() {
     seed_rng(ticks as u32);
 
     let state = global_state();
-    if let Ok(mut class_buf) = state.sz_class.lock() {
-        LoadSz(
+    if let Ok(mut class_buf) = state.sz_class.lock()
+        && let Err(e) = LoadSz(
             StringId::GameName as u16,
             class_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
-        );
-    }
-    if let Ok(mut time_buf) = state.sz_time.lock() {
-        LoadSz(
+        ) {
+            eprintln!("Failed to load game name string: {}", e);
+        }
+    if let Ok(mut time_buf) = state.sz_time.lock()
+        && let Err(e) = LoadSz(
             StringId::MsgSeconds as u16,
             time_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
-        );
-    }
-    if let Ok(mut default_buf) = state.sz_default_name.lock() {
-        LoadSz(
+        ) {
+            eprintln!("Failed to load time format string: {}", e);
+        }
+    if let Ok(mut default_buf) = state.sz_default_name.lock()
+        && let Err(e) = LoadSz(
             StringId::NameDefault as u16,
             default_buf.as_mut_ptr(),
             CCH_NAME_MAX as u32,
-        );
-    }
+        ) {
+            eprintln!("Failed to load default name string: {}", e);
+        }
 
     dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
     dypMenu.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
@@ -348,7 +353,9 @@ pub fn InitConst() {
     }
 
     unsafe {
-        WritePreferences();
+        if let Err(e) = WritePreferences() {
+            eprintln!("Failed to write preferences during initialization: {}", e);
+        }
     }
 }
 
@@ -425,16 +432,22 @@ pub fn DoAbout() {
     let mut sz_version = [0u16; CCH_MSG_MAX];
     let mut sz_credit = [0u16; CCH_MSG_MAX];
 
-    LoadSz(
+    if let Err(e) = LoadSz(
         StringId::MsgVersion as u16,
         sz_version.as_mut_ptr(),
         CCH_MSG_MAX as u32,
-    );
-    LoadSz(
+    ) {
+        eprintln!("Failed to load version string: {}", e);
+        return;
+    }
+    if let Err(e) = LoadSz(
         StringId::MsgCredit as u16,
         sz_credit.as_mut_ptr(),
         CCH_MSG_MAX as u32,
-    );
+    ) {
+        eprintln!("Failed to load credit string: {}", e);
+        return;
+    }
 
     let title = utf16_buffer_to_string(&sz_version);
     let credit = utf16_buffer_to_string(&sz_credit);

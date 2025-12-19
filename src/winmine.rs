@@ -425,7 +425,8 @@ pub fn run_winmine(
 
     AdjustWindow(0);
 
-    if !FInitLocal() {
+    if let Err(e) = FInitLocal() {
+        eprintln!("Failed to initialize local resources: {}", e);
         ReportErr(ID_ERR_MEM);
         return 0;
     }
@@ -474,7 +475,9 @@ pub fn run_winmine(
 
     if fUpdateIni.load(Ordering::Relaxed) {
         unsafe {
-            WritePreferences();
+            if let Err(e) = WritePreferences() {
+                eprintln!("Failed to write preferences: {}", e);
+            }
         }
     }
 
@@ -715,7 +718,8 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
             };
             let state = global_state();
             FreeBitmaps();
-            if !FLoadBitmaps() {
+            if let Err(e) = FLoadBitmaps() {
+                eprintln!("Failed to reload bitmaps: {}", e);
                 ReportErr(ID_ERR_MEM);
                 let hwnd_main = {
                     let guard = match state.hwnd_main.lock() {
@@ -1402,8 +1406,11 @@ pub extern "system" fn EnterDlgProc(
             unsafe {
                 let mut buffer = [0u16; CCH_MSG_MAX];
                 let string_id = ID_MSG_BEGIN + game_type as u16;
-                LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32);
-                SetDlgItemTextW(h_dlg_raw as _, ControlId::TextBest as i32, buffer.as_ptr());
+                if let Err(e) = LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32) {
+                    eprintln!("Failed to load dialog string {}: {}", string_id, e);
+                } else {
+                    SetDlgItemTextW(h_dlg_raw as _, ControlId::TextBest as i32, buffer.as_ptr());
+                }
                 if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ControlId::EditName as u16) {
                     let _ = edit_hwnd.SendMessage(WndMsg::new(
                         co::WM::from_raw(co::EM::SETLIMITTEXT.raw()),

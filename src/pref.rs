@@ -276,7 +276,7 @@ pub unsafe fn ReadPreferences() {
     }
 }
 
-pub unsafe fn WritePreferences() {
+pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
     let (mut key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -286,7 +286,7 @@ pub unsafe fn WritePreferences() {
         None,
     ) {
         Ok(result) => result,
-        Err(_) => return,
+        Err(e) => return Err(format!("Failed to open registry key: {}", e).into()),
     };
     let handle = key_guard.leak();
 
@@ -297,71 +297,85 @@ pub unsafe fn WritePreferences() {
 
     // Persist the difficulty, board dimensions, and flags exactly as the original did.
     unsafe {
-        WriteInt(&handle, PrefKey::Difficulty, prefs.wGameType as i32);
-        WriteInt(&handle, PrefKey::Height, prefs.Height);
-        WriteInt(&handle, PrefKey::Width, prefs.Width);
-        WriteInt(&handle, PrefKey::Mines, prefs.Mines);
-        WriteInt(&handle, PrefKey::Mark, bool_to_i32(prefs.fMark));
-        WriteInt(&handle, PrefKey::AlreadyPlayed, 1);
+        WriteInt(&handle, PrefKey::Difficulty, prefs.wGameType as i32)?;
+        WriteInt(&handle, PrefKey::Height, prefs.Height)?;
+        WriteInt(&handle, PrefKey::Width, prefs.Width)?;
+        WriteInt(&handle, PrefKey::Mines, prefs.Mines)?;
+        WriteInt(&handle, PrefKey::Mark, bool_to_i32(prefs.fMark))?;
+        WriteInt(&handle, PrefKey::AlreadyPlayed, 1)?;
 
-        WriteInt(&handle, PrefKey::Color, bool_to_i32(prefs.fColor));
-        WriteInt(&handle, PrefKey::Sound, prefs.fSound as i32);
-        WriteInt(&handle, PrefKey::Xpos, prefs.xWindow);
-        WriteInt(&handle, PrefKey::Ypos, prefs.yWindow);
+        WriteInt(&handle, PrefKey::Color, bool_to_i32(prefs.fColor))?;
+        WriteInt(&handle, PrefKey::Sound, prefs.fSound as i32)?;
+        WriteInt(&handle, PrefKey::Xpos, prefs.xWindow)?;
+        WriteInt(&handle, PrefKey::Ypos, prefs.yWindow)?;
 
         WriteInt(
             &handle,
             PrefKey::Time1,
             prefs.rgTime[GameType::Begin as usize],
-        );
+        )?;
         WriteInt(
             &handle,
             PrefKey::Time2,
             prefs.rgTime[GameType::Inter as usize],
-        );
+        )?;
         WriteInt(
             &handle,
             PrefKey::Time3,
             prefs.rgTime[GameType::Expert as usize],
-        );
+        )?;
 
-        WriteSz(&handle, PrefKey::Name1, prefs.szBegin.as_ptr());
-        WriteSz(&handle, PrefKey::Name2, prefs.szInter.as_ptr());
-        WriteSz(&handle, PrefKey::Name3, prefs.szExpert.as_ptr());
+        WriteSz(&handle, PrefKey::Name1, prefs.szBegin.as_ptr())?;
+        WriteSz(&handle, PrefKey::Name2, prefs.szInter.as_ptr())?;
+        WriteSz(&handle, PrefKey::Name3, prefs.szExpert.as_ptr())?;
 
         let _ = RegCloseKeyGuard::new(handle);
     }
+    Ok(())
 }
 
-pub unsafe fn WriteInt(handle: &w::HKEY, key: PrefKey, val: i32) {
+pub unsafe fn WriteInt(
+    handle: &w::HKEY,
+    key: PrefKey,
+    val: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Simple DWORD setter used by both the registry migration and the dialog code.
     if handle.ptr().is_null() {
-        return;
+        return Err("Invalid registry handle".into());
     }
     let key_name = match pref_name_string(key) {
         Some(name) => name,
-        None => return,
+        None => return Err("Invalid preference key".into()),
     };
 
-    let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Dword(val as u32));
+    handle.RegSetValueEx(Some(&key_name), RegistryValue::Dword(val as u32))?;
+    Ok(())
 }
 
-pub unsafe fn WriteSz(handle: &w::HKEY, key: PrefKey, sz: *const u16) {
+pub unsafe fn WriteSz(
+    handle: &w::HKEY,
+    key: PrefKey,
+    sz: *const u16,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Stores zero-terminated UTF-16 values such as player names.
-    if handle.ptr().is_null() || sz.is_null() {
-        return;
+    if handle.ptr().is_null() {
+        return Err("Invalid registry handle".into());
+    }
+    if sz.is_null() {
+        return Err("Invalid string pointer".into());
     }
     let key_name = match pref_name_string(key) {
         Some(name) => name,
-        None => return,
+        None => return Err("Invalid preference key".into()),
     };
 
     let value = match unsafe { wide_ptr_to_string(sz) } {
         Some(text) => text,
-        None => return,
+        None => return Err("Invalid string data".into()),
     };
 
-    let _ = handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value));
+    handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value))?;
+    Ok(())
 }
 
 pub(crate) fn pref_key_literal(key: PrefKey) -> Option<&'static str> {

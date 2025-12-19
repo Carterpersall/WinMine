@@ -146,17 +146,14 @@ fn main_window() -> Option<w::HWND> {
         .map(|hwnd| unsafe { w::HWND::from_ptr(hwnd.ptr()) })
 }
 
-pub fn FInitLocal() -> bool {
+pub fn FInitLocal() -> Result<(), Box<dyn std::error::Error>> {
     // Load the sprite resources and reset the minefield before gameplay starts.
-    if !FLoadBitmaps() {
-        return false;
-    }
-
+    FLoadBitmaps()?;
     ClearField();
-    true
+    Ok(())
 }
 
-pub fn FLoadBitmaps() -> bool {
+pub fn FLoadBitmaps() -> Result<(), Box<dyn std::error::Error>> {
     // Wrapper retained for compatibility with the original export table.
     load_bitmaps_impl()
 }
@@ -537,7 +534,7 @@ pub fn DisplayScreen() {
     }
 }
 
-fn load_bitmaps_impl() -> bool {
+fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
     let color_on = current_color_flag();
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -545,13 +542,13 @@ fn load_bitmaps_impl() -> bool {
     };
 
     let Some((h_blks, lp_blks)) = load_bitmap_resource(BitmapId::Blocks, color_on) else {
-        return false;
+        return Err("Failed to load block bitmap resource".into());
     };
     let Some((h_led, lp_led)) = load_bitmap_resource(BitmapId::Led, color_on) else {
-        return false;
+        return Err("Failed to load LED bitmap resource".into());
     };
     let Some((h_button, lp_button)) = load_bitmap_resource(BitmapId::Button, color_on) else {
-        return false;
+        return Err("Failed to load button bitmap resource".into());
     };
 
     state.h_res_blks = h_blks;
@@ -575,7 +572,7 @@ fn load_bitmaps_impl() -> bool {
     };
 
     if state.h_gray_pen == w::HPEN::NULL {
-        return false;
+        return Err("Failed to create gray pen".into());
     }
 
     let header = dib_header_size(color_on);
@@ -597,12 +594,12 @@ fn load_bitmaps_impl() -> bool {
 
     let hwnd = match main_window() {
         Some(hwnd) => hwnd,
-        None => return false,
+        None => return Err("Main window not available".into()),
     };
 
     let hdc = match hwnd.GetDC() {
         Ok(dc) => dc,
-        Err(_) => return false,
+        Err(e) => return Err(format!("Failed to get device context: {}", e).into()),
     };
 
     // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
@@ -650,7 +647,7 @@ fn load_bitmaps_impl() -> bool {
         }
     }
 
-    true
+    Ok(())
 }
 
 fn load_bitmap_resource(id: BitmapId, color_on: bool) -> Option<(HRSRCMEM, *const u8)> {
