@@ -1,7 +1,7 @@
 // Registry-backed preference helpers mirrored from pref.c.
 use core::sync::atomic::{AtomicBool, Ordering};
 
-use winsafe::{self as w, RegistryValue, co, guard::RegCloseKeyGuard};
+use winsafe::{self as w, RegistryValue, co};
 
 use crate::globals::global_state;
 use crate::rtns::{preferences_mutex, xBoxMac, yBoxMac};
@@ -176,7 +176,7 @@ pub unsafe fn ReadSz(handle: &w::HKEY, key: PrefKey, sz_ret: *mut u16) {
 
 pub unsafe fn ReadPreferences() {
     // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
-    let (mut key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         co::REG_OPTION::default(),
@@ -187,24 +187,22 @@ pub unsafe fn ReadPreferences() {
         Err(_) => return,
     };
 
-    let handle = key_guard.leak();
-
     let mut prefs = match preferences_mutex().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
 
     unsafe {
-        let height = ReadInt(&handle, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
+        let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
         yBoxMac.store(height, Ordering::Relaxed);
         prefs.Height = height;
 
-        let width = ReadInt(&handle, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
+        let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
         xBoxMac.store(width, Ordering::Relaxed);
         prefs.Width = width;
 
         let game_raw = ReadInt(
-            &handle,
+            &key_guard,
             PrefKey::Difficulty,
             GameType::Begin as i32,
             GameType::Begin as i32,
@@ -216,12 +214,12 @@ pub unsafe fn ReadPreferences() {
             2 => GameType::Expert,
             _ => GameType::Other,
         };
-        prefs.Mines = ReadInt(&handle, PrefKey::Mines, 10, 10, 999);
-        prefs.xWindow = ReadInt(&handle, PrefKey::Xpos, 80, 0, 1024);
-        prefs.yWindow = ReadInt(&handle, PrefKey::Ypos, 80, 0, 1024);
+        prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
+        prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024);
+        prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024);
 
         let sound_raw = ReadInt(
-            &handle,
+            &key_guard,
             PrefKey::Sound,
             SoundState::Off as i32,
             SoundState::Off as i32,
@@ -232,10 +230,10 @@ pub unsafe fn ReadPreferences() {
         } else {
             SoundState::Off
         };
-        prefs.fMark = ReadInt(&handle, PrefKey::Mark, 1, 0, 1) != 0;
-        prefs.fTick = ReadInt(&handle, PrefKey::Tick, 0, 0, 1) != 0;
+        prefs.fMark = ReadInt(&key_guard, PrefKey::Mark, 1, 0, 1) != 0;
+        prefs.fTick = ReadInt(&key_guard, PrefKey::Tick, 0, 0, 1) != 0;
         let menu_raw = ReadInt(
-            &handle,
+            &key_guard,
             PrefKey::Menu,
             MenuMode::AlwaysOn as i32,
             MenuMode::AlwaysOn as i32,
@@ -243,13 +241,13 @@ pub unsafe fn ReadPreferences() {
         );
         prefs.fMenu = menu_mode_from_raw(menu_raw);
 
-        prefs.rgTime[GameType::Begin as usize] = ReadInt(&handle, PrefKey::Time1, 999, 0, 999);
-        prefs.rgTime[GameType::Inter as usize] = ReadInt(&handle, PrefKey::Time2, 999, 0, 999);
-        prefs.rgTime[GameType::Expert as usize] = ReadInt(&handle, PrefKey::Time3, 999, 0, 999);
+        prefs.rgTime[GameType::Begin as usize] = ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999);
+        prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
+        prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
 
-        ReadSz(&handle, PrefKey::Name1, prefs.szBegin.as_mut_ptr());
-        ReadSz(&handle, PrefKey::Name2, prefs.szInter.as_mut_ptr());
-        ReadSz(&handle, PrefKey::Name3, prefs.szExpert.as_mut_ptr());
+        ReadSz(&key_guard, PrefKey::Name1, prefs.szBegin.as_mut_ptr());
+        ReadSz(&key_guard, PrefKey::Name2, prefs.szInter.as_mut_ptr());
+        ReadSz(&key_guard, PrefKey::Name3, prefs.szExpert.as_mut_ptr());
     }
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
@@ -264,21 +262,17 @@ pub unsafe fn ReadPreferences() {
         }
         Err(_) => 0,
     };
-    prefs.fColor = unsafe { ReadInt(&handle, PrefKey::Color, default_color, 0, 1) } != 0;
+    prefs.fColor = unsafe { ReadInt(&key_guard, PrefKey::Color, default_color, 0, 1) } != 0;
 
     // If sound is enabled, verify that the system can actually play the resources.
     if prefs.fSound == SoundState::On {
         prefs.fSound = FInitTunes();
     }
-
-    unsafe {
-        let _ = RegCloseKeyGuard::new(handle);
-    }
 }
 
 pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
-    let (mut key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         co::REG_OPTION::default(),
@@ -288,7 +282,6 @@ pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
         Ok(result) => result,
         Err(e) => return Err(format!("Failed to open registry key: {}", e).into()),
     };
-    let handle = key_guard.leak();
 
     let prefs = match preferences_mutex().lock() {
         Ok(guard) => guard,
@@ -297,39 +290,37 @@ pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
 
     // Persist the difficulty, board dimensions, and flags exactly as the original did.
     unsafe {
-        WriteInt(&handle, PrefKey::Difficulty, prefs.wGameType as i32)?;
-        WriteInt(&handle, PrefKey::Height, prefs.Height)?;
-        WriteInt(&handle, PrefKey::Width, prefs.Width)?;
-        WriteInt(&handle, PrefKey::Mines, prefs.Mines)?;
-        WriteInt(&handle, PrefKey::Mark, bool_to_i32(prefs.fMark))?;
-        WriteInt(&handle, PrefKey::AlreadyPlayed, 1)?;
+        WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as i32)?;
+        WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
+        WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
+        WriteInt(&key_guard, PrefKey::Mines, prefs.Mines)?;
+        WriteInt(&key_guard, PrefKey::Mark, bool_to_i32(prefs.fMark))?;
+        WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
-        WriteInt(&handle, PrefKey::Color, bool_to_i32(prefs.fColor))?;
-        WriteInt(&handle, PrefKey::Sound, prefs.fSound as i32)?;
-        WriteInt(&handle, PrefKey::Xpos, prefs.xWindow)?;
-        WriteInt(&handle, PrefKey::Ypos, prefs.yWindow)?;
+        WriteInt(&key_guard, PrefKey::Color, bool_to_i32(prefs.fColor))?;
+        WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as i32)?;
+        WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow)?;
+        WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow)?;
 
         WriteInt(
-            &handle,
+            &key_guard,
             PrefKey::Time1,
             prefs.rgTime[GameType::Begin as usize],
         )?;
         WriteInt(
-            &handle,
+            &key_guard,
             PrefKey::Time2,
             prefs.rgTime[GameType::Inter as usize],
         )?;
         WriteInt(
-            &handle,
+            &key_guard,
             PrefKey::Time3,
             prefs.rgTime[GameType::Expert as usize],
         )?;
 
-        WriteSz(&handle, PrefKey::Name1, prefs.szBegin.as_ptr())?;
-        WriteSz(&handle, PrefKey::Name2, prefs.szInter.as_ptr())?;
-        WriteSz(&handle, PrefKey::Name3, prefs.szExpert.as_ptr())?;
-
-        let _ = RegCloseKeyGuard::new(handle);
+        WriteSz(&key_guard, PrefKey::Name1, prefs.szBegin.as_ptr())?;
+        WriteSz(&key_guard, PrefKey::Name2, prefs.szInter.as_ptr())?;
+        WriteSz(&key_guard, PrefKey::Name3, prefs.szExpert.as_ptr())?;
     }
     Ok(())
 }

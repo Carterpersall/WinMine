@@ -296,12 +296,7 @@ fn register_main_window_class() -> bool {
     }
 }
 
-pub fn run_winmine(
-    h_instance: HINSTANCE,
-    _h_prev_instance: HINSTANCE,
-    _lp_cmd_line: *mut u8,
-    n_cmd_show: i32,
-) -> i32 {
+pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     let state = global_state();
     {
         let mut inst_guard = match state.h_inst.lock() {
@@ -352,8 +347,7 @@ pub fn run_winmine(
     }
     let h_accel = hinst_wrap
         .LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))
-        .map(|mut accel| accel.leak())
-        .unwrap_or(HACCEL::NULL);
+        .ok();
 
     unsafe {
         ReadPreferences();
@@ -449,6 +443,9 @@ pub fn run_winmine(
         }
 
         let handled = h_accel
+            .as_ref()
+            .map(|accel| unsafe { HACCEL::from_ptr(accel.ptr()) })
+            .unwrap_or(HACCEL::NULL)
             .as_opt()
             .and_then(|accel| {
                 let hwnd_copy = {

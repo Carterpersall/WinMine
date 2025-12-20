@@ -95,8 +95,8 @@ struct GrafixState {
     lp_dib_led: *const u8,
     lp_dib_button: *const u8,
     h_gray_pen: w::HPEN,
-    mem_blk_dc: [w::HDC; I_BLK_MAX],
-    mem_blk_bitmap: [w::HBITMAP; I_BLK_MAX],
+    mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
+    mem_blk_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; I_BLK_MAX],
 }
 
 unsafe impl Send for GrafixState {}
@@ -115,8 +115,8 @@ impl Default for GrafixState {
             lp_dib_led: null(),
             lp_dib_button: null(),
             h_gray_pen: w::HPEN::NULL,
-            mem_blk_dc: [w::HDC::NULL; I_BLK_MAX],
-            mem_blk_bitmap: [w::HBITMAP::NULL; I_BLK_MAX],
+            mem_blk_dc: [const { None }; I_BLK_MAX],
+            mem_blk_bitmap: [const { None }; I_BLK_MAX],
         }
     }
 }
@@ -182,19 +182,11 @@ pub fn FreeBitmaps() {
     state.lp_dib_button = null();
 
     for i in 0..I_BLK_MAX {
-        if state.mem_blk_dc[i] != w::HDC::NULL {
-            unsafe {
-                let dc_handle = w::HDC::from_ptr(state.mem_blk_dc[i].ptr());
-                let _ = DeleteDCGuard::new(dc_handle);
-            }
-            state.mem_blk_dc[i] = w::HDC::NULL;
+        if state.mem_blk_dc[i].is_some() {
+            let _ = state.mem_blk_dc[i].take();
         }
-        if state.mem_blk_bitmap[i] != w::HBITMAP::NULL {
-            unsafe {
-                let bmp_handle = w::HBITMAP::from_ptr(state.mem_blk_bitmap[i].ptr());
-                let _ = DeleteObjectGuard::new(bmp_handle);
-            }
-            state.mem_blk_bitmap[i] = w::HBITMAP::NULL;
+        if state.mem_blk_bitmap[i].is_some() {
+            let _ = state.mem_blk_bitmap[i].take();
         }
     }
 }
@@ -207,10 +199,13 @@ pub fn CleanUp() {
 
 pub fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
     // Bit-blit a single cell sprite using the precalculated offsets.
-    let src = block_dc(x, y);
-    if src == w::HDC::NULL {
+    let state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let Some(src) = block_dc(&state, x, y) else {
         return;
-    }
+    };
 
     let _ = hdc.BitBlt(
         w::POINT::with(
@@ -218,7 +213,7 @@ pub fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
             (y << 4) + (DY_GRID_OFF - DY_BLK),
         ),
         w::SIZE::with(DX_BLK, DY_BLK),
-        &src,
+        src,
         w::POINT::new(),
         ROP::SRCCOPY,
     );
@@ -235,18 +230,21 @@ pub fn DisplayBlk(x: i32, y: i32) {
 
 pub fn DrawGrid(hdc: &w::HDC) {
     // Rebuild the visible grid by iterating over the current rgBlk contents.
+    let state = match grafix_state().lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let y_max = yBoxMac.load(Relaxed);
     let x_max = xBoxMac.load(Relaxed);
     let mut dy = DY_GRID_OFF;
     for y in 1..=y_max {
         let mut dx = DX_GRID_OFF;
         for x in 1..=x_max {
-            let src = block_dc(x, y);
-            if src != w::HDC::NULL {
+            if let Some(src) = block_dc(&state, x, y) {
                 let _ = hdc.BitBlt(
                     w::POINT::with(dx, dy),
                     w::SIZE::with(DX_BLK, DY_BLK),
-                    &src,
+                    src,
                     w::POINT::new(),
                     ROP::SRCCOPY,
                 );
@@ -605,32 +603,38 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
     // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
     for i in 0..I_BLK_MAX {
         state.mem_blk_dc[i] = match hdc.CreateCompatibleDC() {
-            Ok(mut dc_guard) => dc_guard.leak(),
+            Ok(dc_guard) => Some(dc_guard),
             Err(_) => {
                 if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
                     w::OutputDebugString(msg);
                 }
-                w::HDC::NULL
+                None
             }
         };
 
         state.mem_blk_bitmap[i] = match hdc.CreateCompatibleBitmap(DX_BLK, DX_BLK) {
-            Ok(mut bmp_guard) => bmp_guard.leak(),
+            Ok(bmp_guard) => Some(bmp_guard),
             Err(_) => {
                 if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
                     w::OutputDebugString(msg);
                 }
-                w::HBITMAP::NULL
+                None
             }
         };
 
-        if state.mem_blk_dc[i] != w::HDC::NULL && state.mem_blk_bitmap[i] != w::HBITMAP::NULL {
-            if let Ok(mut guard) = state.mem_blk_dc[i].SelectObject(&state.mem_blk_bitmap[i]) {
-                let _ = guard.leak();
+        if state.mem_blk_dc[i].is_some()
+            && state.mem_blk_bitmap[i].is_some()
+            && state.mem_blk_dc[i].is_some()
+            && let Some(dc_guard) = state.mem_blk_dc[i].as_ref()
+            && let Some(bmp_guard) = state.mem_blk_bitmap[i].as_ref()
+        {
+            let bmp_h = unsafe { w::HBITMAP::from_ptr(bmp_guard.ptr()) };
+            if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+                let _ = sel_guard.leak();
             }
             unsafe {
                 SetDIBitsToDevice(
-                    state.mem_blk_dc[i].ptr(),
+                    dc_guard.ptr(),
                     0,
                     0,
                     DX_BLK as u32,
@@ -707,17 +711,13 @@ fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
     ptr as *const BITMAPINFO
 }
 
-fn block_dc(x: i32, y: i32) -> w::HDC {
-    let state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
     let idx = block_sprite_index(x, y);
-    if idx < I_BLK_MAX {
-        unsafe { w::HDC::from_ptr(state.mem_blk_dc[idx].ptr()) }
-    } else {
-        w::HDC::NULL
+    if idx >= I_BLK_MAX {
+        return None;
     }
+
+    state.mem_blk_dc[idx].as_ref()
 }
 
 fn block_sprite_index(x: i32, y: i32) -> usize {

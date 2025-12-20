@@ -3,9 +3,7 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{
-    self as w, IdPos, WString, co, co::HELPW, co::SM, guard::RegCloseKeyGuard, prelude::*,
-};
+use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
 use crate::globals::{dxpBorder, dypBorder, dypCaption, dypMenu, global_state};
 use crate::pref::{
@@ -257,17 +255,15 @@ pub fn InitConst() {
 
     let mut already_played = false;
 
-    if let Ok((mut key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    if let Ok((key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         co::REG_OPTION::default(),
         co::KEY::READ,
         None,
     ) {
-        let handle = key_guard.leak();
         unsafe {
-            already_played = ReadInt(&handle, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
-            let _ = RegCloseKeyGuard::new(handle);
+            already_played = ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
         }
     }
 
