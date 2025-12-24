@@ -13,11 +13,10 @@ use winsafe::co::{self, GWLP, HELPW, ICC, IDC, SM, STOCK_BRUSH, WS, WS_EX};
 use winsafe::msg::WndMsg;
 use winsafe::prelude::Handle;
 use winsafe::{
-    AdjustWindowRectEx as ws_AdjustWindowRectEx, AtomStr, COLORREF, DLGPROC, DispatchMessage,
-    GetMessage, GetSystemMetrics as win_get_system_metrics, HACCEL, HBRUSH, HCURSOR, HICON,
-    HINSTANCE, HMENU, HWND, INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdMenu, IdStr,
-    InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc, RECT, RegisterClassEx,
-    SIZE, TranslateMessage, WINDOWPOS, WNDCLASSEX, WString,
+    AdjustWindowRectEx, AtomStr, COLORREF, DLGPROC, DispatchMessage, GetMessage, GetSystemMetrics,
+    HACCEL, HBRUSH, HCURSOR, HICON, HINSTANCE, HMENU, HWND, INITCOMMONCONTROLSEX, IdIdcStr,
+    IdIdiStr, IdMenu, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc,
+    RECT, RegisterClassEx, SIZE, TranslateMessage, WINDOWPOS, WNDCLASSEX, WString,
 };
 
 use crate::globals::{
@@ -136,11 +135,6 @@ enum HelpContextId {
 }
 const ID_MSG_BEGIN: u16 = 9;
 
-const WINDOW_STYLE: u32 = co::WS::OVERLAPPED.raw()
-    | co::WS::MINIMIZEBOX.raw()
-    | co::WS::CAPTION.raw()
-    | co::WS::SYSMENU.raw();
-
 /// Mines, height, and width tuples for the preset difficulty levels.
 const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
@@ -152,9 +146,6 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
         GameType::Other => None,
     }
 }
-
-const COLOR_BLACK: COLORREF = COLORREF::from_rgb(0, 0, 0);
-const COLOR_WHITE: COLORREF = COLORREF::from_rgb(0xFF, 0xFF, 0xFF);
 
 const HELP_FILE: &[u8] = b"winmine.chm\0";
 
@@ -386,7 +377,7 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
             WS_EX::from_raw(0),
             AtomStr::from_str(&class_name),
             Some(&class_name),
-            WS::from_raw(WINDOW_STYLE),
+            co::WS::OVERLAPPED | co::WS::MINIMIZEBOX | co::WS::CAPTION | co::WS::SYSMENU,
             POINT {
                 x: x_window - dxp_border,
                 y: y_window - dyp_adjust,
@@ -449,11 +440,10 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
             .as_opt()
             .and_then(|accel| {
                 let hwnd_copy = {
-                    let guard = match state.hwnd_main.lock() {
+                    match state.hwnd_main.lock() {
                         Ok(g) => g,
                         Err(poisoned) => poisoned.into_inner(),
-                    };
-                    unsafe { HWND::from_ptr(guard.ptr()) }
+                    }
                 };
                 hwnd_copy
                     .as_opt()
@@ -560,7 +550,7 @@ fn handle_mouse_move(w_param: usize, l_param: isize) {
 }
 
 fn handle_rbutton_down(h_wnd: HWND, w_param: usize, l_param: isize) -> Option<isize> {
-    if handle_ignore_click() {
+    if fIgnoreClick.swap(false, Ordering::Relaxed) {
         return Some(0);
     }
 
@@ -591,7 +581,7 @@ fn handle_rbutton_down(h_wnd: HWND, w_param: usize, l_param: isize) -> Option<is
         return None;
     }
 
-    if !local_pause() {
+    if !fLocalPause.load(Ordering::Relaxed) {
         MakeGuess(
             x_box_from_xpos(loword(l_param)),
             y_box_from_ypos(hiword(l_param)),
@@ -705,7 +695,7 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
                     Ok(g) => g,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                prefs.fColor = toggle_bool(prefs.fColor);
+                prefs.fColor = !prefs.fColor;
                 (
                     prefs.fColor,
                     prefs.wGameType,
@@ -750,7 +740,7 @@ fn handle_command(w_param: usize, _l_param: isize) -> Option<isize> {
                     Ok(g) => g,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                prefs.fMark = toggle_bool(prefs.fMark);
+                prefs.fMark = !prefs.fMark;
                 (
                     prefs.wGameType,
                     prefs.fColor,
@@ -877,22 +867,6 @@ fn handle_syscommand(w_param: usize) {
     }
 }
 
-fn handle_ignore_click() -> bool {
-    fIgnoreClick.swap(false, Ordering::Relaxed)
-}
-
-fn local_pause() -> bool {
-    fLocalPause.load(Ordering::Relaxed)
-}
-
-fn toggle_bool(value: bool) -> bool {
-    !value
-}
-
-fn get_activate_state(w_param: usize) -> u16 {
-    (w_param & 0xFFFF) as u16
-}
-
 fn in_range(x: i32, y: i32) -> bool {
     let x_max = xBoxMac.load(Ordering::Relaxed);
     let y_max = yBoxMac.load(Ordering::Relaxed);
@@ -963,9 +937,9 @@ fn handle_xyzzys_mouse(w_param: usize, l_param: isize) {
             && let Ok(hdc) = HWND::NULL.GetDC()
         {
             let color = if cell_is_bomb(x_pos, y_pos) {
-                COLOR_BLACK
+                COLORREF::from_rgb(0, 0, 0)
             } else {
-                COLOR_WHITE
+                COLORREF::from_rgb(0xFF, 0xFF, 0xFF)
             };
             unsafe {
                 SetPixel(hdc.ptr(), 0, 0, color.raw());
@@ -994,7 +968,7 @@ pub extern "system" fn MainWndProc(
             PostQuitMessage(0);
         }
         co::WM::MBUTTONDOWN => {
-            if handle_ignore_click() {
+            if fIgnoreClick.swap(false, Ordering::Relaxed) {
                 return 0;
             }
             if status_play() {
@@ -1005,7 +979,7 @@ pub extern "system" fn MainWndProc(
             }
         }
         co::WM::LBUTTONDOWN => {
-            if handle_ignore_click() {
+            if fIgnoreClick.swap(false, Ordering::Relaxed) {
                 return 0;
             }
             if FLocalButton(l_param) {
@@ -1034,7 +1008,7 @@ pub extern "system" fn MainWndProc(
             }
         }
         co::WM::ACTIVATE => {
-            if get_activate_state(w_param) == co::WA::CLICKACTIVE.raw() {
+            if (w_param & 0xFFFF) as u16 == co::WA::CLICKACTIVE.raw() {
                 fIgnoreClick.store(true, Ordering::Relaxed);
             }
         }
@@ -1532,7 +1506,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
     let mut frame_extra = dxpBorder.load(Ordering::Relaxed);
     let mut dyp_adjust;
     if let Ok(adjusted) = unsafe {
-        ws_AdjustWindowRectEx(
+        AdjustWindowRectEx(
             desired,
             WS::from_raw(dw_style),
             menu_visible,
@@ -1633,20 +1607,20 @@ fn our_get_system_metrics(index: SM) -> i32 {
     // Favor the virtual screen metrics when available to support multi-monitor setups.
     match index {
         SM::CXSCREEN => {
-            let mut result = win_get_system_metrics(SM::CXVIRTUALSCREEN);
+            let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
             if result == 0 {
-                result = win_get_system_metrics(SM::CXSCREEN);
+                result = GetSystemMetrics(SM::CXSCREEN);
             }
             result
         }
         SM::CYSCREEN => {
-            let mut result = win_get_system_metrics(SM::CYVIRTUALSCREEN);
+            let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN);
             if result == 0 {
-                result = win_get_system_metrics(SM::CYSCREEN);
+                result = GetSystemMetrics(SM::CYSCREEN);
             }
             result
         }
-        _ => win_get_system_metrics(index),
+        _ => GetSystemMetrics(index),
     }
 }
 

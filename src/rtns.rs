@@ -66,28 +66,28 @@ pub enum AdjustFlag {
 /// Shift applied when converting x/y to the packed board index.
 pub const BOARD_INDEX_SHIFT: isize = 5;
 
-const PREFERENCES_INIT: Pref = Pref {
-    wGameType: GameType::Begin,
-    Mines: 0,
-    Height: 0,
-    Width: 0,
-    xWindow: 0,
-    yWindow: 0,
-    fSound: SoundState::Off,
-    fMark: false,
-    fTick: false,
-    fMenu: MenuMode::AlwaysOn,
-    fColor: false,
-    rgTime: [0; 3],
-    szBegin: [0; CCH_NAME_MAX],
-    szInter: [0; CCH_NAME_MAX],
-    szExpert: [0; CCH_NAME_MAX],
-};
-
 static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
 
 pub fn preferences_mutex() -> &'static Mutex<Pref> {
-    PREFERENCES.get_or_init(|| Mutex::new(PREFERENCES_INIT))
+    PREFERENCES.get_or_init(|| {
+        Mutex::new(Pref {
+            wGameType: GameType::Begin,
+            Mines: 0,
+            Height: 0,
+            Width: 0,
+            xWindow: 0,
+            yWindow: 0,
+            fSound: SoundState::Off,
+            fMark: false,
+            fTick: false,
+            fMenu: MenuMode::AlwaysOn,
+            fColor: false,
+            rgTime: [0; 3],
+            szBegin: [0; CCH_NAME_MAX],
+            szInter: [0; CCH_NAME_MAX],
+            szExpert: [0; CCH_NAME_MAX],
+        })
+    })
 }
 
 pub static xBoxMac: AtomicI32 = AtomicI32::new(0);

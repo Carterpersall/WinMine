@@ -379,7 +379,6 @@ pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let sprite_idx = sprite as i32;
     unsafe {
         SetDIBitsToDevice(
             hdc.ptr(),
@@ -391,7 +390,7 @@ pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
             0,
             0,
             DY_BUTTON as u32,
-            button_bits_with(&state, sprite_idx) as *const _,
+            button_bits_with(&state, sprite as i32) as *const _,
             dib_info(state.lp_dib_button) as *const _,
             DIB::RGB_COLORS.raw(),
         );
