@@ -22,7 +22,7 @@ windows-sys = { version = "0.61.2", features = [
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "ec62c02c84a43d8e22cdfe51e2cdca95b4314267"
+rev = "26bb8b5fa6b110903cb50299bd2cd8e9a9941f8f"
 features = [
 	"advapi",
 	"comctl",

@@ -4,8 +4,6 @@ use core::sync::atomic::{AtomicI32, Ordering};
 use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
 };
-// WinSafe's PtInRect is currently broken
-use windows_sys::Win32::Graphics::Gdi::PtInRect;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
 };
@@ -1140,17 +1138,7 @@ pub fn FLocalButton(l_param: isize) -> bool {
     rc.right = rc.left + DX_BUTTON;
     rc.bottom = rc.top + DY_BUTTON;
 
-    let mut rc_sys = windows_sys::Win32::Foundation::RECT {
-        left: rc.left,
-        top: rc.top,
-        right: rc.right,
-        bottom: rc.bottom,
-    };
-    let mut pt_sys = windows_sys::Win32::Foundation::POINT {
-        x: msg.pt.x,
-        y: msg.pt.y,
-    };
-    if unsafe { PtInRect(&rc_sys, pt_sys) } == 0 {
+    if !winsafe::PtInRect(rc, msg.pt) {
         return false;
     }
 
@@ -1170,19 +1158,9 @@ pub fn FLocalButton(l_param: isize) -> bool {
             co::WM::MOUSELAST.raw(),
             co::PM::REMOVE,
         ) {
-            rc_sys = windows_sys::Win32::Foundation::RECT {
-                left: rc.left,
-                top: rc.top,
-                right: rc.right,
-                bottom: rc.bottom,
-            };
-            pt_sys = windows_sys::Win32::Foundation::POINT {
-                x: msg.pt.x,
-                y: msg.pt.y,
-            };
             match msg.message {
                 co::WM::LBUTTONUP => {
-                    if pressed && unsafe { PtInRect(&rc_sys, pt_sys) } != 0 {
+                    if pressed && winsafe::PtInRect(rc, msg.pt) {
                         iButtonCur.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
                         DisplayButton(ButtonSprite::Happy);
                         StartGame();
@@ -1191,7 +1169,7 @@ pub fn FLocalButton(l_param: isize) -> bool {
                     return true;
                 }
                 co::WM::MOUSEMOVE => {
-                    if unsafe { PtInRect(&rc_sys, pt_sys) } != 0 {
+                    if winsafe::PtInRect(rc, msg.pt) {
                         if !pressed {
                             pressed = true;
                             DisplayButton(ButtonSprite::Down);
