@@ -4,7 +4,8 @@ use core::sync::atomic::{AtomicI32, Ordering};
 use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
 };
-use windows_sys::Win32::Graphics::Gdi::{PtInRect, SetPixel};
+// WinSafe's PtInRect is currently broken
+use windows_sys::Win32::Graphics::Gdi::PtInRect;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
 };
@@ -14,7 +15,7 @@ use winsafe::msg::WndMsg;
 use winsafe::prelude::Handle;
 use winsafe::{
     AdjustWindowRectEx, AtomStr, COLORREF, DLGPROC, DispatchMessage, GetMessage, GetSystemMetrics,
-    HACCEL, HBRUSH, HCURSOR, HICON, HINSTANCE, HMENU, HWND, INITCOMMONCONTROLSEX, IdIdcStr,
+    HACCEL, HBRUSH, HCURSOR, HICON, HINSTANCE, HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdcStr,
     IdIdiStr, IdMenu, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc,
     RECT, RegisterClassEx, SIZE, TranslateMessage, WINDOWPOS, WNDCLASSEX, WString,
 };
@@ -147,7 +148,7 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
     }
 }
 
-const HELP_FILE: &[u8] = b"winmine.chm\0";
+const HELP_FILE: &str = "winmine.chm\0";
 
 const PREF_HELP_IDS: [u32; 14] = [
     ControlId::EditHeight as u32,
@@ -517,6 +518,8 @@ fn current_face_sprite() -> ButtonSprite {
         _ => ButtonSprite::Down,
     }
 }
+
+/* Window Message Handlers */
 
 fn begin_primary_button_drag(_h_wnd: HWND) {
     fButton1Down.store(true, Ordering::Relaxed);
@@ -893,7 +896,11 @@ fn cell_is_bomb(x: i32, y: i32) -> bool {
     (guard[idx] as u8 & BlockMask::Bomb as u8) != 0
 }
 
+/* XYZZY Cheat Code Handling */
+
+/// Length of the XYZZY cheat code sequence.
 const CCH_XYZZY: i32 = 5;
+/// Atomic counter tracking the progress of the XYZZY cheat code entry.
 static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 const XYZZY_SEQUENCE: [u16; 5] = [
     b'X' as u16,
@@ -903,12 +910,21 @@ const XYZZY_SEQUENCE: [u16; 5] = [
     b'Y' as u16,
 ];
 
+/// Handles the SHIFT key press for the XYZZY cheat code.
+/// If the cheat code has been fully entered, this function toggles
+/// the cheat code state by XORing the counter with 20 (0b10100).
 fn handle_xyzzys_shift() {
     if I_XYZZY.load(Ordering::Relaxed) >= CCH_XYZZY {
         I_XYZZY.fetch_xor(20, Ordering::Relaxed);
     }
 }
 
+/// Handles default key presses for the XYZZY cheat code.
+/// It checks if the pressed key matches the expected character in the
+/// XYZZY sequence and updates the counter accordingly.
+/// If the sequence is broken, the counter is reset.
+/// # Arguments
+/// * `w_param` - The WPARAM from the keydown message, containing the virtual key code
 fn handle_xyzzys_default_key(w_param: usize) {
     let current = I_XYZZY.load(Ordering::Relaxed);
     if current < CCH_XYZZY {
@@ -921,12 +937,24 @@ fn handle_xyzzys_default_key(w_param: usize) {
     }
 }
 
+/// Handles mouse movement for the XYZZY cheat code.
+/// If the cheat code is active and the Control key is held down,
+/// or if the cheat code has been fully entered,
+/// it reveals whether the cell under the cursor is a bomb or not by
+/// setting the pixel at (0,0) of the device context to black (bomb) or white (no bomb).
+///
+/// # Arguments
+///
+/// * `w_param` - The WPARAM from the mouse move message, containing key states.
+/// * `l_param` - The LPARAM from the mouse move message, containing cursor position.
 fn handle_xyzzys_mouse(w_param: usize, l_param: isize) {
+    // Check if the XYZZY cheat code is active.
     let state = I_XYZZY.load(Ordering::Relaxed);
     if state == 0 {
         return;
     }
 
+    // Check if the Control key is held down.
     let control_down = (w_param & co::MK::CONTROL.raw() as usize) != 0;
     if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
         let x_pos = x_box_from_xpos(loword(l_param));
@@ -934,16 +962,27 @@ fn handle_xyzzys_mouse(w_param: usize, l_param: isize) {
         xCur.store(x_pos, Ordering::Relaxed);
         yCur.store(y_pos, Ordering::Relaxed);
         if in_range(x_pos, y_pos)
-            && let Ok(hdc) = HWND::NULL.GetDC()
+            && let Ok(hdc) = HWND::DESKTOP.GetDC()
         {
             let color = if cell_is_bomb(x_pos, y_pos) {
                 COLORREF::from_rgb(0, 0, 0)
             } else {
                 COLORREF::from_rgb(0xFF, 0xFF, 0xFF)
             };
-            unsafe {
-                SetPixel(hdc.ptr(), 0, 0, color.raw());
-            }
+
+            // Set the pixel at (0,0) to indicate bomb status.
+            HPEN::CreatePen(co::PS::SOLID, 0, color)
+                .and_then(|mut pen| {
+                    let mut old_pen = hdc.SelectObject(&pen.leak())?;
+                    hdc.MoveToEx(0, 0, None)?;
+                    // LineTo excludes the endpoint, so drawing to (1,0) sets pixel (0,0)
+                    hdc.LineTo(1, 0)?;
+                    hdc.SelectObject(&old_pen.leak())?;
+                    Ok(())
+                })
+                .unwrap_or_else(|e| {
+                    eprintln!("Failed to draw pixel at (0,0): {}", e);
+                });
         }
     }
 }
@@ -1069,6 +1108,12 @@ pub fn DoDisplayBest() {
     show_dialog(DialogTemplateId::Best as u16, BestDlgProc);
 }
 
+/// Handles clicks on the smiley face button, providing the pressed animation
+/// and starting a new game if clicked.
+/// # Arguments
+/// * `l_param` - The LPARAM from the mouse click message, containing cursor position.
+/// # Returns
+/// * `bool` - Returns true if the button was clicked and handled, false otherwise.
 pub fn FLocalButton(l_param: isize) -> bool {
     let state = global_state();
     let hwnd_main = {
