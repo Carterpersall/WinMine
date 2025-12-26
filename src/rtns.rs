@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 
 use winsafe::prelude::*;
 
-use crate::globals::{StatusFlag, fBlock, fStatus, global_state};
+use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag, global_state};
 use crate::grafix::{
     ButtonSprite, DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime,
 };
@@ -90,57 +90,71 @@ pub fn preferences_mutex() -> &'static Mutex<Pref> {
     })
 }
 
-pub static xBoxMac: AtomicI32 = AtomicI32::new(0);
+/// Current board width in cells (excluding border)
+pub static BOARD_WIDTH: AtomicI32 = AtomicI32::new(0);
 
-pub static yBoxMac: AtomicI32 = AtomicI32::new(0);
+/// Current board height in cells (excluding border)
+pub static BOARD_HEIGHT: AtomicI32 = AtomicI32::new(0);
 
-pub static iButtonCur: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
+/// Current button face sprite
+pub static BTN_FACE_STATE: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
 
-pub static cBombLeft: AtomicI32 = AtomicI32::new(0);
+/// Current number of bombs left to mark
+pub static BOMBS_LEFT: AtomicI32 = AtomicI32::new(0);
 
-pub static cSec: AtomicI32 = AtomicI32::new(0);
+/// Current elapsed time in seconds
+pub static SECS_ELAPSED: AtomicI32 = AtomicI32::new(0);
 
+/// Number of visited boxes (revealed non-bomb cells)
 pub static C_BOX_VISIT: AtomicI32 = AtomicI32::new(0);
 
-pub static xCur: AtomicI32 = AtomicI32::new(-1);
+/// Current cursor X position in board coordinates
+pub static CURSOR_X_POS: AtomicI32 = AtomicI32::new(-1);
 
-pub static yCur: AtomicI32 = AtomicI32::new(-1);
+/// Current cursor Y position in board coordinates
+pub static CURSOR_Y_POS: AtomicI32 = AtomicI32::new(-1);
 
-const RG_BLK_INIT: [i8; C_BLK_MAX] = [BlockCell::BlankUp as i8; C_BLK_MAX];
-
+/// Packed board cell values stored row-major including border
 static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
 
 pub fn board_mutex() -> &'static Mutex<[i8; C_BLK_MAX]> {
-    RG_BLK.get_or_init(|| Mutex::new(RG_BLK_INIT))
+    RG_BLK.get_or_init(|| Mutex::new([BlockCell::BlankUp as i8; C_BLK_MAX]))
 }
 
+/// Initial number of bombs at the start of the game
 static CBOMB_START: AtomicI32 = AtomicI32::new(0);
+
+/// Total number of visited boxes needed to win
 static CBOX_VISIT_MAC: AtomicI32 = AtomicI32::new(0);
+
+/// Indicates whether the game timer is running
 static F_TIMER: AtomicBool = AtomicBool::new(false);
+
+/// Previous timer running state used to detect changes
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 
 fn status_play() -> bool {
-    (fStatus.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0
+    (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0
 }
 
 fn status_pause() -> bool {
-    (fStatus.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) != 0
+    (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) != 0
 }
 
 fn set_status_play() {
-    fStatus.store(StatusFlag::Play as i32, Ordering::Relaxed)
+    GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed)
 }
 
 fn set_status_demo() {
-    fStatus.store(StatusFlag::Demo as i32, Ordering::Relaxed)
+    GAME_STATUS.store(StatusFlag::Demo as i32, Ordering::Relaxed)
 }
 
 fn set_status_pause() {
-    fStatus.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
+    GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
 }
 
 fn clr_status_pause() {
-    fStatus.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
+    GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
 }
 
 fn board_index(x: i32, y: i32) -> Option<usize> {
@@ -227,8 +241,8 @@ fn guessed_mark(x: i32, y: i32) -> bool {
 }
 
 fn f_in_range(x: i32, y: i32) -> bool {
-    let x_max = xBoxMac.load(Ordering::Relaxed);
-    let y_max = yBoxMac.load(Ordering::Relaxed);
+    let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
+    let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
@@ -287,8 +301,8 @@ fn stop_all_audio() {
 
 fn show_bombs(cell: BlockCell) {
     // Display hidden bombs and mark incorrect guesses.
-    let x_max = xBoxMac.load(Ordering::Relaxed);
-    let y_max = yBoxMac.load(Ordering::Relaxed);
+    let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
+    let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
 
     for y in 1..=y_max {
         for x in 1..=x_max {
@@ -326,12 +340,12 @@ fn update_button_for_result(win: bool) {
     } else {
         ButtonSprite::Lose
     };
-    iButtonCur.store(state as u8, Ordering::Relaxed);
+    BTN_FACE_STATE.store(state as u8, Ordering::Relaxed);
     display_button(state);
 }
 
 fn record_win_if_needed() {
-    let elapsed = cSec.load(Ordering::Relaxed);
+    let elapsed = SECS_ELAPSED.load(Ordering::Relaxed);
     let mut prefs = match preferences_mutex().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -433,7 +447,7 @@ fn game_over(win: bool) {
         BlockCell::BombDown
     });
     if win {
-        let bombs_left = cBombLeft.load(Ordering::Relaxed);
+        let bombs_left = BOMBS_LEFT.load(Ordering::Relaxed);
         if bombs_left != 0 {
             update_bomb_count_internal(-bombs_left);
         }
@@ -451,8 +465,8 @@ fn step_square(x: i32, y: i32) {
     if is_bomb(x, y) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         if visits == 0 {
-            let x_max = xBoxMac.load(Ordering::Relaxed);
-            let y_max = yBoxMac.load(Ordering::Relaxed);
+            let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
+            let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
             for y_t in 1..y_max {
                 for x_t in 1..x_max {
                     if !is_bomb(x_t, y_t) {
@@ -574,7 +588,7 @@ fn pop_box_up(x: i32, y: i32) {
 
 fn update_bomb_count_internal(delta: i32) {
     // Adjust the visible bomb counter and repaint the LEDs.
-    cBombLeft.fetch_add(delta, Ordering::Relaxed);
+    BOMBS_LEFT.fetch_add(delta, Ordering::Relaxed);
     display_bomb_count();
 }
 
@@ -592,8 +606,8 @@ pub fn ClearField() {
         board.iter_mut().for_each(|b| *b = BlockCell::BlankUp as i8);
     }
 
-    let x_max = xBoxMac.load(Ordering::Relaxed);
-    let y_max = yBoxMac.load(Ordering::Relaxed);
+    let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
+    let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
 
     for x in 0..=(x_max + 1) {
         set_border(x, 0);
@@ -606,9 +620,9 @@ pub fn ClearField() {
 }
 
 pub fn DoTimer() {
-    let secs = cSec.load(Ordering::Relaxed);
+    let secs = SECS_ELAPSED.load(Ordering::Relaxed);
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
-        cSec.store(secs + 1, Ordering::Relaxed);
+        SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
         display_time();
         play_tune(Tune::Tick);
     }
@@ -618,8 +632,8 @@ pub fn StartGame() {
     // Reset globals, randomize bombs, and resize the window if the board changed.
     F_TIMER.store(false, Ordering::Relaxed);
 
-    let x_prev = xBoxMac.load(Ordering::Relaxed);
-    let y_prev = yBoxMac.load(Ordering::Relaxed);
+    let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
+    let y_prev = BOARD_HEIGHT.load(Ordering::Relaxed);
 
     let (pref_width, pref_height, pref_mines) = {
         let prefs = match preferences_mutex().lock() {
@@ -635,17 +649,17 @@ pub fn StartGame() {
         AdjustFlag::Display as i32
     };
 
-    xBoxMac.store(pref_width, Ordering::Relaxed);
-    yBoxMac.store(pref_height, Ordering::Relaxed);
+    BOARD_WIDTH.store(pref_width, Ordering::Relaxed);
+    BOARD_HEIGHT.store(pref_height, Ordering::Relaxed);
 
     ClearField();
-    iButtonCur.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
+    BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
 
     CBOMB_START.store(pref_mines, Ordering::Relaxed);
 
     let total_bombs = CBOMB_START.load(Ordering::Relaxed);
-    let width = xBoxMac.load(Ordering::Relaxed);
-    let height = yBoxMac.load(Ordering::Relaxed);
+    let width = BOARD_WIDTH.load(Ordering::Relaxed);
+    let height = BOARD_HEIGHT.load(Ordering::Relaxed);
 
     let mut bombs = total_bombs;
     while bombs > 0 {
@@ -662,8 +676,8 @@ pub fn StartGame() {
         bombs -= 1;
     }
 
-    cSec.store(0, Ordering::Relaxed);
-    cBombLeft.store(total_bombs, Ordering::Relaxed);
+    SECS_ELAPSED.store(0, Ordering::Relaxed);
+    BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
     C_BOX_VISIT.store(0, Ordering::Relaxed);
     CBOX_VISIT_MAC.store((width * height) - total_bombs, Ordering::Relaxed);
     set_status_play();
@@ -675,20 +689,20 @@ pub fn StartGame() {
 
 pub fn TrackMouse(x_new: i32, y_new: i32) {
     // Provide the classic pressed-square feedback during mouse drags.
-    let x_old = xCur.load(Ordering::Relaxed);
-    let y_old = yCur.load(Ordering::Relaxed);
+    let x_old = CURSOR_X_POS.load(Ordering::Relaxed);
+    let y_old = CURSOR_Y_POS.load(Ordering::Relaxed);
 
     if x_new == x_old && y_new == y_old {
         return;
     }
 
-    xCur.store(x_new, Ordering::Relaxed);
-    yCur.store(y_new, Ordering::Relaxed);
+    CURSOR_X_POS.store(x_new, Ordering::Relaxed);
+    CURSOR_Y_POS.store(y_new, Ordering::Relaxed);
 
-    let y_max = yBoxMac.load(Ordering::Relaxed);
-    let x_max = xBoxMac.load(Ordering::Relaxed);
+    let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
+    let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
 
-    if fBlock.load(Ordering::Relaxed) {
+    if BLK_BTN_INPUT.load(Ordering::Relaxed) {
         let valid_new = f_in_range(x_new, y_new);
         let valid_old = f_in_range(x_old, y_old);
 
@@ -755,15 +769,15 @@ pub fn MakeGuess(x: i32, y: i32) {
 
 pub fn DoButton1Up() {
     // Handle a left-button release: start the timer, then either chord or step.
-    let x_pos = xCur.load(Ordering::Relaxed);
-    let y_pos = yCur.load(Ordering::Relaxed);
+    let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
+    let y_pos = CURSOR_Y_POS.load(Ordering::Relaxed);
 
     if f_in_range(x_pos, y_pos) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
-        let secs = cSec.load(Ordering::Relaxed);
+        let secs = SECS_ELAPSED.load(Ordering::Relaxed);
         if visits == 0 && secs == 0 {
             play_tune(Tune::Tick);
-            cSec.store(1, Ordering::Relaxed);
+            SECS_ELAPSED.store(1, Ordering::Relaxed);
             display_time();
             F_TIMER.store(true, Ordering::Relaxed);
             let hwnd_guard = match global_state().hwnd_main.lock() {
@@ -778,18 +792,18 @@ pub fn DoButton1Up() {
         }
 
         if !status_play() {
-            xCur.store(-2, Ordering::Relaxed);
-            yCur.store(-2, Ordering::Relaxed);
+            CURSOR_X_POS.store(-2, Ordering::Relaxed);
+            CURSOR_Y_POS.store(-2, Ordering::Relaxed);
         }
 
-        if fBlock.load(Ordering::Relaxed) {
+        if BLK_BTN_INPUT.load(Ordering::Relaxed) {
             step_block(x_pos, y_pos);
         } else if in_range_step(x_pos, y_pos) {
             step_square(x_pos, y_pos);
         }
     }
 
-    let button = match iButtonCur.load(Ordering::Relaxed) {
+    let button = match BTN_FACE_STATE.load(Ordering::Relaxed) {
         0 => ButtonSprite::Happy,
         1 => ButtonSprite::Caution,
         2 => ButtonSprite::Lose,

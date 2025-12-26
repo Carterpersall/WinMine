@@ -18,46 +18,41 @@ pub enum StatusFlag {
 }
 
 /// True while the process starts minimized.
-pub static bInitMinimized: AtomicBool = AtomicBool::new(false);
+pub static INIT_MINIMIZED: AtomicBool = AtomicBool::new(false);
 
 /// Tracks whether the left mouse button is currently held.
-pub static fButton1Down: AtomicBool = AtomicBool::new(false);
+pub static LEFT_CLK_DOWN: AtomicBool = AtomicBool::new(false);
 
 /// Tracks whether the UI should temporarily block button handling.
-pub static fBlock: AtomicBool = AtomicBool::new(false);
+pub static BLK_BTN_INPUT: AtomicBool = AtomicBool::new(false);
 
 /// Signals that the next click should be ignored (used after window activation).
-pub static fIgnoreClick: AtomicBool = AtomicBool::new(false);
+pub static IGNORE_NEXT_CLICK: AtomicBool = AtomicBool::new(false);
 
 /// Indicates that the app is paused because a menu is open.
-pub static fLocalPause: AtomicBool = AtomicBool::new(false);
+pub static APP_PAUSED: AtomicBool = AtomicBool::new(false);
 
 /// Cached system caption height used during window sizing.
-pub static dypCaption: AtomicI32 = AtomicI32::new(0);
+pub static CYCAPTION: AtomicI32 = AtomicI32::new(0);
 
 /// Cached system menu height used during window sizing.
-pub static dypMenu: AtomicI32 = AtomicI32::new(0);
-
-/// Cached system border height used during window sizing.
-pub static dypBorder: AtomicI32 = AtomicI32::new(0);
+pub static CYMENU: AtomicI32 = AtomicI32::new(0);
 
 /// Cached system border width used during window sizing.
-pub static dxpBorder: AtomicI32 = AtomicI32::new(0);
+pub static CXBORDER: AtomicI32 = AtomicI32::new(0);
 
 /// Current client width of the main window.
-pub static dxWindow: AtomicI32 = AtomicI32::new(0);
+pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);
 
 /// Current client height of the main window.
-pub static dyWindow: AtomicI32 = AtomicI32::new(0);
+pub static WINDOW_HEIGHT: AtomicI32 = AtomicI32::new(0);
 
 /// Additional vertical adjustment applied during window sizing.
-pub static dypAdjust: AtomicI32 = AtomicI32::new(0);
-
-/// Additional horizontal frame adjustment applied during window sizing.
-pub static dxFrameExtra: AtomicI32 = AtomicI32::new(0);
+pub static WND_Y_OFFSET: AtomicI32 = AtomicI32::new(0);
 
 /// Aggregated status flags shared between modules.
-pub static fStatus: AtomicI32 = AtomicI32::new(StatusFlag::Icon as i32 | StatusFlag::Demo as i32);
+pub static GAME_STATUS: AtomicI32 =
+    AtomicI32::new(StatusFlag::Icon as i32 | StatusFlag::Demo as i32);
 
 /// Shared Win32 handles and string buffers used throughout the app.
 pub struct GlobalState {

@@ -5,7 +5,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
 use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
-use crate::globals::{dxpBorder, dypBorder, dypCaption, dypMenu, global_state};
+use crate::globals::{CXBORDER, CYCAPTION, CYMENU, global_state};
 use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, SoundState,
 };
@@ -248,10 +248,9 @@ pub fn InitConst() {
         eprintln!("Failed to load default name string: {}", e);
     }
 
-    dypCaption.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
-    dypMenu.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
-    dypBorder.store(w::GetSystemMetrics(SM::CYBORDER) + 1, Ordering::Relaxed);
-    dxpBorder.store(w::GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
+    CYCAPTION.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
+    CYMENU.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
+    CXBORDER.store(w::GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
     let mut already_played = false;
 

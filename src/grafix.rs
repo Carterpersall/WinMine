@@ -13,10 +13,10 @@ use winsafe::{
     prelude::*,
 };
 
-use crate::globals::{dxWindow, dxpBorder, dyWindow, global_state};
+use crate::globals::{CXBORDER, WINDOW_HEIGHT, WINDOW_WIDTH, global_state};
 use crate::rtns::{
-    BOARD_INDEX_SHIFT, BlockMask, ClearField, board_mutex, cBombLeft, cSec, iButtonCur,
-    preferences_mutex, xBoxMac, yBoxMac,
+    BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
+    ClearField, SECS_ELAPSED, board_mutex, preferences_mutex,
 };
 use crate::sound::EndTunes;
 
@@ -234,8 +234,8 @@ pub fn DrawGrid(hdc: &w::HDC) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let y_max = yBoxMac.load(Relaxed);
-    let x_max = xBoxMac.load(Relaxed);
+    let y_max = BOARD_HEIGHT.load(Relaxed);
+    let x_max = BOARD_WIDTH.load(Relaxed);
     let mut dy = DY_GRID_OFF;
     for y in 1..=y_max {
         let mut dx = DX_GRID_OFF;
@@ -298,7 +298,7 @@ pub fn DrawBombCount(hdc: &w::HDC) {
     }
 
     // Calculate the three LED digits to display for the bomb counter.
-    let bombs = cBombLeft.load(Relaxed);
+    let bombs = BOMBS_LEFT.load(Relaxed);
     let (i_led, c_bombs) = if bombs < 0 {
         (11, (-bombs) % 100)
     } else {
@@ -336,9 +336,9 @@ pub fn DrawTime(hdc: &w::HDC) {
         }
     }
 
-    let mut time = cSec.load(Relaxed);
-    let dx_window = dxWindow.load(Relaxed);
-    let border = dxpBorder.load(Relaxed);
+    let mut time = SECS_ELAPSED.load(Relaxed);
+    let dx_window = WINDOW_WIDTH.load(Relaxed);
+    let border = CXBORDER.load(Relaxed);
     DrawLed(
         hdc,
         dx_window - (DX_RIGHT_TIME + 3 * DX_LED + border),
@@ -373,7 +373,7 @@ pub fn DisplayTime() {
 
 pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
     // Center the face button and pull the requested state from the button sheet.
-    let dx_window = dxWindow.load(Relaxed);
+    let dx_window = WINDOW_WIDTH.load(Relaxed);
     let x = (dx_window - DX_BUTTON) >> 1;
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -468,9 +468,9 @@ pub fn DrawBorder(
 
 pub fn DrawBackground(hdc: &w::HDC) {
     // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
-    let dx_window = dxWindow.load(Relaxed);
-    let dy_window = dyWindow.load(Relaxed);
-    let border = dxpBorder.load(Relaxed);
+    let dx_window = WINDOW_WIDTH.load(Relaxed);
+    let dy_window = WINDOW_HEIGHT.load(Relaxed);
+    let border = CXBORDER.load(Relaxed);
     let mut x = dx_window - 1;
     let mut y = dy_window - 1;
     DrawBorder(hdc, 0, 0, x, y, 3, 1);
@@ -511,7 +511,7 @@ pub fn DrawScreen(hdc: &w::HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
     DrawBombCount(hdc);
-    let sprite = match iButtonCur.load(Relaxed) {
+    let sprite = match BTN_FACE_STATE.load(Relaxed) {
         0 => ButtonSprite::Happy,
         1 => ButtonSprite::Caution,
         2 => ButtonSprite::Lose,

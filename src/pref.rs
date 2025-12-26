@@ -1,10 +1,10 @@
 // Registry-backed preference helpers mirrored from pref.c.
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::Ordering;
 
 use winsafe::{self as w, RegistryValue, co};
 
 use crate::globals::global_state;
-use crate::rtns::{preferences_mutex, xBoxMac, yBoxMac};
+use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
 use crate::sound::FInitTunes;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
@@ -115,9 +115,6 @@ pub struct Pref {
     pub szExpert: [u16; CCH_NAME_MAX],
 }
 
-// Flag consulted by the C UI layer to decide when to persist settings.
-pub static fUpdateIni: AtomicBool = AtomicBool::new(false);
-
 pub unsafe fn ReadInt(
     handle: &w::HKEY,
     key: PrefKey,
@@ -194,11 +191,11 @@ pub unsafe fn ReadPreferences() {
 
     unsafe {
         let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
-        yBoxMac.store(height, Ordering::Relaxed);
+        BOARD_HEIGHT.store(height, Ordering::Relaxed);
         prefs.Height = height;
 
         let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
-        xBoxMac.store(width, Ordering::Relaxed);
+        BOARD_WIDTH.store(width, Ordering::Relaxed);
         prefs.Width = width;
 
         let game_raw = ReadInt(
