@@ -84,18 +84,31 @@ const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n";
 /// Debug string emitted when a compatible bitmap cannot be created.
 const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n";
 
+/// Internal state tracking loaded graphics resources and cached DCs
 struct GrafixState {
+    /// Precalculated byte offsets to each block sprite within the DIB
     rg_dib_off: [i32; I_BLK_MAX],
+    /// Precalculated byte offsets to each LED digit within the DIB
     rg_dib_led_off: [i32; I_LED_MAX],
+    /// Precalculated byte offsets to each button sprite within the DIB
     rg_dib_button_off: [i32; BUTTON_SPRITE_COUNT],
+    /// Resource handle for the block spritesheet
     h_res_blks: HRSRCMEM,
+    /// Resource handle for the LED digits spritesheet
     h_res_led: HRSRCMEM,
+    /// Resource handle for the button spritesheet
     h_res_button: HRSRCMEM,
-    lp_dib_blks: *const u8,
-    lp_dib_led: *const u8,
-    lp_dib_button: *const u8,
+    /// Pointer to the loaded block sprites DIB
+    lp_dib_blks: *const BITMAPINFO,
+    /// Pointer to the loaded LED digits DIB
+    lp_dib_led: *const BITMAPINFO,
+    /// Pointer to the loaded button sprites DIB
+    lp_dib_button: *const BITMAPINFO,
+    /// Cached gray pen used for monochrome rendering
     h_gray_pen: w::HPEN,
+    /// Cached compatible DCs for each block sprite
     mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
+    /// Cached compatible bitmaps for each block sprite
     mem_blk_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; I_BLK_MAX],
 }
 
@@ -280,8 +293,12 @@ pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
             0,
             0,
             DY_LED as u32,
-            led_bits_with(&state, i_led) as *const _,
-            dib_info(state.lp_dib_led) as *const _,
+            // Get the pointer to the LED digit bits using the precalculated offset
+            state
+                .lp_dib_led
+                .byte_add(state.rg_dib_led_off[i_led as usize] as usize)
+                .cast(),
+            state.lp_dib_led as *const _,
             DIB::RGB_COLORS.raw(),
         );
     }
@@ -390,8 +407,12 @@ pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
             0,
             0,
             DY_BUTTON as u32,
-            button_bits_with(&state, sprite as i32) as *const _,
-            dib_info(state.lp_dib_button) as *const _,
+            // Get the pointer to the button sprite bits using the precalculated offset
+            state
+                .lp_dib_button
+                .byte_add(state.rg_dib_button_off[sprite as usize] as usize)
+                .cast(),
+            state.lp_dib_button as *const _,
             DIB::RGB_COLORS.raw(),
         );
     }
@@ -552,9 +573,9 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
     state.h_res_led = h_led;
     state.h_res_button = h_button;
 
-    state.lp_dib_blks = lp_blks;
-    state.lp_dib_led = lp_led;
-    state.lp_dib_button = lp_button;
+    state.lp_dib_blks = lp_blks as *const BITMAPINFO;
+    state.lp_dib_led = lp_led as *const BITMAPINFO;
+    state.lp_dib_button = lp_button as *const BITMAPINFO;
 
     state.h_gray_pen = if !color_on {
         match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
@@ -642,8 +663,12 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
                     0,
                     0,
                     DY_BLK as u32,
-                    block_bits_with(&state, i as i32) as *const _,
-                    dib_info(state.lp_dib_blks) as *const _,
+                    // Get the pointer to the block sprite bits using the precalculated offset
+                    state
+                        .lp_dib_blks
+                        .byte_add(state.rg_dib_off[i] as usize)
+                        .cast(),
+                    state.lp_dib_blks as *const _,
                     DIB::RGB_COLORS.raw(),
                 );
             }
@@ -687,29 +712,13 @@ fn cb_bitmap(color_on: bool, x: i32, y: i32) -> i32 {
     y * stride
 }
 
-fn block_bits_with(state: &GrafixState, i: i32) -> *const u8 {
-    let idx = clamp_index(i, I_BLK_MAX);
-    unsafe { state.lp_dib_blks.add(state.rg_dib_off[idx] as usize) }
-}
-
-fn led_bits_with(state: &GrafixState, i: i32) -> *const u8 {
-    let idx = clamp_index(i, I_LED_MAX);
-    unsafe { state.lp_dib_led.add(state.rg_dib_led_off[idx] as usize) }
-}
-
-fn button_bits_with(state: &GrafixState, i: i32) -> *const u8 {
-    let idx = clamp_index(i, BUTTON_SPRITE_COUNT);
-    unsafe {
-        state
-            .lp_dib_button
-            .add(state.rg_dib_button_off[idx] as usize)
-    }
-}
-
-fn dib_info(ptr: *const u8) -> *const BITMAPINFO {
-    ptr as *const BITMAPINFO
-}
-
+/// Retrieve the cached compatible DC for the block at the given board coordinates.
+/// # Arguments
+/// * `state` - Reference to the current GrafixState
+/// * `x` - X coordinate on the board (1-based)
+/// * `y` - Y coordinate on the board (1-based)
+/// # Returns
+/// Optionally, a reference to the compatible DC for the block sprite
 fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
     let idx = block_sprite_index(x, y);
     if idx >= I_BLK_MAX {
@@ -739,13 +748,4 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
 
 const fn rgb(r: u8, g: u8, b: u8) -> w::COLORREF {
     w::COLORREF::from_rgb(r, g, b)
-}
-
-fn clamp_index(value: i32, max: usize) -> usize {
-    if value <= 0 {
-        0
-    } else {
-        let idx = value as usize;
-        idx.min(max.saturating_sub(1))
-    }
 }

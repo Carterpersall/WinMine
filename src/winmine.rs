@@ -195,17 +195,6 @@ const BEST_HELP_IDS: [u32; 22] = [
     0,
 ];
 
-// Structure for HELP_WM_HELP message.
-#[repr(C)]
-struct HelpInfo {
-    cbSize: u32,
-    iContextType: i32,
-    iCtrlId: i32,
-    hItemHandle: HWND,
-    dwContextId: usize,
-    mouse_pos: POINT,
-}
-
 fn show_dialog(template_id: u16, proc: DLGPROC) {
     let state = global_state();
     let hinst_wrap = {
@@ -1252,7 +1241,7 @@ pub extern "system" fn PrefDlgProc(
         }
         co::WM::CONTEXTMENU => {
             let target = unsafe { HWND::from_ptr(w_param as _) };
-            apply_help_to_hwnd(target, &PREF_HELP_IDS);
+            apply_help_to_control(target, &PREF_HELP_IDS);
             return 1;
         }
         _ => {}
@@ -1372,7 +1361,7 @@ pub extern "system" fn BestDlgProc(
         }
         co::WM::CONTEXTMENU => {
             let target = unsafe { HWND::from_ptr(w_param as _) };
-            apply_help_to_hwnd(target, &BEST_HELP_IDS);
+            apply_help_to_control(target, &BEST_HELP_IDS);
             return 1;
         }
         _ => {}
@@ -1734,16 +1723,13 @@ fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
         return false;
     }
 
-    let info = unsafe { &*(l_param as *const HelpInfo) };
-    let Some(hwnd) = info.hItemHandle.as_opt() else {
-        return false;
-    };
+    let hwnd = unsafe { &*(l_param as *const winsafe::HELPINFO) }.hItemHandle();
 
     unsafe {
         HtmlHelpA(
-            hwnd.ptr() as _,
-            HELP_FILE.as_ptr() as _,
-            HH_TP_HELP_WM_HELP as _,
+            hwnd.as_isize() as _,
+            HELP_FILE.as_ptr(),
+            HH_TP_HELP_WM_HELP as u32,
             ids.as_ptr() as usize,
         );
     }
@@ -1751,7 +1737,7 @@ fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
     true
 }
 
-fn apply_help_to_hwnd(hwnd: HWND, ids: &[u32]) {
+fn apply_help_to_control(hwnd: HWND, ids: &[u32]) {
     if let Some(control) = hwnd.as_opt() {
         unsafe {
             HtmlHelpA(
