@@ -87,11 +87,11 @@ const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n";
 /// Internal state tracking loaded graphics resources and cached DCs
 struct GrafixState {
     /// Precalculated byte offsets to each block sprite within the DIB
-    rg_dib_off: [i32; I_BLK_MAX],
+    rg_dib_off: [usize; I_BLK_MAX],
     /// Precalculated byte offsets to each LED digit within the DIB
-    rg_dib_led_off: [i32; I_LED_MAX],
+    rg_dib_led_off: [usize; I_LED_MAX],
     /// Precalculated byte offsets to each button sprite within the DIB
-    rg_dib_button_off: [i32; BUTTON_SPRITE_COUNT],
+    rg_dib_button_off: [usize; BUTTON_SPRITE_COUNT],
     /// Resource handle for the block spritesheet
     h_res_blks: HRSRCMEM,
     /// Resource handle for the LED digits spritesheet
@@ -597,17 +597,17 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
 
     let cb_blk = cb_bitmap(color_on, DX_BLK, DY_BLK);
     for (i, off) in state.rg_dib_off.iter_mut().enumerate() {
-        *off = header + (i as i32) * cb_blk;
+        *off = header + i * cb_blk;
     }
 
     let cb_led = cb_bitmap(color_on, DX_LED, DY_LED);
     for (i, off) in state.rg_dib_led_off.iter_mut().enumerate() {
-        *off = header + (i as i32) * cb_led;
+        *off = header + i * cb_led;
     }
 
     let cb_button = cb_bitmap(color_on, DX_BUTTON, DY_BUTTON);
     for (i, off) in state.rg_dib_button_off.iter_mut().enumerate() {
-        *off = header + (i as i32) * cb_button;
+        *off = header + i * cb_button;
     }
 
     let hwnd = match main_window() {
@@ -697,19 +697,31 @@ fn load_bitmap_resource(id: BitmapId, color_on: bool) -> Option<(HRSRCMEM, *cons
     Some((res_loaded, lp))
 }
 
-fn dib_header_size(color_on: bool) -> i32 {
+/// Calculate the size of the DIB header plus color palette
+/// # Arguments
+/// * `color_on` - Whether color mode is enabled
+/// # Returns
+/// Size in bytes of the DIB header and palette
+fn dib_header_size(color_on: bool) -> usize {
     let palette_entries = if color_on { 16 } else { 2 };
-    (size_of::<BITMAPINFOHEADER>() + (palette_entries as usize) * 4) as i32
+    size_of::<BITMAPINFOHEADER>() + (palette_entries as usize) * 4
 }
 
-fn cb_bitmap(color_on: bool, x: i32, y: i32) -> i32 {
+/// Calculate the byte size of a bitmap given its dimensions and color mode
+/// # Arguments
+/// * `color_on` - Whether color mode is enabled
+/// * `x` - Width of the bitmap in pixels
+/// * `y` - Height of the bitmap in pixels
+/// # Returns
+/// Size in bytes of the bitmap data
+fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
     // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
     let mut bits = x;
     if color_on {
         bits *= 4;
     }
     let stride = ((bits + 31) >> 5) << 2;
-    y * stride
+    (y * stride) as usize
 }
 
 /// Retrieve the cached compatible DC for the block at the given board coordinates.
