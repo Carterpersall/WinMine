@@ -204,8 +204,8 @@ pub fn FreeBitmaps() {
     }
 }
 
+/// Clean up graphics resources and silence audio on exit.
 pub fn CleanUp() {
-    // Matching the C code, graphics cleanup also silences any outstanding audio.
     FreeBitmaps();
     EndTunes();
 }

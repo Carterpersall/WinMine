@@ -1,4 +1,3 @@
-// Registry-backed preference helpers mirrored from pref.c.
 use core::sync::atomic::Ordering;
 
 use winsafe::{self as w, RegistryValue, co};

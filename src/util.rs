@@ -94,8 +94,12 @@ fn clamp(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
 }
 
+/// Return a pseudo-random number in the [0, rnd_max) range
+/// # Arguments
+/// * `rnd_max` - Upper bound (exclusive) for the random number
+/// # Returns
+/// A pseudo-random number in the [0, rnd_max) range
 pub fn Rnd(rnd_max: i32) -> i32 {
-    // Return a pseudo-random number in the [0, rnd_max) range like the C helper did.
     if rnd_max <= 0 {
         0
     } else {
@@ -516,7 +520,6 @@ fn utf16_buffer_to_string(buf: &[u16]) -> String {
 }
 
 pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
-    // Mirror GetDlgInt from util.c: clamp user input to the legal range before the caller consumes it.
     let mut success = 0i32;
     let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &mut success, 0) };
     let value = value as i32;

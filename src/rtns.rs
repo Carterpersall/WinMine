@@ -409,8 +409,11 @@ fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i3
     }
 }
 
+/// Flood-fill contiguous empty squares starting from (x, y).
+/// # Arguments
+/// * `x` - X coordinate of the starting square
+/// * `y` - Y coordinate of the starting square
 fn step_box(x: i32, y: i32) {
-    // Flood-fill contiguous empty squares using the same 3x3 sweep as the C version.
     let mut queue = [(0, 0); I_STEP_MAX];
     let mut head = 0usize;
     let mut tail = 0usize;
