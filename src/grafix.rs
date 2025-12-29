@@ -747,10 +747,7 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
         return 0;
     }
     let idx = offset as usize;
-    let board = match board_mutex().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let board = board_mutex();
     board
         .get(idx)
         .copied()

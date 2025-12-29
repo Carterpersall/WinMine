@@ -1,7 +1,7 @@
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::atomic::AtomicU8;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::prelude::*;
 
@@ -117,8 +117,14 @@ pub static CURSOR_Y_POS: AtomicI32 = AtomicI32::new(-1);
 /// Packed board cell values stored row-major including border
 static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
 
-pub fn board_mutex() -> &'static Mutex<[i8; C_BLK_MAX]> {
-    RG_BLK.get_or_init(|| Mutex::new([BlockCell::BlankUp as i8; C_BLK_MAX]))
+pub fn board_mutex() -> MutexGuard<'static, [i8; C_BLK_MAX]> {
+    match RG_BLK
+        .get_or_init(|| Mutex::new([BlockCell::BlankUp as i8; C_BLK_MAX]))
+        .lock()
+    {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 /// Initial number of bombs at the start of the game
@@ -167,10 +173,7 @@ fn board_index(x: i32, y: i32) -> Option<usize> {
 }
 
 fn block_value(x: i32, y: i32) -> u8 {
-    let guard = match board_mutex().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let guard = board_mutex();
     board_index(x, y)
         .and_then(|idx| guard.get(idx).copied())
         .unwrap_or(0) as u8
@@ -178,10 +181,7 @@ fn block_value(x: i32, y: i32) -> u8 {
 
 fn set_block_value(x: i32, y: i32, value: u8) {
     if let Some(idx) = board_index(x, y) {
-        let mut guard = match board_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut guard = board_mutex();
         let prev = guard[idx] as u8;
 
         // Preserve existing flag bits, but allow callers to explicitly set the Visit bit.
@@ -194,20 +194,14 @@ fn set_block_value(x: i32, y: i32, value: u8) {
 
 fn set_border(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
-        let mut guard = match board_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut guard = board_mutex();
         guard[idx] = BlockCell::Border as i8;
     }
 }
 
 fn set_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
-        let mut guard = match board_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut guard = board_mutex();
         let prev = guard[idx] as u8;
         guard[idx] = (prev | BlockMask::Bomb as u8) as i8;
     }
@@ -215,10 +209,7 @@ fn set_bomb(x: i32, y: i32) {
 
 fn clear_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
-        let mut guard = match board_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut guard = board_mutex();
         let prev = guard[idx] as u8;
         guard[idx] = (prev & BlockMask::NotBomb as u8) as i8;
     }
@@ -371,10 +362,7 @@ fn change_blk(x: i32, y: i32, block: i32) {
 fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
     // Visit a square; enqueue it when empty so we flood-fill neighbors later.
     if let Some(idx) = board_index(x, y) {
-        let mut board = match board_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut board = board_mutex();
         let mut blk = board[idx] as u8;
         if (blk & BlockMask::Visit as u8) != 0 {
             return;
@@ -602,10 +590,7 @@ fn in_range_step(x: i32, y: i32) -> bool {
 pub fn ClearField() {
     // Reset every cell to blank-up and rebuild the sentinel border.
     {
-        let mut board = match board_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut board = board_mutex();
         board.iter_mut().for_each(|b| *b = BlockCell::BlankUp as i8);
     }
 

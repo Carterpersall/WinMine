@@ -39,7 +39,7 @@ fn stop_all_sounds() -> bool {
 
 /// Play a specific UI tune using the sounds in the resource file
 pub fn PlayTune(tune: Tune) {
-    let resource_ptr = make_int_resource(tune as u16);
+    let resource_ptr = tune as usize as *const u16;
     let instance_ptr = {
         let guard = match global_state().h_inst.lock() {
             Ok(g) => g,
@@ -51,8 +51,4 @@ pub fn PlayTune(tune: Tune) {
     unsafe {
         PlaySoundW(resource_ptr, instance_ptr, SND_RESOURCE | SND_ASYNC);
     }
-}
-
-fn make_int_resource(resource_id: u16) -> *const u16 {
-    resource_id as usize as *const u16
 }

@@ -881,10 +881,7 @@ fn cell_is_bomb(x: i32, y: i32) -> bool {
     if idx >= C_BLK_MAX {
         return false;
     }
-    let guard = match board_mutex().lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let guard = board_mutex();
     (guard[idx] as u8 & BlockMask::Bomb as u8) != 0
 }
 

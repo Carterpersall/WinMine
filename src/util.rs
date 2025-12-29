@@ -7,9 +7,9 @@ use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
 use crate::globals::{CXBORDER, CYCAPTION, CYMENU, global_state};
 use crate::pref::{
-    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, SoundState,
+    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, ReadInt,
+    SZ_WINMINE_REG_STR, SoundState, WritePreferences, pref_key_literal,
 };
-use crate::pref::{ReadInt, SZ_WINMINE_REG_STR, WritePreferences, pref_key_literal};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, FixMenus, MenuCommand};
