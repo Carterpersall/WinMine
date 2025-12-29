@@ -137,37 +137,27 @@ pub unsafe fn ReadInt(
         _ => return val_default,
     };
 
-    clamp_i32(value, val_min, val_max)
+    value.max(val_min).min(val_max)
 }
 
-pub unsafe fn ReadSz(handle: &w::HKEY, key: PrefKey, sz_ret: *mut u16) {
-    // Pull a high-score name (or similar) from the hive, falling back to the default string.
-    if sz_ret.is_null() {
-        return;
-    }
-
+/// Read a zero-terminated UTF-16 string from the registry, falling back to the default name.
+/// # Arguments
+/// * `handle` - Open registry key handle
+/// * `key` - Preference key to read
+/// # Returns
+/// The retrieved string, or the default name on failure
+pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
     if handle.ptr().is_null() {
-        unsafe {
-            copy_default_name(sz_ret);
-        }
-        return;
+        return copy_default_name();
     }
 
-    let key_name = match pref_name_string(key) {
-        Some(name) => name,
-        None => {
-            unsafe {
-                copy_default_name(sz_ret);
-            }
-            return;
-        }
+    let Some(key_name) = pref_name_string(key) else {
+        return copy_default_name();
     };
 
     match handle.RegQueryValueEx(Some(&key_name)) {
-        Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => unsafe {
-            copy_str_to_wide(&value, sz_ret, CCH_NAME_MAX);
-        },
-        _ => unsafe { copy_default_name(sz_ret) },
+        Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => value,
+        _ => copy_default_name(),
     }
 }
 
@@ -242,9 +232,9 @@ pub unsafe fn ReadPreferences() {
         prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
         prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
 
-        ReadSz(&key_guard, PrefKey::Name1, prefs.szBegin.as_mut_ptr());
-        ReadSz(&key_guard, PrefKey::Name2, prefs.szInter.as_mut_ptr());
-        ReadSz(&key_guard, PrefKey::Name3, prefs.szExpert.as_mut_ptr());
+        prefs.szBegin = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name1));
+        prefs.szInter = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name2));
+        prefs.szExpert = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name3));
     }
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
@@ -291,10 +281,10 @@ pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
         WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
         WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
         WriteInt(&key_guard, PrefKey::Mines, prefs.Mines)?;
-        WriteInt(&key_guard, PrefKey::Mark, bool_to_i32(prefs.fMark))?;
+        WriteInt(&key_guard, PrefKey::Mark, prefs.fMark as i32)?;
         WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
-        WriteInt(&key_guard, PrefKey::Color, bool_to_i32(prefs.fColor))?;
+        WriteInt(&key_guard, PrefKey::Color, prefs.fColor as i32)?;
         WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as i32)?;
         WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow)?;
         WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow)?;
@@ -374,24 +364,20 @@ fn pref_name_string(key: PrefKey) -> Option<String> {
     pref_key_literal(key).map(|s| s.to_string())
 }
 
-fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
-    value.max(min).min(max)
-}
-
-fn bool_to_i32(flag: bool) -> i32 {
-    if flag { 1 } else { 0 }
-}
-
-unsafe fn copy_str_to_wide(src: &str, dst: *mut u16, capacity: usize) {
-    if dst.is_null() || capacity == 0 {
-        return;
-    }
-
-    let mut buffer: Vec<u16> = src.encode_utf16().collect();
-    buffer.push(0);
-    unsafe {
-        copy_wide_with_capacity(buffer.as_ptr(), dst, capacity);
-    }
+/// Convert a Rust string slice into a fixed-size UTF-16 array suitable for registry storage
+/// # Arguments
+/// * `src` - Source string slice to convert
+/// # Returns
+/// Fixed-size UTF-16 array with null termination
+fn string_to_fixed_wide(src: &str) -> [u16; CCH_NAME_MAX] {
+    // Create a zero-filled fixed-size UTF-16 array
+    let mut out = [0u16; CCH_NAME_MAX];
+    // Encode the string into UTF-16 and copy up to CCH_NAME_MAX - 1 characters to the array (reserving space for null terminator)
+    src.encode_utf16()
+        .take(CCH_NAME_MAX - 1)
+        .enumerate()
+        .for_each(|(i, ch)| out[i] = ch);
+    out
 }
 
 unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
@@ -402,24 +388,6 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
     let len = unsafe { wide_len(ptr) };
     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
     Some(String::from_utf16_lossy(slice))
-}
-
-unsafe fn copy_wide_with_capacity(src: *const u16, dst: *mut u16, capacity: usize) {
-    if src.is_null() || dst.is_null() || capacity == 0 {
-        return;
-    }
-
-    unsafe {
-        let src_slice = core::slice::from_raw_parts(src, capacity);
-        let dst_slice = core::slice::from_raw_parts_mut(dst, capacity);
-        for (i, ch) in src_slice.iter().copied().enumerate() {
-            dst_slice[i] = ch;
-            if ch == 0 {
-                return;
-            }
-        }
-        dst_slice[capacity.saturating_sub(1)] = 0;
-    }
 }
 
 unsafe fn wide_len(mut ptr: *const u16) -> usize {
@@ -436,21 +404,19 @@ unsafe fn wide_len(mut ptr: *const u16) -> usize {
     len
 }
 
-unsafe fn copy_default_name(dst: *mut u16) {
-    if dst.is_null() {
-        return;
-    }
-
+/// Copy the default name from the global state into a Rust String.
+/// These defaults are used when registry reads fail.
+/// # Returns
+/// The default name as a Rust String
+fn copy_default_name() -> String {
     let state = global_state();
     let guard = match state.sz_default_name.lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let src = guard.as_ptr();
-    unsafe {
-        copy_wide_with_capacity(src, dst, CCH_NAME_MAX);
-    }
+    // Collect the default name from the global buffer into a Rust String
+    String::from_utf16_lossy(guard.as_ref())
 }
 
 fn menu_mode_from_raw(value: i32) -> MenuMode {
