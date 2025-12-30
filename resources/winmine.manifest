@@ -13,4 +13,17 @@
             processorArchitecture="*"/>
     </dependentAssembly>
 </dependency>
+
+<!--
+    DPI awareness
+
+    - "dpiAwareness" (2016 schema) enables Per-Monitor V2 where supported.
+    - "dpiAware" (2005 schema) provides compatibility with older systems.
+-->
+<application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+        <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+        <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+    </windowsSettings>
+</application>
 </assembly>

@@ -13,7 +13,7 @@ use winsafe::{
     prelude::*,
 };
 
-use crate::globals::{CXBORDER, WINDOW_HEIGHT, WINDOW_WIDTH, global_state};
+use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH, global_state};
 use crate::rtns::{
     BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
     ClearField, SECS_ELAPSED, board_mutex, preferences_mutex,
@@ -21,35 +21,49 @@ use crate::rtns::{
 use crate::sound::EndTunes;
 
 /// Width of a single board cell sprite in pixels.
-pub const DX_BLK: i32 = 16;
+pub const DX_BLK_96: i32 = 16;
 /// Height of a single board cell sprite in pixels.
-pub const DY_BLK: i32 = 16;
+pub const DY_BLK_96: i32 = 16;
 /// Width of an LED digit in pixels.
-pub const DX_LED: i32 = 13;
+pub const DX_LED_96: i32 = 13;
 /// Height of an LED digit in pixels.
-pub const DY_LED: i32 = 23;
+pub const DY_LED_96: i32 = 23;
 /// Width of the face button sprite in pixels.
-pub const DX_BUTTON: i32 = 24;
+pub const DX_BUTTON_96: i32 = 24;
 /// Height of the face button sprite in pixels.
-pub const DY_BUTTON: i32 = 24;
+pub const DY_BUTTON_96: i32 = 24;
 /// Left margin between the window frame and the board.
-pub const DX_LEFT_SPACE: i32 = 12;
+pub const DX_LEFT_SPACE_96: i32 = 12;
 /// Right margin between the window frame and the board.
-pub const DX_RIGHT_SPACE: i32 = 12;
+pub const DX_RIGHT_SPACE_96: i32 = 12;
 /// Top margin above the LED row.
-pub const DY_TOP_SPACE: i32 = 12;
+pub const DY_TOP_SPACE_96: i32 = 12;
 /// Bottom margin below the grid.
-pub const DY_BOTTOM_SPACE: i32 = 12;
-/// Horizontal offset to the first cell, accounting for the left margin.
-pub const DX_GRID_OFF: i32 = DX_LEFT_SPACE;
+pub const DY_BOTTOM_SPACE_96: i32 = 12;
+// Note: Adding the offsets cause the DPI scaling to have minor rounding errors at specific DPIs.
+// However, all common DPIs (100%, 125%, 150%, 175%, 200%) produce correct results.
 /// Vertical offset to the LED row.
-pub const DY_TOP_LED: i32 = DY_TOP_SPACE + 4;
+pub const DY_TOP_LED_96: i32 = DY_TOP_SPACE_96 + 4;
 /// Vertical offset to the top of the grid.
-pub const DY_GRID_OFF: i32 = DY_TOP_LED + DY_LED + 16;
+pub const DY_GRID_OFF_96: i32 = DY_TOP_LED_96 + DY_LED_96 + 16;
 /// X coordinate of the left edge of the bomb counter.
-pub const DX_LEFT_BOMB: i32 = DX_LEFT_SPACE + 5;
+pub const DX_LEFT_BOMB_96: i32 = DX_LEFT_SPACE_96 + 5;
 /// X coordinate offset from the right edge for the timer counter.
-pub const DX_RIGHT_TIME: i32 = DX_RIGHT_SPACE + 5;
+pub const DX_RIGHT_TIME_96: i32 = DX_RIGHT_SPACE_96 + 5;
+
+// Classic WinMine assets and layout were authored for 96 DPI.
+//
+// The *resource bitmaps* remain in these fixed pixel sizes, but all *UI layout*
+// must be scaled according to the current DPI.
+
+/// Scale a 96-DPI measurement to the current UI DPI
+/// # Arguments
+/// * `value_96` - The measurement in pixels at 96 DPI.
+/// # Returns
+/// The measurement scaled to the current UI DPI.
+pub fn scale_dpi(value_96: i32) -> i32 {
+    w::MulDiv(value_96, UI_DPI.load(Relaxed) as i32, BASE_DPI as i32)
+}
 
 /// Number of cell sprites packed into the block bitmap sheet.
 pub const I_BLK_MAX: usize = 16;
@@ -110,6 +124,14 @@ struct GrafixState {
     mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
     /// Cached compatible bitmaps for each block sprite
     mem_blk_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; I_BLK_MAX],
+    /// Cached compatible DCs for each LED digit
+    mem_led_dc: [Option<DeleteDCGuard>; I_LED_MAX],
+    /// Cached compatible bitmaps for each LED digit
+    mem_led_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; I_LED_MAX],
+    /// Cached compatible DCs for each face button sprite
+    mem_button_dc: [Option<DeleteDCGuard>; BUTTON_SPRITE_COUNT],
+    /// Cached compatible bitmaps for each face button sprite
+    mem_button_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; BUTTON_SPRITE_COUNT],
 }
 
 unsafe impl Send for GrafixState {}
@@ -130,6 +152,10 @@ impl Default for GrafixState {
             h_gray_pen: w::HPEN::NULL,
             mem_blk_dc: [const { None }; I_BLK_MAX],
             mem_blk_bitmap: [const { None }; I_BLK_MAX],
+            mem_led_dc: [const { None }; I_LED_MAX],
+            mem_led_bitmap: [const { None }; I_LED_MAX],
+            mem_button_dc: [const { None }; BUTTON_SPRITE_COUNT],
+            mem_button_bitmap: [const { None }; BUTTON_SPRITE_COUNT],
         }
     }
 }
@@ -202,6 +228,24 @@ pub fn FreeBitmaps() {
             let _ = state.mem_blk_bitmap[i].take();
         }
     }
+
+    for i in 0..I_LED_MAX {
+        if state.mem_led_dc[i].is_some() {
+            let _ = state.mem_led_dc[i].take();
+        }
+        if state.mem_led_bitmap[i].is_some() {
+            let _ = state.mem_led_bitmap[i].take();
+        }
+    }
+
+    for i in 0..BUTTON_SPRITE_COUNT {
+        if state.mem_button_dc[i].is_some() {
+            let _ = state.mem_button_dc[i].take();
+        }
+        if state.mem_button_bitmap[i].is_some() {
+            let _ = state.mem_button_bitmap[i].take();
+        }
+    }
 }
 
 /// Clean up graphics resources and silence audio on exit.
@@ -220,12 +264,15 @@ pub fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
         return;
     };
 
+    let dst_w = scale_dpi(DX_BLK_96);
+    let dst_h = scale_dpi(DY_BLK_96);
+    let dst_x = (x * dst_w) + (scale_dpi(DX_LEFT_SPACE_96) - dst_w);
+    let dst_y = (y * dst_h) + (scale_dpi(DY_GRID_OFF_96) - dst_h);
+
+    // Blocks are cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let _ = hdc.BitBlt(
-        w::POINT::with(
-            (x << 4) + (DX_GRID_OFF - DX_BLK),
-            (y << 4) + (DY_GRID_OFF - DY_BLK),
-        ),
-        w::SIZE::with(DX_BLK, DY_BLK),
+        w::POINT::with(dst_x, dst_y),
+        w::SIZE::with(dst_w, dst_h),
         src,
         w::POINT::new(),
         ROP::SRCCOPY,
@@ -249,22 +296,25 @@ pub fn DrawGrid(hdc: &w::HDC) {
     };
     let y_max = BOARD_HEIGHT.load(Relaxed);
     let x_max = BOARD_WIDTH.load(Relaxed);
-    let mut dy = DY_GRID_OFF;
+    let dst_w = scale_dpi(DX_BLK_96);
+    let dst_h = scale_dpi(DY_BLK_96);
+
+    let mut dy = scale_dpi(DY_GRID_OFF_96);
     for y in 1..=y_max {
-        let mut dx = DX_GRID_OFF;
+        let mut dx = scale_dpi(DX_LEFT_SPACE_96);
         for x in 1..=x_max {
             if let Some(src) = block_dc(&state, x, y) {
                 let _ = hdc.BitBlt(
                     w::POINT::with(dx, dy),
-                    w::SIZE::with(DX_BLK, DY_BLK),
+                    w::SIZE::with(dst_w, dst_h),
                     src,
                     w::POINT::new(),
                     ROP::SRCCOPY,
                 );
             }
-            dx += DX_BLK;
+            dx += dst_w;
         }
-        dy += DY_BLK;
+        dy += dst_h;
     }
 }
 
@@ -277,31 +327,28 @@ pub fn DisplayGrid() {
 }
 
 pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
-    // LED digits stay as packed DIBs, so we blast them straight from the resource.
+    // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    unsafe {
-        SetDIBitsToDevice(
-            hdc.ptr(),
-            x,
-            DY_TOP_LED,
-            DX_LED as u32,
-            DY_LED as u32,
-            0,
-            0,
-            0,
-            DY_LED as u32,
-            // Get the pointer to the LED digit bits using the precalculated offset
-            state
-                .lp_dib_led
-                .byte_add(state.rg_dib_led_off[i_led as usize] as usize)
-                .cast(),
-            state.lp_dib_led as *const _,
-            DIB::RGB_COLORS.raw(),
-        );
+    let idx = i_led as usize;
+    if idx >= I_LED_MAX {
+        return;
     }
+    let Some(src) = state.mem_led_dc[idx].as_ref() else {
+        return;
+    };
+
+    let _ = hdc.SetStretchBltMode(w::co::STRETCH_MODE::COLORONCOLOR);
+    let _ = hdc.StretchBlt(
+        w::POINT::with(x, scale_dpi(DY_TOP_LED_96)),
+        w::SIZE::with(scale_dpi(DX_LED_96), scale_dpi(DY_LED_96)),
+        src,
+        w::POINT::new(),
+        w::SIZE::with(DX_LED_96, DY_LED_96),
+        ROP::SRCCOPY,
+    );
 }
 
 pub fn DrawBombCount(hdc: &w::HDC) {
@@ -323,9 +370,11 @@ pub fn DrawBombCount(hdc: &w::HDC) {
     };
 
     // Draw each of the three digits in sequence.
-    DrawLed(hdc, DX_LEFT_BOMB, i_led);
-    DrawLed(hdc, DX_LEFT_BOMB + DX_LED, c_bombs / 10);
-    DrawLed(hdc, DX_LEFT_BOMB + DX_LED * 2, c_bombs % 10);
+    let x0 = scale_dpi(DX_LEFT_BOMB_96);
+    let dx = scale_dpi(DX_LED_96);
+    DrawLed(hdc, x0, i_led);
+    DrawLed(hdc, x0 + dx, c_bombs / 10);
+    DrawLed(hdc, x0 + dx * 2, c_bombs % 10);
 
     // Restore the original layout if it was mirrored
     if mirrored {
@@ -356,20 +405,21 @@ pub fn DrawTime(hdc: &w::HDC) {
     let mut time = SECS_ELAPSED.load(Relaxed);
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let border = CXBORDER.load(Relaxed);
+    let dx_led = scale_dpi(DX_LED_96);
     DrawLed(
         hdc,
-        dx_window - (DX_RIGHT_TIME + 3 * DX_LED + border),
+        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border),
         time / 100,
     );
     time %= 100;
     DrawLed(
         hdc,
-        dx_window - (DX_RIGHT_TIME + 2 * DX_LED + border),
+        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led + border),
         time / 10,
     );
     DrawLed(
         hdc,
-        dx_window - (DX_RIGHT_TIME + DX_LED + border),
+        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + dx_led + border),
         time % 10,
     );
 
@@ -389,33 +439,170 @@ pub fn DisplayTime() {
 }
 
 pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
-    // Center the face button and pull the requested state from the button sheet.
+    // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
-    let x = (dx_window - DX_BUTTON) >> 1;
+    let dst_w = scale_dpi(DX_BUTTON_96);
+    let dst_h = scale_dpi(DY_BUTTON_96);
+    let x = (dx_window - dst_w) / 2;
+
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    unsafe {
-        SetDIBitsToDevice(
-            hdc.ptr(),
-            x,
-            DY_TOP_LED,
-            DX_BUTTON as u32,
-            DY_BUTTON as u32,
-            0,
-            0,
-            0,
-            DY_BUTTON as u32,
-            // Get the pointer to the button sprite bits using the precalculated offset
-            state
-                .lp_dib_button
-                .byte_add(state.rg_dib_button_off[sprite as usize] as usize)
-                .cast(),
-            state.lp_dib_button as *const _,
-            DIB::RGB_COLORS.raw(),
-        );
+    let idx = sprite as usize;
+    if idx >= BUTTON_SPRITE_COUNT {
+        return;
     }
+
+    let Some(src) = state.mem_button_dc[idx].as_ref() else {
+        return;
+    };
+
+    let _ = hdc.BitBlt(
+        w::POINT::with(x, scale_dpi(DY_TOP_LED_96)),
+        w::SIZE::with(dst_w, dst_h),
+        src,
+        w::POINT::new(),
+        ROP::SRCCOPY,
+    );
+}
+
+/// Create a resampled bitmap using area averaging to avoid aliasing artifacts when using fractional scaling.
+/// This function reads the source bitmap bits, performs area averaging, and creates a new bitmap with the resampled data.
+/// # Arguments
+/// * `hdc` - The device context used for bitmap operations.
+/// * `src_bmp` - The source bitmap to be resampled.
+/// * `src_w` - The width of the source bitmap in pixels.
+/// * `src_h` - The height of the source bitmap in pixels.
+/// * `dst_w` - The desired width of the destination bitmap in pixels.
+/// * `dst_h` - The desired height of the destination bitmap in pixels.
+/// # Returns
+/// A `SysResult` containing a guard for the newly created resampled bitmap.
+pub fn create_resampled_bitmap(
+    hdc: &w::HDC,
+    src_bmp: &w::HBITMAP,
+    src_w: i32,
+    src_h: i32,
+    dst_w: i32,
+    dst_h: i32,
+) -> w::SysResult<w::guard::DeleteObjectGuard<w::HBITMAP>> {
+    // 1. Prepare BITMAPINFO
+    let mut bmi_header = w::BITMAPINFOHEADER::default();
+    bmi_header.biWidth = src_w;
+    bmi_header.biHeight = -src_h;
+    bmi_header.biPlanes = 1;
+    bmi_header.biBitCount = 32;
+    bmi_header.biCompression = w::co::BI::RGB;
+    let mut bmi = w::BITMAPINFO {
+        bmiHeader: bmi_header,
+        bmiColors: [w::RGBQUAD::default(); 1],
+    };
+
+    // 2. Read Source Bits
+    let mut src_buf = vec![0u8; (src_w * src_h * 4) as usize];
+    unsafe {
+        hdc.GetDIBits(
+            src_bmp,
+            0,
+            src_h as u32,
+            Some(&mut src_buf),
+            &mut bmi,
+            w::co::DIB::RGB_COLORS,
+        )
+    }?;
+
+    // 3. Prepare Destination
+    let mut dst_buf = vec![0u8; (dst_w * dst_h * 4) as usize];
+
+    // Scaling factors (Destination / Source) -> How many dst pixels per src pixel?
+    // Actually, we usually want (Source / Destination) -> How much source does one dst pixel cover?
+    let scale_x = dst_w as f32 / src_w as f32;
+    let scale_y = dst_h as f32 / src_h as f32;
+
+    // Helper to read source pixel safely
+    let get_src = |cx: i32, cy: i32| -> (f32, f32, f32) {
+        if cx < 0 || cx >= src_w || cy < 0 || cy >= src_h {
+            return (0.0, 0.0, 0.0);
+        }
+        let idx = ((cy * src_w + cx) * 4) as usize;
+        (
+            src_buf[idx + 2] as f32, // R
+            src_buf[idx + 1] as f32, // G
+            src_buf[idx] as f32,     // B
+        )
+    };
+
+    // 4. Area Averaging Loop
+    for y in 0..dst_h {
+        // Calculate the range of source pixels this destination pixel covers
+        let v_min = y as f32 / scale_y;
+        let v_max = (y + 1) as f32 / scale_y;
+
+        for x in 0..dst_w {
+            let u_min = x as f32 / scale_x;
+            let u_max = (x + 1) as f32 / scale_x;
+
+            let mut r_acc = 0.0;
+            let mut g_acc = 0.0;
+            let mut b_acc = 0.0;
+            let mut weight_acc = 0.0;
+
+            // Loop over the source pixels covered by this destination pixel
+            // We use .floor() and .ceil() to hit every integer grid cell involved
+            let start_y = v_min.floor() as i32;
+            let end_y = v_max.ceil() as i32;
+            let start_x = u_min.floor() as i32;
+            let end_x = u_max.ceil() as i32;
+
+            for iy in start_y..end_y {
+                for ix in start_x..end_x {
+                    // Calculate weighting (area of overlap)
+                    // The overlap is the intersection of [iy, iy+1] and [v_min, v_max]
+                    let dy = (iy as f32 + 1.0).min(v_max) - (iy as f32).max(v_min);
+                    let dx = (ix as f32 + 1.0).min(u_max) - (ix as f32).max(u_min);
+
+                    let weight = dx * dy;
+
+                    if weight > 0.0 {
+                        let (r, g, b) = get_src(ix, iy);
+                        r_acc += r * weight;
+                        g_acc += g * weight;
+                        b_acc += b * weight;
+                        weight_acc += weight;
+                    }
+                }
+            }
+
+            // Normalize
+            if weight_acc > 0.0 {
+                r_acc /= weight_acc;
+                g_acc /= weight_acc;
+                b_acc /= weight_acc;
+            }
+
+            let dst_idx = ((y * dst_w + x) * 4) as usize;
+            dst_buf[dst_idx] = b_acc as u8; // B
+            dst_buf[dst_idx + 1] = g_acc as u8; // G
+            dst_buf[dst_idx + 2] = r_acc as u8; // R
+            dst_buf[dst_idx + 3] = 0; // Alpha
+        }
+    }
+
+    // 5. Create and Set Bitmap
+    let dst_bmp = hdc.CreateCompatibleBitmap(dst_w, dst_h)?;
+    bmi.bmiHeader.biWidth = dst_w;
+    bmi.bmiHeader.biHeight = -dst_h;
+
+    hdc.SetDIBits(
+        &dst_bmp,
+        0,
+        dst_h as u32,
+        &dst_buf,
+        &bmi,
+        w::co::DIB::RGB_COLORS,
+    )?;
+
+    Ok(dst_bmp)
 }
 
 pub fn DisplayButton(sprite: ButtonSprite) {
@@ -494,36 +681,69 @@ pub fn DrawBackground(hdc: &w::HDC) {
     let border = CXBORDER.load(Relaxed);
     let mut x = dx_window - 1;
     let mut y = dy_window - 1;
-    DrawBorder(hdc, 0, 0, x, y, 3, 1);
+    let b3 = scale_dpi(3);
+    let b2 = scale_dpi(2);
+    let b1 = scale_dpi(1);
+    DrawBorder(hdc, 0, 0, x, y, b3, 1);
 
-    x -= DX_RIGHT_SPACE - 3;
-    y -= DY_BOTTOM_SPACE - 3;
-    DrawBorder(hdc, DX_GRID_OFF - 3, DY_GRID_OFF - 3, x, y, 3, 0);
+    x -= scale_dpi(DX_RIGHT_SPACE_96) - b3;
+    y -= scale_dpi(DY_BOTTOM_SPACE_96) - b3;
     DrawBorder(
         hdc,
-        DX_GRID_OFF - 3,
-        DY_TOP_SPACE - 3,
+        scale_dpi(DX_LEFT_SPACE_96) - b3,
+        scale_dpi(DY_GRID_OFF_96) - b3,
         x,
-        DY_TOP_LED + DY_LED + (DY_BOTTOM_SPACE - 6),
-        2,
+        y,
+        b3,
+        0,
+    );
+    DrawBorder(
+        hdc,
+        scale_dpi(DX_LEFT_SPACE_96) - b3,
+        scale_dpi(DY_TOP_SPACE_96) - b3,
+        x,
+        scale_dpi(DY_TOP_LED_96)
+            + scale_dpi(DY_LED_96)
+            + (scale_dpi(DY_BOTTOM_SPACE_96) - scale_dpi(6)),
+        b2,
         0,
     );
 
-    x = DX_LEFT_BOMB + DX_LED * 3;
-    y = DY_TOP_LED + DY_LED;
-    DrawBorder(hdc, DX_LEFT_BOMB - 1, DY_TOP_LED - 1, x, y, 1, 0);
+    let x_left_bomb = scale_dpi(DX_LEFT_BOMB_96);
+    let dx_led = scale_dpi(DX_LED_96);
+    x = x_left_bomb + dx_led * 3;
+    y = scale_dpi(DY_TOP_LED_96) + scale_dpi(DY_LED_96);
+    DrawBorder(
+        hdc,
+        x_left_bomb - b1,
+        scale_dpi(DY_TOP_LED_96) - b1,
+        x,
+        y,
+        b1,
+        0,
+    );
 
-    x = dx_window - (DX_RIGHT_TIME + 3 * DX_LED + border + 1);
-    DrawBorder(hdc, x, DY_TOP_LED - 1, x + (DX_LED * 3 + 1), y, 1, 0);
-
-    x = ((dx_window - DX_BUTTON) >> 1) - 1;
+    x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border + b1);
     DrawBorder(
         hdc,
         x,
-        DY_TOP_LED - 1,
-        x + DX_BUTTON + 1,
-        DY_TOP_LED + DY_BUTTON,
-        1,
+        scale_dpi(DY_TOP_LED_96) - b1,
+        x + (dx_led * 3 + b1),
+        y,
+        b1,
+        0,
+    );
+
+    let dx_button = scale_dpi(DX_BUTTON_96);
+    let dy_button = scale_dpi(DY_BUTTON_96);
+    x = ((dx_window - dx_button) / 2) - b1;
+    DrawBorder(
+        hdc,
+        x,
+        scale_dpi(DY_TOP_LED_96) - b1,
+        x + dx_button + b1,
+        scale_dpi(DY_TOP_LED_96) + dy_button,
+        b1,
         2,
     );
 }
@@ -595,17 +815,17 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
 
     let header = dib_header_size(color_on);
 
-    let cb_blk = cb_bitmap(color_on, DX_BLK, DY_BLK);
+    let cb_blk = cb_bitmap(color_on, DX_BLK_96, DY_BLK_96);
     for (i, off) in state.rg_dib_off.iter_mut().enumerate() {
         *off = header + i * cb_blk;
     }
 
-    let cb_led = cb_bitmap(color_on, DX_LED, DY_LED);
+    let cb_led = cb_bitmap(color_on, DX_LED_96, DY_LED_96);
     for (i, off) in state.rg_dib_led_off.iter_mut().enumerate() {
         *off = header + i * cb_led;
     }
 
-    let cb_button = cb_bitmap(color_on, DX_BUTTON, DY_BUTTON);
+    let cb_button = cb_bitmap(color_on, DX_BUTTON_96, DY_BUTTON_96);
     for (i, off) in state.rg_dib_button_off.iter_mut().enumerate() {
         *off = header + i * cb_button;
     }
@@ -621,8 +841,88 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
+    //
+    // For fractional DPI scaling, simple StretchBlt produced unpleasant artifacts.
+    // We therefore create the classic 96-DPI bitmap first, then resample it using
+    // `create_resampled_bitmap` into a cached, DPI-sized bitmap.
+    let dst_blk_w = scale_dpi(DX_BLK_96);
+    let dst_blk_h = scale_dpi(DY_BLK_96);
     for i in 0..I_BLK_MAX {
-        state.mem_blk_dc[i] = match hdc.CreateCompatibleDC() {
+        let dc_guard = match hdc.CreateCompatibleDC() {
+            Ok(dc_guard) => dc_guard,
+            Err(_) => {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
+                    w::OutputDebugString(msg);
+                }
+                state.mem_blk_dc[i] = None;
+                state.mem_blk_bitmap[i] = None;
+                continue;
+            }
+        };
+
+        let base_bmp = match hdc.CreateCompatibleBitmap(DX_BLK_96, DY_BLK_96) {
+            Ok(bmp_guard) => bmp_guard,
+            Err(_) => {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
+                    w::OutputDebugString(msg);
+                }
+                state.mem_blk_dc[i] = None;
+                state.mem_blk_bitmap[i] = None;
+                continue;
+            }
+        };
+
+        // Paint the sprite into the 96-DPI bitmap.
+        {
+            let bmp_h = unsafe { w::HBITMAP::from_ptr(base_bmp.ptr()) };
+            if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+                let _ = sel_guard.leak();
+            }
+            unsafe {
+                SetDIBitsToDevice(
+                    dc_guard.ptr(),
+                    0,
+                    0,
+                    DX_BLK_96 as u32,
+                    DY_BLK_96 as u32,
+                    0,
+                    0,
+                    0,
+                    DY_BLK_96 as u32,
+                    state
+                        .lp_dib_blks
+                        .byte_add(state.rg_dib_off[i] as usize)
+                        .cast(),
+                    state.lp_dib_blks as *const _,
+                    DIB::RGB_COLORS.raw(),
+                );
+            }
+        }
+
+        let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
+            match create_resampled_bitmap(
+                &hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h,
+            ) {
+                Ok(resampled) => resampled,
+                Err(_) => base_bmp,
+            }
+        } else {
+            base_bmp
+        };
+
+        // Ensure the DC holds the final bitmap.
+        let bmp_h = unsafe { w::HBITMAP::from_ptr(final_bmp.ptr()) };
+        if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+            let _ = sel_guard.leak();
+        }
+
+        state.mem_blk_dc[i] = Some(dc_guard);
+        state.mem_blk_bitmap[i] = Some(final_bmp);
+    }
+
+    // Cache LED digits in compatible bitmaps.
+    for i in 0..I_LED_MAX {
+        state.mem_led_dc[i] = match hdc.CreateCompatibleDC() {
             Ok(dc_guard) => Some(dc_guard),
             Err(_) => {
                 if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
@@ -632,7 +932,7 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        state.mem_blk_bitmap[i] = match hdc.CreateCompatibleBitmap(DX_BLK, DX_BLK) {
+        state.mem_led_bitmap[i] = match hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96) {
             Ok(bmp_guard) => Some(bmp_guard),
             Err(_) => {
                 if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
@@ -642,11 +942,10 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
             }
         };
 
-        if state.mem_blk_dc[i].is_some()
-            && state.mem_blk_bitmap[i].is_some()
-            && state.mem_blk_dc[i].is_some()
-            && let Some(dc_guard) = state.mem_blk_dc[i].as_ref()
-            && let Some(bmp_guard) = state.mem_blk_bitmap[i].as_ref()
+        if state.mem_led_dc[i].is_some()
+            && state.mem_led_bitmap[i].is_some()
+            && let Some(dc_guard) = state.mem_led_dc[i].as_ref()
+            && let Some(bmp_guard) = state.mem_led_bitmap[i].as_ref()
         {
             let bmp_h = unsafe { w::HBITMAP::from_ptr(bmp_guard.ptr()) };
             if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
@@ -657,22 +956,104 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
                     dc_guard.ptr(),
                     0,
                     0,
-                    DX_BLK as u32,
-                    DY_BLK as u32,
+                    DX_LED_96 as u32,
+                    DY_LED_96 as u32,
                     0,
                     0,
                     0,
-                    DY_BLK as u32,
-                    // Get the pointer to the block sprite bits using the precalculated offset
+                    DY_LED_96 as u32,
                     state
-                        .lp_dib_blks
-                        .byte_add(state.rg_dib_off[i] as usize)
+                        .lp_dib_led
+                        .byte_add(state.rg_dib_led_off[i] as usize)
                         .cast(),
-                    state.lp_dib_blks as *const _,
+                    state.lp_dib_led as *const _,
                     DIB::RGB_COLORS.raw(),
                 );
             }
         }
+    }
+
+    // Cache face button sprites in compatible bitmaps.
+    //
+    // Like the blocks, the face button looks best when we resample once and cache.
+    let dst_btn_w = scale_dpi(DX_BUTTON_96);
+    let dst_btn_h = scale_dpi(DY_BUTTON_96);
+    for i in 0..BUTTON_SPRITE_COUNT {
+        let dc_guard = match hdc.CreateCompatibleDC() {
+            Ok(dc_guard) => dc_guard,
+            Err(_) => {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
+                    w::OutputDebugString(msg);
+                }
+                state.mem_button_dc[i] = None;
+                state.mem_button_bitmap[i] = None;
+                continue;
+            }
+        };
+
+        let base_bmp = match hdc.CreateCompatibleBitmap(DX_BUTTON_96, DY_BUTTON_96) {
+            Ok(bmp_guard) => bmp_guard,
+            Err(_) => {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
+                    w::OutputDebugString(msg);
+                }
+                state.mem_button_dc[i] = None;
+                state.mem_button_bitmap[i] = None;
+                continue;
+            }
+        };
+
+        // Paint the sprite into the 96-DPI bitmap.
+        {
+            let bmp_h = unsafe { w::HBITMAP::from_ptr(base_bmp.ptr()) };
+            if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+                let _ = sel_guard.leak();
+            }
+            unsafe {
+                SetDIBitsToDevice(
+                    dc_guard.ptr(),
+                    0,
+                    0,
+                    DX_BUTTON_96 as u32,
+                    DY_BUTTON_96 as u32,
+                    0,
+                    0,
+                    0,
+                    DY_BUTTON_96 as u32,
+                    state
+                        .lp_dib_button
+                        .byte_add(state.rg_dib_button_off[i] as usize)
+                        .cast(),
+                    state.lp_dib_button as *const _,
+                    DIB::RGB_COLORS.raw(),
+                );
+            }
+        }
+
+        let final_bmp = if dst_btn_w != DX_BUTTON_96 || dst_btn_h != DY_BUTTON_96 {
+            match create_resampled_bitmap(
+                &hdc,
+                &base_bmp,
+                DX_BUTTON_96,
+                DY_BUTTON_96,
+                dst_btn_w,
+                dst_btn_h,
+            ) {
+                Ok(resampled) => resampled,
+                Err(_) => base_bmp,
+            }
+        } else {
+            base_bmp
+        };
+
+        // Ensure the DC holds the final bitmap.
+        let bmp_h = unsafe { w::HBITMAP::from_ptr(final_bmp.ptr()) };
+        if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+            let _ = sel_guard.leak();
+        }
+
+        state.mem_button_dc[i] = Some(dc_guard);
+        state.mem_button_bitmap[i] = Some(final_bmp);
     }
 
     Ok(())

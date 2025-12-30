@@ -1,11 +1,44 @@
-use core::sync::atomic::{AtomicBool, AtomicI32};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use winsafe::guard::{DestroyIconGuard, DestroyMenuGuard};
 use winsafe::prelude::Handle;
-use winsafe::{HINSTANCE, HWND};
+use winsafe::{self as w, HINSTANCE, HWND};
 
 use crate::pref::CCH_NAME_MAX;
+
+/// Base DPI used by Win32 when coordinates are expressed in 1:1 pixels.
+pub const BASE_DPI: u32 = 96;
+
+/// Current DPI used for UI scaling.
+///
+/// This is kept in sync with the main window DPI (via `HWND::GetDpiForWindow` and
+/// `WM_DPICHANGED`). All UI measurements that represent "logical" sizes from the
+/// classic WinMine assets are scaled from 96 DPI to this value.
+pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
+
+/// Update cached system metrics which vary with DPI.
+///
+/// These values are consumed during window sizing in order to keep the non-client
+/// area calculations stable under Per-Monitor DPI.
+/// # Arguments
+/// * `dpi`: The new DPI to use. If zero, `BASE_DPI` is used
+pub fn update_ui_metrics_for_dpi(dpi: u32) {
+    let dpi = if dpi == 0 { BASE_DPI } else { dpi };
+
+    let caption = w::GetSystemMetricsForDpi(w::co::SM::CYCAPTION, dpi)
+        .unwrap_or_else(|_| w::GetSystemMetrics(w::co::SM::CYCAPTION));
+    let menu = w::GetSystemMetricsForDpi(w::co::SM::CYMENU, dpi)
+        .unwrap_or_else(|_| w::GetSystemMetrics(w::co::SM::CYMENU));
+    let border = w::GetSystemMetricsForDpi(w::co::SM::CXBORDER, dpi)
+        .unwrap_or_else(|_| w::GetSystemMetrics(w::co::SM::CXBORDER));
+
+    // Preserve the historical +1 fudge used throughout the codebase.
+    // TODO: Why is this done?
+    CYCAPTION.store(caption + 1, Ordering::Relaxed);
+    CYMENU.store(menu + 1, Ordering::Relaxed);
+    CXBORDER.store(border + 1, Ordering::Relaxed);
+}
 
 /// Aggregated status flags shared between modules.
 #[repr(i32)]

@@ -13,21 +13,22 @@ use winsafe::co::{self, GWLP, HELPW, ICC, IDC, SM, STOCK_BRUSH, WS, WS_EX};
 use winsafe::msg::WndMsg;
 use winsafe::prelude::Handle;
 use winsafe::{
-    AdjustWindowRectEx, AtomStr, COLORREF, DLGPROC, DispatchMessage, GetMessage, GetSystemMetrics,
-    HACCEL, HBRUSH, HCURSOR, HICON, HINSTANCE, HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdcStr,
-    IdIdiStr, IdMenu, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PostQuitMessage, PtsRc,
-    RECT, RegisterClassEx, SIZE, TranslateMessage, WINDOWPOS, WNDCLASSEX, WString,
+    AdjustWindowRectExForDpi, AtomStr, COLORREF, DLGPROC, DispatchMessage, GetMessage,
+    GetSystemMetrics, HACCEL, HBRUSH, HCURSOR, HICON, HINSTANCE, HMENU, HPEN, HWND,
+    INITCOMMONCONTROLSEX, IdIdcStr, IdIdiStr, IdMenu, IdStr, InitCommonControlsEx, MSG, POINT,
+    PeekMessage, PostQuitMessage, PtsRc, RECT, RegisterClassEx, SIZE, TranslateMessage, WINDOWPOS,
+    WNDCLASSEX, WString,
 };
 
 use crate::globals::{
-    APP_PAUSED, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, GAME_STATUS, IGNORE_NEXT_CLICK,
-    INIT_MINIMIZED, LEFT_CLK_DOWN, StatusFlag, WINDOW_HEIGHT, WINDOW_WIDTH, WND_Y_OFFSET,
-    global_state,
+    APP_PAUSED, BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, GAME_STATUS,
+    IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, StatusFlag, UI_DPI, WINDOW_HEIGHT,
+    WINDOW_WIDTH, WND_Y_OFFSET, global_state, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
-    ButtonSprite, CleanUp, DX_BLK, DX_BUTTON, DX_GRID_OFF, DX_RIGHT_SPACE, DY_BLK, DY_BOTTOM_SPACE,
-    DY_BUTTON, DY_GRID_OFF, DY_TOP_LED, DisplayButton, DisplayScreen, DrawScreen, FInitLocal,
-    FLoadBitmaps, FreeBitmaps,
+    ButtonSprite, CleanUp, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
+    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, DisplayButton, DisplayScreen,
+    DrawScreen, FInitLocal, FLoadBitmaps, FreeBitmaps, scale_dpi,
 };
 use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, ReadPreferences, SoundState,
@@ -291,6 +292,10 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     }
     InitConst();
 
+    // Initialize DPI to 96 (default) before creating the window
+    UI_DPI.store(96, Ordering::Relaxed);
+    update_ui_metrics_for_dpi(UI_DPI.load(Ordering::Relaxed));
+
     INIT_MINIMIZED.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
 
     init_common_controls();
@@ -402,7 +407,15 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
         return 0;
     }
 
-    AdjustWindow(0);
+    // Sync global DPI state to the actual monitor DPI where the window was created.
+    if let Some(hwnd) = hwnd_main.as_opt() {
+        let dpi = hwnd.GetDpiForWindow();
+        UI_DPI.store(if dpi == 0 { BASE_DPI } else { dpi }, Ordering::Relaxed);
+        update_ui_metrics_for_dpi(dpi);
+    }
+
+    // Ensure the client area matches the board size for the active DPI.
+    AdjustWindow(crate::rtns::AdjustFlag::Resize as i32 | crate::rtns::AdjustFlag::Display as i32);
 
     if let Err(e) = FInitLocal() {
         eprintln!("Failed to initialize local resources: {}", e);
@@ -466,11 +479,19 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
 }
 
 fn x_box_from_xpos(x: i32) -> i32 {
-    (x - (DX_GRID_OFF - DX_BLK)) >> 4
+    let cell = scale_dpi(DX_BLK_96);
+    if cell <= 0 {
+        return 0;
+    }
+    (x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell
 }
 
 fn y_box_from_ypos(y: i32) -> i32 {
-    (y - (DY_GRID_OFF - DY_BLK)) >> 4
+    let cell = scale_dpi(DY_BLK_96);
+    if cell <= 0 {
+        return 0;
+    }
+    (y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell
 }
 
 fn status_icon() -> bool {
@@ -976,6 +997,14 @@ fn handle_xyzzys_mouse(w_param: usize, l_param: isize) {
     }
 }
 
+/// Main window procedure handling various Windows messages.
+/// # Arguments
+/// * `h_wnd` - Handle to the window receiving the message.
+/// * `message` - The Windows message identifier.
+/// * `w_param` - Additional message information (WPARAM).
+/// * `l_param` - Additional message information (LPARAM).
+/// # Returns
+/// * `isize` - The result of message processing, varies by message type.
 pub extern "system" fn MainWndProc(
     h_wnd: HWND,
     message: co::WM,
@@ -983,6 +1012,52 @@ pub extern "system" fn MainWndProc(
     l_param: isize,
 ) -> isize {
     match message {
+        co::WM::DPICHANGED => {
+            // wParam: new DPI in LOWORD/HIWORD (X/Y). lParam: suggested new window rect.
+            let new_dpi = loword(w_param as isize);
+            if new_dpi > 0 {
+                let dpi = new_dpi as u32;
+                UI_DPI.store(dpi, Ordering::Relaxed);
+                update_ui_metrics_for_dpi(dpi);
+            }
+
+            let suggested = unsafe { (l_param as *const RECT).as_ref() };
+            if let Some(rc) = suggested {
+                // Persist the suggested top-left so AdjustWindow keeps us on the same monitor.
+                if let Ok(mut prefs) = preferences_mutex().lock() {
+                    prefs.xWindow = rc.left;
+                    prefs.yWindow = rc.top;
+                } else if let Err(poisoned) = preferences_mutex().lock() {
+                    let mut prefs = poisoned.into_inner();
+                    prefs.xWindow = rc.left;
+                    prefs.yWindow = rc.top;
+                }
+
+                let width = max(0, rc.right - rc.left);
+                let height = max(0, rc.bottom - rc.top);
+                let _ = h_wnd.MoveWindow(
+                    POINT {
+                        x: rc.left,
+                        y: rc.top,
+                    },
+                    SIZE {
+                        cx: width,
+                        cy: height,
+                    },
+                    true,
+                );
+            }
+
+            // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt
+            // after a DPI transition.
+            FreeBitmaps();
+            if let Err(e) = FLoadBitmaps() {
+                eprintln!("Failed to reload bitmaps after DPI change: {}", e);
+            }
+
+            AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+            return 0;
+        }
         co::WM::WINDOWPOSCHANGED => handle_window_pos_changed(l_param),
         co::WM::SYSCOMMAND => handle_syscommand(w_param),
         co::WM::COMMAND => {
@@ -1120,14 +1195,17 @@ pub fn FLocalButton(l_param: isize) -> bool {
     msg.pt.y = hiword(l_param);
 
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
+    let dx_button = scale_dpi(DX_BUTTON_96);
+    let dy_button = scale_dpi(DY_BUTTON_96);
+    let dy_top_led = scale_dpi(DY_TOP_LED_96);
     let mut rc = RECT {
-        left: (dx_window - DX_BUTTON) >> 1,
-        top: DY_TOP_LED,
+        left: (dx_window - dx_button) / 2,
+        top: dy_top_led,
         right: 0,
         bottom: 0,
     };
-    rc.right = rc.left + DX_BUTTON;
-    rc.bottom = rc.top + DY_BUTTON;
+    rc.right = rc.left + dx_button;
+    rc.bottom = rc.top + dy_button;
 
     if !winsafe::PtInRect(rc, msg.pt) {
         return false;
@@ -1176,6 +1254,15 @@ pub fn FLocalButton(l_param: isize) -> bool {
     }
 }
 
+/// Dialog procedure for custom game preferences.
+/// Handles initialization, user input, and help support for the dialog.
+/// # Arguments
+/// * `h_dlg` - Handle to the dialog window.
+/// * `message` - The message being processed.
+/// * `w_param` - Additional message information (WPARAM).
+/// * `l_param` - Additional message information (LPARAM).
+/// # Returns
+/// * `isize` - Returns 1 if the message was processed, 0 otherwise
 pub extern "system" fn PrefDlgProc(
     h_dlg: HWND,
     message: co::WM,
@@ -1246,6 +1333,15 @@ pub extern "system" fn PrefDlgProc(
     0
 }
 
+/// Dialog procedure for displaying high scores.
+/// Handles initialization, reset, and help support for the dialog.
+/// # Arguments
+/// * `h_dlg` - Handle to the dialog window.
+/// * `message` - The message being processed.
+/// * `w_param` - Additional message information (WPARAM).
+/// * `l_param` - Additional message information (LPARAM).
+/// # Returns
+/// * `isize` - Returns 1 if the message was processed, 0 otherwise
 pub extern "system" fn BestDlgProc(
     h_dlg: HWND,
     message: co::WM,
@@ -1366,6 +1462,15 @@ pub extern "system" fn BestDlgProc(
     0
 }
 
+/// Dialog procedure for entering a name when achieving a high score.
+/// Handles initialization and command processing for the dialog.
+/// # Arguments
+/// * `h_dlg` - Handle to the dialog window.
+/// * `message` - The message being processed.
+/// * `w_param` - Additional message information (WPARAM).
+/// * `l_param` - Additional message information (LPARAM).
+/// # Returns
+/// * `isize` - Returns 1 if the message was processed, 0 otherwise
 pub extern "system" fn EnterDlgProc(
     h_dlg: HWND,
     message: co::WM,
@@ -1482,8 +1587,10 @@ pub fn AdjustWindow(mut f_adjust: i32) {
 
     let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_boxes = BOARD_HEIGHT.load(Ordering::Relaxed);
-    let dx_window = DX_BLK * x_boxes + DX_GRID_OFF + DX_RIGHT_SPACE;
-    let dy_window = DY_BLK * y_boxes + DY_GRID_OFF + DY_BOTTOM_SPACE;
+    let dx_window =
+        scale_dpi(DX_BLK_96) * x_boxes + scale_dpi(DX_LEFT_SPACE_96) + scale_dpi(DX_RIGHT_SPACE_96);
+    let dy_window =
+        scale_dpi(DY_BLK_96) * y_boxes + scale_dpi(DY_GRID_OFF_96) + scale_dpi(DY_BOTTOM_SPACE_96);
     WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
     WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
 
@@ -1519,14 +1626,13 @@ pub fn AdjustWindow(mut f_adjust: i32) {
     let dw_ex_style = hwnd_main.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
     let mut frame_extra = CXBORDER.load(Ordering::Relaxed);
     let mut dyp_adjust;
-    if let Ok(adjusted) = unsafe {
-        AdjustWindowRectEx(
-            desired,
-            WS::from_raw(dw_style),
-            menu_visible,
-            WS_EX::from_raw(dw_ex_style),
-        )
-    } {
+    if let Ok(adjusted) = AdjustWindowRectExForDpi(
+        desired,
+        unsafe { WS::from_raw(dw_style) },
+        menu_visible,
+        unsafe { WS_EX::from_raw(dw_ex_style) },
+        UI_DPI.load(Ordering::Relaxed),
+    ) {
         let cx_total = adjusted.right - adjusted.left;
         let cy_total = adjusted.bottom - adjusted.top;
         frame_extra = max(0, cx_total - dx_window);
