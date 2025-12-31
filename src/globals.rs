@@ -62,9 +62,6 @@ pub static BLK_BTN_INPUT: AtomicBool = AtomicBool::new(false);
 /// Signals that the next click should be ignored (used after window activation).
 pub static IGNORE_NEXT_CLICK: AtomicBool = AtomicBool::new(false);
 
-/// Indicates that the app is paused because a menu is open.
-pub static APP_PAUSED: AtomicBool = AtomicBool::new(false);
-
 /// Cached system caption height used during window sizing.
 pub static CYCAPTION: AtomicI32 = AtomicI32::new(0);
 
