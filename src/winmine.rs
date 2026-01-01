@@ -93,12 +93,15 @@ pub enum MenuCommand {
 /// Resource identifier for the out-of-memory error.
 const ID_ERR_MEM: u16 = 5;
 
-/// Dialog templates.
+/// Dialog template identifiers.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum DialogTemplateId {
+    /// Custom game preferences dialog
     Pref = 80,
+    /// Best times display dialog
     Enter = 600,
+    /// Confirm reset best times dialog
     Best = 700,
 }
 
@@ -106,25 +109,45 @@ enum DialogTemplateId {
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum ControlId {
+    /// Edit control for board height
     EditHeight = 141,
+    /// Edit control for board width
     EditWidth = 142,
+    /// Edit control for number of mines
     EditMines = 143,
+    /// OK button
     BtnOk = 100,
+    /// Cancel button
     BtnCancel = 109,
+    /// Reset best times button
     BtnReset = 707,
+    /// Static text for best times
     TextBest = 601,
+    /// Edit control for player name
     EditName = 602,
+    /// Beginner best time
     TimeBegin = 701,
+    /// Beginner player name
     NameBegin = 702,
+    /// Intermediate best time
     TimeInter = 703,
+    /// Intermediate player name
     NameInter = 704,
+    /// Expert best time
     TimeExpert = 705,
+    /// Expert player name
     NameExpert = 706,
+    /// Static text 1 for best times
     SText1 = 708,
+    /// Static text 2 for best times
     SText2 = 709,
+    /// Static text 3 for best times
     SText3 = 710,
+    /// Static text for number of mines
     TxtMines = 111,
+    /// Static text for board height
     TxtHeight = 112,
+    /// Static text for board width
     TxtWidth = 113,
 }
 
@@ -132,17 +155,28 @@ enum ControlId {
 #[repr(u32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum HelpContextId {
+    /// Edit control for board height
     PrefEditHeight = 1000,
+    /// Edit control for board width
     PrefEditWidth = 1001,
+    /// Edit control for number of mines
     PrefEditMines = 1002,
+    /// Reset best times button
     BestBtnReset = 1003,
+    /// Static text for best times
     SText = 1004,
 }
+/// Start point of best times message identifiers.
 const ID_MSG_BEGIN: u16 = 9;
 
 /// Mines, height, and width tuples for the preset difficulty levels.
 const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
+/// Returns the preset data for a given game type, or None for custom games.
+/// # Arguments
+/// * `game`: The game type to get preset data for.
+/// # Returns
+/// The preset data as (mines, height, width), or None for a custom game.
 fn preset_data(game: GameType) -> Option<[i32; 3]> {
     match game {
         GameType::Begin => Some(LEVEL_DATA[0]),
@@ -152,8 +186,15 @@ fn preset_data(game: GameType) -> Option<[i32; 3]> {
     }
 }
 
+/// Help file name
 const HELP_FILE: &str = "winmine.chm\0";
 
+/// Help context ID mappings for dialogs
+///
+/// Used by WinHelp to map control IDs to help context IDs.
+/// # Notes
+/// - The arrays are in pairs of (control ID, help context ID).
+/// - The arrays end with two zeros to signal the end of the mapping.
 const PREF_HELP_IDS: [u32; 14] = [
     ControlId::EditHeight as u32,
     HelpContextId::PrefEditHeight as u32,
@@ -171,6 +212,12 @@ const PREF_HELP_IDS: [u32; 14] = [
     0,
 ];
 
+/// Help context ID mappings for the best times dialog
+///
+/// Used by WinHelp to map control IDs to help context IDs.
+/// # Notes
+/// - The arrays are in pairs of (control ID, help context ID).
+/// - The arrays end with two zeros to signal the end of the mapping.
 const BEST_HELP_IDS: [u32; 22] = [
     ControlId::BtnReset as u32,
     HelpContextId::BestBtnReset as u32,
@@ -196,6 +243,10 @@ const BEST_HELP_IDS: [u32; 22] = [
     0,
 ];
 
+/// Helper to show a modal dialog.
+/// # Arguments
+/// * `template_id`: The dialog template resource identifier.
+/// * `proc`: The dialog procedure to handle messages.
 fn show_dialog(template_id: u16, proc: DLGPROC) {
     let state = global_state();
     let hinst_wrap = {
@@ -218,10 +269,16 @@ fn show_dialog(template_id: u16, proc: DLGPROC) {
     }
 }
 
+/// Determines whether the initial window state is minimized.
+/// # Arguments
+/// * `n_cmd_show`: The nCmdShow parameter from WinMain.
+/// # Returns
+/// True if the initial window state is minimized, false otherwise.
 fn initial_minimized_state(n_cmd_show: i32) -> bool {
     n_cmd_show == co::SW::SHOWMINNOACTIVE.raw() || n_cmd_show == co::SW::SHOWMINIMIZED.raw()
 }
 
+/// Initializes common controls used by the application using InitCommonControlsEx.
 fn init_common_controls() {
     let mut icc = INITCOMMONCONTROLSEX::default();
     icc.icc = ICC::ANIMATE_CLASS
@@ -237,8 +294,10 @@ fn init_common_controls() {
     let _ = InitCommonControlsEx(&icc);
 }
 
+/// Struct containing the main window with its event handlers and the shared state.
 #[derive(Clone)]
 struct WinMineMainWindow {
+    /// The main window, containing the HWND and event callbacks
     wnd: gui::WindowMain,
 }
 
@@ -330,33 +389,25 @@ impl WinMineMainWindow {
         }
 
         // Regular right-click: make a guess
-        MakeGuess(
-            x_box_from_xpos(point.x),
-            y_box_from_ypos(point.y),
-        );
+        MakeGuess(x_box_from_xpos(point.x), y_box_from_ypos(point.y));
     }
 
+    /// Handles command messages from the menu and accelerators.
+    /// # Arguments
+    /// * `w_param`: The wParam from the WM_COMMAND message.
+    /// # Returns
+    /// Some exit code if the command resulted in application exit, None otherwise.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
         match menu_command(w_param) {
             Some(MenuCommand::New) => StartGame(),
             Some(MenuCommand::Exit) => {
-                let state = global_state();
-                let hwnd_main = {
-                    let guard = match state.hwnd_main.lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    unsafe { HWND::from_ptr(guard.ptr()) }
-                };
-                hwnd_main.ShowWindow(co::SW::HIDE);
-                if let Some(hwnd) = hwnd_main.as_opt() {
-                    unsafe {
-                        let _ = hwnd.SendMessage(WndMsg::new(
-                            co::WM::SYSCOMMAND,
-                            co::SC::CLOSE.raw() as usize,
-                            0,
-                        ));
-                    }
+                self.wnd.hwnd().ShowWindow(co::SW::HIDE);
+                unsafe {
+                    let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
+                        co::WM::SYSCOMMAND,
+                        co::SC::CLOSE.raw() as usize,
+                        0,
+                    ));
                 }
                 return Some(0);
             }
@@ -429,26 +480,16 @@ impl WinMineMainWindow {
                         prefs.fMenu,
                     )
                 };
-                let state = global_state();
                 FreeBitmaps();
                 if let Err(e) = FLoadBitmaps() {
                     eprintln!("Failed to reload bitmaps: {}", e);
                     ReportErr(ID_ERR_MEM);
-                    let hwnd_main = {
-                        let guard = match state.hwnd_main.lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
-                        unsafe { HWND::from_ptr(guard.ptr()) }
-                    };
-                    if let Some(hwnd) = hwnd_main.as_opt() {
-                        unsafe {
-                            let _ = hwnd.SendMessage(WndMsg::new(
-                                co::WM::SYSCOMMAND,
-                                co::SC::CLOSE.raw() as usize,
-                                0,
-                            ));
-                        }
+                    unsafe {
+                        let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
+                            co::WM::SYSCOMMAND,
+                            co::SC::CLOSE.raw() as usize,
+                            0,
+                        ));
                     }
                     return Some(0);
                 }
@@ -591,8 +632,7 @@ impl WinMineMainWindow {
                     );
                 }
 
-                // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt
-                // after a DPI transition.
+                // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
                 FreeBitmaps();
                 if let Err(e) = FLoadBitmaps() {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
@@ -716,7 +756,10 @@ impl WinMineMainWindow {
                     set_block_flag(true);
                     self2.begin_primary_button_drag();
                     // TODO: WinSafe uses the incorrect type, fixed by casting to MK
-                    self2.handle_mouse_move(unsafe { MK::from_raw(m_btn.vkey_code.raw()) }, m_btn.coords);
+                    self2.handle_mouse_move(
+                        unsafe { MK::from_raw(m_btn.vkey_code.raw()) },
+                        m_btn.coords,
+                    );
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
@@ -797,6 +840,12 @@ impl WinMineMainWindow {
     }
 }
 
+/// Runs the WinMine application.
+/// # Arguments
+/// * `h_instance`: The application instance handle.
+/// * `n_cmd_show`: The initial window show command.
+/// # Returns
+/// The application exit code.
 pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     let state = global_state();
     {
@@ -902,6 +951,11 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     }
 }
 
+/// Converts an x-coordinate in pixels to a box index.
+/// # Arguments
+/// * `x`: The x-coordinate in pixels.
+/// # Returns
+/// The corresponding box index.
 fn x_box_from_xpos(x: i32) -> i32 {
     let cell = scale_dpi(DX_BLK_96);
     if cell <= 0 {
@@ -910,6 +964,11 @@ fn x_box_from_xpos(x: i32) -> i32 {
     (x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell
 }
 
+/// Converts a y-coordinate in pixels to a box index.
+/// # Arguments
+/// * `y`: The y-coordinate in pixels.
+/// # Returns
+/// The corresponding box index.
 fn y_box_from_ypos(y: i32) -> i32 {
     let cell = scale_dpi(DY_BLK_96);
     if cell <= 0 {
@@ -918,34 +977,50 @@ fn y_box_from_ypos(y: i32) -> i32 {
     (y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell
 }
 
+/// Returns whether the game is currently in pause status.
+/// # Returns
+/// True if the game is in pause status, false otherwise.
 fn status_icon() -> bool {
     GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Icon as i32) != 0
 }
 
+/// Returns whether the game is currently in play status.
+/// # Returns
+/// True if the game is in play status, false otherwise.
 fn status_play() -> bool {
     GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32) != 0
 }
 
+/// Sets the play status flag.
 fn set_status_pause() {
     GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
 }
 
+/// Clears the pause status flag.
 fn clr_status_pause() {
     GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
 }
 
+/// Sets the status icon flag.
 fn set_status_icon() {
     GAME_STATUS.fetch_or(StatusFlag::Icon as i32, Ordering::Relaxed);
 }
 
+/// Clears the status icon flag.
 fn clr_status_icon() {
     GAME_STATUS.fetch_and(!(StatusFlag::Icon as i32), Ordering::Relaxed);
 }
 
+/// Sets the block flag indicating whether button input is blocked.
+/// # Arguments
+/// * `active`: True to block button input, false to allow it.
 fn set_block_flag(active: bool) {
     BLK_BTN_INPUT.store(active, Ordering::Relaxed);
 }
 
+/// Returns the current face button sprite based on the button state.
+/// # Returns
+/// The current face button sprite state.
 fn current_face_sprite() -> ButtonSprite {
     match BTN_FACE_STATE.load(Ordering::Relaxed) {
         0 => ButtonSprite::Happy,
@@ -958,6 +1033,11 @@ fn current_face_sprite() -> ButtonSprite {
 
 /* Window Message Handlers */
 
+/// Maps a command ID to a MenuCommand enum variant.
+/// # Arguments
+/// * `w_param`: The WPARAM from the WM_COMMAND message.
+/// # Returns
+/// An Option containing the corresponding MenuCommand, or None if not found.
 fn menu_command(w_param: usize) -> Option<MenuCommand> {
     match command_id(w_param) {
         510 => Some(MenuCommand::New),
@@ -978,6 +1058,9 @@ fn menu_command(w_param: usize) -> Option<MenuCommand> {
     }
 }
 
+/// Handles the WM_KEYDOWN message.
+/// # Arguments
+/// * `key`: The virtual key code of the key that was pressed.
 fn handle_keydown(key: VK) {
     match key {
         code if code == co::VK::F4 => {
@@ -1061,6 +1144,9 @@ fn handle_window_pos_changed(pos: &WINDOWPOS) {
     }
 }
 
+/// Handles the WM_SYSCOMMAND message for minimize and restore events.
+/// # Arguments
+/// * `command` - The system command identifier.
 fn handle_syscommand(command: SC) {
     // Isolate the system command identifier by masking out the lower 4 bits.
     //let command = (sys_cmd & 0xFFF0) as u32;
@@ -1076,17 +1162,35 @@ fn handle_syscommand(command: SC) {
     }
 }
 
+/// Checks if the given (x, y) coordinates are within the valid board range.
+/// # Arguments
+/// * `x`: The x-coordinate to check.
+/// * `y`: The y-coordinate to check.
+/// # Returns
+/// True if the coordinates are within range, false otherwise.
 fn in_range(x: i32, y: i32) -> bool {
     let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
+/// Calculates the board index for the given (x, y) coordinates.
+/// # Arguments
+/// * `x`: The x-coordinate.
+/// * `y`: The y-coordinate.
+/// # Returns
+/// The calculated board index.
 fn board_index(x: i32, y: i32) -> usize {
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     offset.max(0) as usize
 }
 
+/// Checks if the cell at the given (x, y) coordinates is a bomb.
+/// # Arguments
+/// * `x`: The x-coordinate of the cell.
+/// * `y`: The y-coordinate of the cell.
+/// # Returns
+/// True if the cell is a bomb, false otherwise.
 fn cell_is_bomb(x: i32, y: i32) -> bool {
     if !in_range(x, y) {
         return false;
@@ -1105,6 +1209,7 @@ fn cell_is_bomb(x: i32, y: i32) -> bool {
 const CCH_XYZZY: i32 = 5;
 /// Atomic counter tracking the progress of the XYZZY cheat code entry.
 static I_XYZZY: AtomicI32 = AtomicI32::new(0);
+/// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
 /// Handles the SHIFT key press for the XYZZY cheat code.
@@ -1184,8 +1289,13 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
     }
 }
 
+/// Synchronizes the menu checkmarks with the current game settings.
+/// # Arguments
+/// * `game` - The current game type.
+/// * `f_color` - Whether color mode is enabled.
+/// * `f_mark` - Whether mark mode is enabled.
+/// * `f_sound` - The current sound state.
 pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
-    // Keep the menu checkmarks synchronized with the current difficulty/option flags.
     CheckEm(MenuCommand::Begin, game == GameType::Begin);
     CheckEm(MenuCommand::Inter, game == GameType::Inter);
     CheckEm(MenuCommand::Expert, game == GameType::Expert);
@@ -1196,8 +1306,9 @@ pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState
     CheckEm(MenuCommand::Sound, f_sound == SoundState::On);
 }
 
+/// Handles the "Custom" menu command by displaying the preferences dialog,
+/// updating the game settings, and starting a new game.
 pub fn DoPref() {
-    // Launch the custom game dialog, then treat the result as a "Custom" board.
     show_dialog(DialogTemplateId::Pref as u16, PrefDlgProc);
 
     let (game, f_color, f_mark, f_sound) = {
@@ -1213,14 +1324,14 @@ pub fn DoPref() {
     StartGame();
 }
 
+/// Handles the high-score name entry dialog.
 pub fn DoEnterName() {
-    // Show the high-score entry dialog and mark preferences dirty.
     show_dialog(DialogTemplateId::Enter as u16, EnterDlgProc);
     UPDATE_INI.store(true, Ordering::Relaxed);
 }
 
+/// Displays the high-score list dialog.
 pub fn DoDisplayBest() {
-    // Present the high-score list dialog as-is; no post-processing required here.
     show_dialog(DialogTemplateId::Best as u16, BestDlgProc);
 }
 
@@ -1612,8 +1723,13 @@ pub extern "system" fn EnterDlgProc(
     0
 }
 
+/// Adjusts the main window size and position based on the current board and menu state.
+///
+/// This function is called whenever the board or menu state changes to ensure
+/// that the main window is appropriately sized and positioned on the screen.
+/// # Arguments
+/// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
 pub fn AdjustWindow(mut f_adjust: i32) {
-    // Recompute the main window rectangle whenever the board or menu state changes.
     let state = global_state();
     let hwnd_main = {
         let guard = match state.hwnd_main.lock() {
@@ -1774,8 +1890,12 @@ pub fn AdjustWindow(mut f_adjust: i32) {
     }
 }
 
+/// Retrieves system metrics, favoring virtual screen metrics for multi-monitor support.
+/// # Arguments
+/// * `index` - The system metric index to retrieve.
+/// # Returns
+/// The requested system metric value.
 fn our_get_system_metrics(index: SM) -> i32 {
-    // Favor the virtual screen metrics when available to support multi-monitor setups.
     match index {
         SM::CXSCREEN => {
             let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
@@ -1795,14 +1915,30 @@ fn our_get_system_metrics(index: SM) -> i32 {
     }
 }
 
+/// Extracts the low-order word from a given isize value.
+/// # Arguments
+/// * `value` - The isize value to extract from.
+/// # Returns
+/// The low-order word as an i32.
 fn loword(value: isize) -> i32 {
     ((value as u32) & 0xFFFF) as i16 as i32
 }
 
+/// Extracts the command identifier from a WPARAM value.
+/// # Arguments
+/// * `w_param` - The WPARAM value to extract from.
+/// # Returns
+/// The command identifier as a u16.
 fn command_id(w_param: usize) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 
+/// Sets the dialog text for a given time and name in the best scores dialog.
+/// # Arguments
+/// * `h_dlg` - Handle to the dialog window.
+/// * `id` - The control ID for the time text.
+/// * `time` - The time value to display.
+/// * `name` - The name associated with the time.
 fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
     let state = global_state();
     let time_fmt = {
@@ -1831,6 +1967,15 @@ fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
     }
 }
 
+/// Resets the best scores dialog with the provided times and names.
+/// # Arguments
+/// * `h_dlg` - Handle to the dialog window.
+/// * `time_begin` - The best time for the beginner level.
+/// * `time_inter` - The best time for the intermediate level.
+/// * `time_expert` - The best time for the expert level.
+/// * `name_begin` - The name associated with the beginner level best time.
+/// * `name_inter` - The name associated with the intermediate level best time.
+/// * `name_expert` - The name associated with the expert level best time.
 fn reset_best_dialog(
     h_dlg: &HWND,
     time_begin: i32,
@@ -1850,6 +1995,9 @@ fn reset_best_dialog(
     );
 }
 
+/// Copies the default name into the provided destination array.
+/// # Arguments
+/// * `dst` - The destination array to copy the default name into.
 fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {
     let state = global_state();
     let source = {
@@ -1869,6 +2017,12 @@ fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {
     dst[CCH_NAME_MAX - 1] = 0;
 }
 
+/// Applies help context based on the HELPINFO structure pointed to by l_param.
+/// # Arguments
+/// * `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
+/// * `ids` - The array of help context IDs.
+/// # Returns
+/// True if help was applied, false otherwise.
 fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
     if l_param == 0 {
         return false;
@@ -1888,6 +2042,10 @@ fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
     true
 }
 
+/// Applies help context to a specific control.
+/// # Arguments
+/// * `hwnd` - The handle to the control.
+/// * `ids` - The array of help context IDs.
 fn apply_help_to_control(hwnd: HWND, ids: &[u32]) {
     if let Some(control) = hwnd.as_opt() {
         unsafe {
