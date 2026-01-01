@@ -435,7 +435,7 @@ impl WinMineMainWindow {
                 FixMenus(preset, f_color, f_mark, f_sound);
                 SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Custom) => DoPref(),
+            Some(MenuCommand::Custom) => DoPref(&self.wnd),
             Some(MenuCommand::Sound) => {
                 let current_sound = {
                     let prefs = match preferences_mutex().lock() {
@@ -1371,10 +1371,142 @@ pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState
     CheckEm(MenuCommand::Sound, f_sound == SoundState::On);
 }
 
+/// Struct containing the state shared by the Preferences dialog
+#[derive(Clone)]
+struct PrefDialog {
+    /// The modal dialog window
+    dlg: gui::WindowModal,
+}
+
+impl PrefDialog {
+    fn new() -> Self {
+        let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Pref as u16);
+        let new_self = Self { dlg };
+        new_self.events();
+        new_self
+    }
+
+    fn show_modal(&self, parent: &impl GuiParent) {
+        if let Err(e) = self.dlg.show_modal(parent) {
+            eprintln!("Failed to show preferences dialog: {e}");
+        }
+    }
+
+    fn events(&self) {
+        self.dlg.on().wm_init_dialog({
+            let dlg = self.dlg.clone();
+            move |_| -> w::AnyResult<bool> {
+                let (height, width, mines) = {
+                    let prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    (prefs.Height, prefs.Width, prefs.Mines)
+                };
+
+                unsafe {
+                    let hdlg_raw = dlg.hwnd().ptr() as _;
+                    SetDlgItemInt(hdlg_raw, ControlId::EditHeight as i32, height as u32, 0);
+                    SetDlgItemInt(hdlg_raw, ControlId::EditWidth as i32, width as u32, 0);
+                    SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines as u32, 0);
+                }
+
+                Ok(true)
+            }
+        });
+
+        let on_ok = {
+            let dlg = self.dlg.clone();
+            move || -> w::AnyResult<()> {
+                let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
+                let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
+                let max_mines = min(999, (height - 1) * (width - 1));
+                let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
+
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.Height = height;
+                prefs.Width = width;
+                prefs.Mines = mines;
+
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        };
+
+        // Some templates use a custom OK control ID, others use the standard IDOK.
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, on_ok);
+        self.dlg
+            .on()
+            .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
+                    let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
+                    let max_mines = min(999, (height - 1) * (width - 1));
+                    let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
+
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.Height = height;
+                    prefs.Width = width;
+                    prefs.Mines = mines;
+
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+
+        let on_cancel = {
+            let dlg = self.dlg.clone();
+            move || -> w::AnyResult<()> {
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        };
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, on_cancel);
+        self.dlg
+            .on()
+            .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+
+        self.dlg.on().wm(co::WM::HELP, {
+            move |msg: WndMsg| -> w::AnyResult<isize> {
+                Ok(if apply_help_from_info(msg.lparam, &PREF_HELP_IDS) {
+                    1
+                } else {
+                    0
+                })
+            }
+        });
+
+        self.dlg.on().wm(co::WM::CONTEXTMENU, {
+            move |msg: WndMsg| -> w::AnyResult<isize> {
+                let target = unsafe { HWND::from_ptr(msg.wparam as _) };
+                apply_help_to_control(target, &PREF_HELP_IDS);
+                Ok(1)
+            }
+        });
+    }
+}
+
 /// Handles the "Custom" menu command by displaying the preferences dialog,
 /// updating the game settings, and starting a new game.
-fn DoPref() {
-    show_dialog(DialogTemplateId::Pref as u16, PrefDlgProc);
+fn DoPref(parent: &impl GuiParent) {
+    PrefDialog::new().show_modal(parent);
 
     let (game, f_color, f_mark, f_sound) = {
         let mut prefs = match preferences_mutex().lock() {
@@ -1398,85 +1530,6 @@ pub fn DoEnterName() {
 /// Displays the high-score list dialog.
 pub fn DoDisplayBest() {
     show_dialog(DialogTemplateId::Best as u16, BestDlgProc);
-}
-
-/// Dialog procedure for custom game preferences.
-/// Handles initialization, user input, and help support for the dialog.
-/// # Arguments
-/// * `h_dlg` - Handle to the dialog window.
-/// * `message` - The message being processed.
-/// * `w_param` - Additional message information (WPARAM).
-/// * `l_param` - Additional message information (LPARAM).
-/// # Returns
-/// * `isize` - Returns 1 if the message was processed, 0 otherwise
-extern "system" fn PrefDlgProc(
-    h_dlg: HWND,
-    message: co::WM,
-    w_param: usize,
-    l_param: isize,
-) -> isize {
-    // Custom game dialog mirroring the legacy behavior and help wiring.
-    let h_dlg_raw = h_dlg.ptr();
-    match message {
-        co::WM::INITDIALOG => {
-            let (height, width, mines) = {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                (prefs.Height, prefs.Width, prefs.Mines)
-            };
-            unsafe {
-                SetDlgItemInt(
-                    h_dlg_raw as _,
-                    ControlId::EditHeight as i32,
-                    height as u32,
-                    0,
-                );
-                SetDlgItemInt(h_dlg_raw as _, ControlId::EditWidth as i32, width as u32, 0);
-                SetDlgItemInt(h_dlg_raw as _, ControlId::EditMines as i32, mines as u32, 0);
-            }
-            return 1;
-        }
-        co::WM::COMMAND => {
-            match command_id(w_param) {
-                id if id == ControlId::BtnOk as u16 || id == co::DLGID::OK.raw() => {
-                    let height = GetDlgInt(&h_dlg, ControlId::EditHeight as i32, MINHEIGHT, 24);
-                    let width = GetDlgInt(&h_dlg, ControlId::EditWidth as i32, MINWIDTH, 30);
-                    let max_mines = min(999, (height - 1) * (width - 1));
-                    let mines = GetDlgInt(&h_dlg, ControlId::EditMines as i32, 10, max_mines);
-
-                    let lock = preferences_mutex().lock();
-                    if let Ok(mut prefs) = lock {
-                        prefs.Height = height;
-                        prefs.Width = width;
-                        prefs.Mines = mines;
-                    } else if let Err(poisoned) = preferences_mutex().lock() {
-                        let mut prefs = poisoned.into_inner();
-                        prefs.Height = height;
-                        prefs.Width = width;
-                        prefs.Mines = mines;
-                    }
-                }
-                id if id == ControlId::BtnCancel as u16 || id == co::DLGID::CANCEL.raw() => {}
-                _ => return 0,
-            }
-            let _ = h_dlg.EndDialog(1);
-            return 1;
-        }
-        co::WM::HELP => {
-            if apply_help_from_info(l_param, &PREF_HELP_IDS) {
-                return 1;
-            }
-        }
-        co::WM::CONTEXTMENU => {
-            let target = unsafe { HWND::from_ptr(w_param as _) };
-            apply_help_to_control(target, &PREF_HELP_IDS);
-            return 1;
-        }
-        _ => {}
-    }
-    0
 }
 
 /// Dialog procedure for displaying high scores.
