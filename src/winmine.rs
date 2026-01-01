@@ -535,6 +535,78 @@ impl WinMineMainWindow {
         None
     }
 
+    /// Handles clicks on the smiley face button.
+    /// # Arguments
+    /// * `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// True if the click was handled, false otherwise.
+    fn btn_click_handler(&self, point: POINT) -> bool {
+        // Handle clicks on the smiley face button while providing the pressed animation.
+        let mut msg = MSG::default();
+
+        msg.pt.x = point.x;
+        msg.pt.y = point.y;
+
+        let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
+        let dx_button = scale_dpi(DX_BUTTON_96);
+        let dy_button = scale_dpi(DY_BUTTON_96);
+        let dy_top_led = scale_dpi(DY_TOP_LED_96);
+        let mut rc = RECT {
+            left: (dx_window - dx_button) / 2,
+            top: dy_top_led,
+            right: 0,
+            bottom: 0,
+        };
+        rc.right = rc.left + dx_button;
+        rc.bottom = rc.top + dy_button;
+
+        if !winsafe::PtInRect(rc, msg.pt) {
+            return false;
+        }
+
+        let mut capture_guard = self.wnd.hwnd().as_opt().map(|hwnd| hwnd.SetCapture());
+        DisplayButton(ButtonSprite::Down);
+        let _ = self
+            .wnd
+            .hwnd()
+            .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc));
+
+        let mut pressed = true;
+        loop {
+            if PeekMessage(
+                &mut msg,
+                self.wnd.hwnd().as_opt(),
+                co::WM::MOUSEFIRST.raw(),
+                co::WM::MOUSELAST.raw(),
+                co::PM::REMOVE,
+            ) {
+                match msg.message {
+                    co::WM::LBUTTONUP => {
+                        if pressed && winsafe::PtInRect(rc, msg.pt) {
+                            BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
+                            DisplayButton(ButtonSprite::Happy);
+                            StartGame();
+                        }
+                        capture_guard.take();
+                        return true;
+                    }
+                    co::WM::MOUSEMOVE => {
+                        if winsafe::PtInRect(rc, msg.pt) {
+                            if !pressed {
+                                pressed = true;
+                                DisplayButton(ButtonSprite::Down);
+                            }
+                        } else if pressed {
+                            pressed = false;
+                            DisplayButton(current_face_sprite());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// Hooks the window messages to their respective handlers.
     fn events(&self) {
         self.wnd.on().wm_create({
@@ -752,10 +824,7 @@ impl WinMineMainWindow {
                 if status_play() {
                     set_block_flag(true);
                     self2.begin_primary_button_drag();
-                    self2.handle_mouse_move(
-                        m_btn.vkey_code,
-                        m_btn.coords,
-                    );
+                    self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords);
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
@@ -779,12 +848,14 @@ impl WinMineMainWindow {
                 if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) {
                     return Ok(());
                 }
-                if FLocalButton(l_btn.coords) {
+                if self2.btn_click_handler(l_btn.coords) {
                     return Ok(());
                 }
                 if status_play() {
                     // Mask SHIFT and RBUTTON to indicate a "chord" operation.
-                    set_block_flag(l_btn.vkey_code == co::MK::SHIFT || l_btn.vkey_code == co::MK::RBUTTON);
+                    set_block_flag(
+                        l_btn.vkey_code == co::MK::SHIFT || l_btn.vkey_code == co::MK::RBUTTON,
+                    );
                     self2.begin_primary_button_drag();
                     self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords);
                 }
@@ -1327,88 +1398,6 @@ pub fn DoEnterName() {
 /// Displays the high-score list dialog.
 pub fn DoDisplayBest() {
     show_dialog(DialogTemplateId::Best as u16, BestDlgProc);
-}
-
-/// Handles clicks on the smiley face button, providing the pressed animation
-/// and starting a new game if clicked.
-/// # Arguments
-/// * `point` - The POINT structure from the mouse click event, containing the cursor position.
-/// # Returns
-/// * `bool` - Returns true if the button was clicked and handled, false otherwise.
-fn FLocalButton(point: POINT) -> bool {
-    let state = global_state();
-    let hwnd_main = {
-        let guard = match state.hwnd_main.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        unsafe { HWND::from_ptr(guard.ptr()) }
-    };
-
-    // Handle clicks on the smiley face button while providing the pressed animation.
-    let mut msg = MSG::default();
-
-    msg.pt.x = point.x;
-    msg.pt.y = point.y;
-
-    let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
-    let dx_button = scale_dpi(DX_BUTTON_96);
-    let dy_button = scale_dpi(DY_BUTTON_96);
-    let dy_top_led = scale_dpi(DY_TOP_LED_96);
-    let mut rc = RECT {
-        left: (dx_window - dx_button) / 2,
-        top: dy_top_led,
-        right: 0,
-        bottom: 0,
-    };
-    rc.right = rc.left + dx_button;
-    rc.bottom = rc.top + dy_button;
-
-    if !winsafe::PtInRect(rc, msg.pt) {
-        return false;
-    }
-
-    let mut capture_guard = hwnd_main.as_opt().map(|hwnd| hwnd.SetCapture());
-    DisplayButton(ButtonSprite::Down);
-    if let Some(hwnd) = hwnd_main.as_opt() {
-        let _ = hwnd.MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc));
-    }
-
-    let mut pressed = true;
-    let hwnd_opt = hwnd_main.as_opt();
-    loop {
-        if PeekMessage(
-            &mut msg,
-            hwnd_opt,
-            co::WM::MOUSEFIRST.raw(),
-            co::WM::MOUSELAST.raw(),
-            co::PM::REMOVE,
-        ) {
-            match msg.message {
-                co::WM::LBUTTONUP => {
-                    if pressed && winsafe::PtInRect(rc, msg.pt) {
-                        BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
-                        DisplayButton(ButtonSprite::Happy);
-                        StartGame();
-                    }
-                    capture_guard.take();
-                    return true;
-                }
-                co::WM::MOUSEMOVE => {
-                    if winsafe::PtInRect(rc, msg.pt) {
-                        if !pressed {
-                            pressed = true;
-                            DisplayButton(ButtonSprite::Down);
-                        }
-                    } else if pressed {
-                        pressed = false;
-                        DisplayButton(current_face_sprite());
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
 }
 
 /// Dialog procedure for custom game preferences.
