@@ -1379,6 +1379,7 @@ struct PrefDialog {
 }
 
 impl PrefDialog {
+    /// Creates a new Preferences dialog instance and sets up event handlers.
     fn new() -> Self {
         let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Pref as u16);
         let new_self = Self { dlg };
@@ -1386,12 +1387,16 @@ impl PrefDialog {
         new_self
     }
 
+    /// Displays the Preferences dialog as a modal window.
+    /// # Arguments
+    /// * `parent`: The parent GUI element for the modal dialog.
     fn show_modal(&self, parent: &impl GuiParent) {
         if let Err(e) = self.dlg.show_modal(parent) {
             eprintln!("Failed to show preferences dialog: {e}");
         }
     }
 
+    /// Hooks the dialog window messages to their respective handlers.
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
@@ -1415,31 +1420,30 @@ impl PrefDialog {
             }
         });
 
-        let on_ok = {
-            let dlg = self.dlg.clone();
-            move || -> w::AnyResult<()> {
-                let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
-                let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
-                let max_mines = min(999, (height - 1) * (width - 1));
-                let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
-
-                let mut prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                prefs.Height = height;
-                prefs.Width = width;
-                prefs.Mines = mines;
-
-                let _ = dlg.hwnd().EndDialog(1);
-                Ok(())
-            }
-        };
-
         // Some templates use a custom OK control ID, others use the standard IDOK.
         self.dlg
             .on()
-            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, on_ok);
+            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
+                    let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
+                    let max_mines = min(999, (height - 1) * (width - 1));
+                    let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
+
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.Height = height;
+                    prefs.Width = width;
+                    prefs.Mines = mines;
+
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+
         self.dlg
             .on()
             .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
@@ -1463,16 +1467,16 @@ impl PrefDialog {
                 }
             });
 
-        let on_cancel = {
-            let dlg = self.dlg.clone();
-            move || -> w::AnyResult<()> {
-                let _ = dlg.hwnd().EndDialog(1);
-                Ok(())
-            }
-        };
         self.dlg
             .on()
-            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, on_cancel);
+            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+
         self.dlg
             .on()
             .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
