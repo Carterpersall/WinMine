@@ -355,7 +355,7 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `btn`: The mouse button that was pressed.
     /// * `point`: The coordinates of the mouse cursor.
-    fn handle_rbutton_down(&self, btn: VK, point: POINT) {
+    fn handle_rbutton_down(&self, btn: MK, point: POINT) {
         // Ignore right-clicks if the next click is set to be ignored
         if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) || !status_play() {
             return;
@@ -380,8 +380,6 @@ impl WinMineMainWindow {
             return;
         }
 
-        // TODO: WinSafe uses the incorrect type, fixed by casting to MK
-        let btn = unsafe { MK::from_raw(btn.raw()) };
         if btn == co::MK::LBUTTON {
             self.begin_primary_button_drag();
             self.handle_mouse_move(btn, point);
@@ -708,8 +706,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_mouse_move({
             let self2 = self.clone();
             move |msg| {
-                // TODO: WinSafe uses the incorrect type, fixed by casting to MK
-                self2.handle_mouse_move(unsafe { MK::from_raw(msg.vkey_code.raw()) }, msg.coords);
+                self2.handle_mouse_move(msg.vkey_code, msg.coords);
                 unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
                 Ok(())
             }
@@ -755,9 +752,8 @@ impl WinMineMainWindow {
                 if status_play() {
                     set_block_flag(true);
                     self2.begin_primary_button_drag();
-                    // TODO: WinSafe uses the incorrect type, fixed by casting to MK
                     self2.handle_mouse_move(
-                        unsafe { MK::from_raw(m_btn.vkey_code.raw()) },
+                        m_btn.vkey_code,
                         m_btn.coords,
                     );
                 }
@@ -787,12 +783,10 @@ impl WinMineMainWindow {
                     return Ok(());
                 }
                 if status_play() {
-                    // TODO: WinSafe uses the incorrect type, fixed by casting to MK
-                    let btn = unsafe { MK::from_raw(l_btn.vkey_code.raw()) };
                     // Mask SHIFT and RBUTTON to indicate a "chord" operation.
-                    set_block_flag(btn == co::MK::SHIFT || btn == co::MK::RBUTTON);
+                    set_block_flag(l_btn.vkey_code == co::MK::SHIFT || l_btn.vkey_code == co::MK::RBUTTON);
                     self2.begin_primary_button_drag();
-                    self2.handle_mouse_move(btn, l_btn.coords);
+                    self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords);
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
                 Ok(())
