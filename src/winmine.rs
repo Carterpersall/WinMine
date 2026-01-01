@@ -1302,7 +1302,7 @@ pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState
 
 /// Handles the "Custom" menu command by displaying the preferences dialog,
 /// updating the game settings, and starting a new game.
-pub fn DoPref() {
+fn DoPref() {
     show_dialog(DialogTemplateId::Pref as u16, PrefDlgProc);
 
     let (game, f_color, f_mark, f_sound) = {
@@ -1335,7 +1335,7 @@ pub fn DoDisplayBest() {
 /// * `point` - The POINT structure from the mouse click event, containing the cursor position.
 /// # Returns
 /// * `bool` - Returns true if the button was clicked and handled, false otherwise.
-pub fn FLocalButton(point: POINT) -> bool {
+fn FLocalButton(point: POINT) -> bool {
     let state = global_state();
     let hwnd_main = {
         let guard = match state.hwnd_main.lock() {
@@ -1420,7 +1420,7 @@ pub fn FLocalButton(point: POINT) -> bool {
 /// * `l_param` - Additional message information (LPARAM).
 /// # Returns
 /// * `isize` - Returns 1 if the message was processed, 0 otherwise
-pub extern "system" fn PrefDlgProc(
+extern "system" fn PrefDlgProc(
     h_dlg: HWND,
     message: co::WM,
     w_param: usize,
@@ -1499,7 +1499,7 @@ pub extern "system" fn PrefDlgProc(
 /// * `l_param` - Additional message information (LPARAM).
 /// # Returns
 /// * `isize` - Returns 1 if the message was processed, 0 otherwise
-pub extern "system" fn BestDlgProc(
+extern "system" fn BestDlgProc(
     h_dlg: HWND,
     message: co::WM,
     w_param: usize,
@@ -1628,7 +1628,7 @@ pub extern "system" fn BestDlgProc(
 /// * `l_param` - Additional message information (LPARAM).
 /// # Returns
 /// * `isize` - Returns 1 if the message was processed, 0 otherwise
-pub extern "system" fn EnterDlgProc(
+extern "system" fn EnterDlgProc(
     h_dlg: HWND,
     message: co::WM,
     w_param: usize,

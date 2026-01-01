@@ -66,9 +66,9 @@ pub fn scale_dpi(value_96: i32) -> i32 {
 }
 
 /// Number of cell sprites packed into the block bitmap sheet.
-pub const I_BLK_MAX: usize = 16;
+const I_BLK_MAX: usize = 16;
 /// Number of digits stored in the LED bitmap sheet.
-pub const I_LED_MAX: usize = 12;
+const I_LED_MAX: usize = 12;
 /// Face button sprites available in the bitmap sheet.
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -80,7 +80,7 @@ pub enum ButtonSprite {
     Down = 4,
 }
 /// Number of face button sprites.
-pub const BUTTON_SPRITE_COUNT: usize = 5;
+const BUTTON_SPRITE_COUNT: usize = 5;
 /// Bitmap resources embedded in the executable.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -254,7 +254,7 @@ pub fn CleanUp() {
     EndTunes();
 }
 
-pub fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
+fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
     // Bit-blit a single cell sprite using the precalculated offsets.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -288,7 +288,7 @@ pub fn DisplayBlk(x: i32, y: i32) {
     }
 }
 
-pub fn DrawGrid(hdc: &w::HDC) {
+fn DrawGrid(hdc: &w::HDC) {
     // Rebuild the visible grid by iterating over the current rgBlk contents.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -326,7 +326,7 @@ pub fn DisplayGrid() {
     }
 }
 
-pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
+fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -351,7 +351,7 @@ pub fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
     );
 }
 
-pub fn DrawBombCount(hdc: &w::HDC) {
+fn DrawBombCount(hdc: &w::HDC) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -392,7 +392,7 @@ pub fn DisplayBombCount() {
     }
 }
 
-pub fn DrawTime(hdc: &w::HDC) {
+fn DrawTime(hdc: &w::HDC) {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -438,7 +438,7 @@ pub fn DisplayTime() {
     }
 }
 
-pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
+fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
     // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dst_w = scale_dpi(DX_BUTTON_96);
@@ -478,7 +478,7 @@ pub fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
 /// * `dst_h` - The desired height of the destination bitmap in pixels.
 /// # Returns
 /// A `SysResult` containing a guard for the newly created resampled bitmap.
-pub fn create_resampled_bitmap(
+fn create_resampled_bitmap(
     hdc: &w::HDC,
     src_bmp: &w::HBITMAP,
     src_w: i32,
@@ -613,7 +613,7 @@ pub fn DisplayButton(sprite: ButtonSprite) {
     }
 }
 
-pub fn SetThePen(hdc: &w::HDC, f_normal: i32) {
+fn SetThePen(hdc: &w::HDC, f_normal: i32) {
     // Reproduce the old pen combos: even values use the gray pen, odd values use white.
     if (f_normal & 1) != 0 {
         unsafe {
@@ -634,7 +634,7 @@ pub fn SetThePen(hdc: &w::HDC, f_normal: i32) {
     }
 }
 
-pub fn DrawBorder(
+fn DrawBorder(
     hdc: &w::HDC,
     mut x1: i32,
     mut y1: i32,
@@ -674,7 +674,7 @@ pub fn DrawBorder(
     }
 }
 
-pub fn DrawBackground(hdc: &w::HDC) {
+fn DrawBackground(hdc: &w::HDC) {
     // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Relaxed);
