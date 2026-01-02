@@ -13,9 +13,9 @@ use winsafe::co::{self, GWLP, HELPW, ICC, IDC, MK, SC, SM, STOCK_BRUSH, VK, WS, 
 use winsafe::msg::WndMsg;
 use winsafe::prelude::*;
 use winsafe::{
-    self as w, AdjustWindowRectExForDpi, COLORREF, DLGPROC, GetSystemMetrics, HBRUSH, HELPINFO,
-    HINSTANCE, HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG,
-    POINT, PeekMessage, PtsRc, RECT, SIZE, WINDOWPOS, gui,
+    self as w, AdjustWindowRectExForDpi, COLORREF, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE,
+    HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT,
+    PeekMessage, PtsRc, RECT, SIZE, WINDOWPOS, gui,
 };
 
 use crate::globals::{
@@ -45,6 +45,13 @@ use crate::util::{
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
+
+/// `WM_APP` request code posted to the main window when a new best time is
+/// recorded.
+///
+/// The main UI thread handles this by showing the name-entry dialog, then the
+/// best-times dialog.
+pub const NEW_RECORD_DLG: usize = 1;
 
 /// Menu and accelerator resource identifiers.
 #[repr(u16)]
@@ -241,32 +248,6 @@ const BEST_HELP_IDS: [u32; 22] = [
     0,
     0,
 ];
-
-/// Helper to show a modal dialog.
-/// # Arguments
-/// * `template_id`: The dialog template resource identifier.
-/// * `proc`: The dialog procedure to handle messages.
-fn show_dialog(template_id: u16, proc: DLGPROC) {
-    let state = global_state();
-    let hinst_wrap = {
-        let guard = match state.h_inst.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        unsafe { HINSTANCE::from_ptr(guard.ptr()) }
-    };
-    let parent_hwnd = {
-        let guard = match state.hwnd_main.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        unsafe { HWND::from_ptr(guard.ptr()) }
-    };
-    unsafe {
-        let _ =
-            hinst_wrap.DialogBoxParam(IdStr::Id(template_id), parent_hwnd.as_opt(), proc, Some(0));
-    }
-}
 
 /// Determines whether the initial window state is minimized.
 /// # Arguments
@@ -516,7 +497,7 @@ impl WinMineMainWindow {
                 FixMenus(game, color_enabled, mark_enabled, f_sound);
                 SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Best) => DoDisplayBest(),
+            Some(MenuCommand::Best) => DoDisplayBest(&self.wnd),
             Some(MenuCommand::Help) => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
             Some(MenuCommand::HowToPlay) => {
                 DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32)
@@ -737,6 +718,21 @@ impl WinMineMainWindow {
                 if let Some(result) = self2.handle_command(msg.wparam) {
                     return Ok(result);
                 }
+                unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
+                Ok(0)
+            }
+        });
+
+        // Handle `WM_APP` requests posted from non-UI modules.
+        self.wnd.on().wm(co::WM::APP, {
+            let self2 = self.clone();
+            move |msg: WndMsg| {
+                if msg.wparam == NEW_RECORD_DLG {
+                    DoEnterName(&self2.wnd);
+                    DoDisplayBest(&self2.wnd);
+                    return Ok(0);
+                }
+
                 unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
                 Ok(0)
             }
@@ -1493,71 +1489,35 @@ fn DoPref(parent: &impl GuiParent) {
     StartGame();
 }
 
-/// Handles the high-score name entry dialog.
-pub fn DoEnterName() {
-    show_dialog(DialogTemplateId::Enter as u16, EnterDlgProc);
-    UPDATE_INI.store(true, Ordering::Relaxed);
+/// Best times dialog
+#[derive(Clone)]
+struct BestDialog {
+    dlg: gui::WindowModal,
 }
 
-/// Displays the high-score list dialog.
-pub fn DoDisplayBest() {
-    show_dialog(DialogTemplateId::Best as u16, BestDlgProc);
-}
+impl BestDialog {
+    fn new() -> Self {
+        let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Best as u16);
+        let new_self = Self { dlg };
+        new_self.events();
+        new_self
+    }
 
-/// Dialog procedure for displaying high scores.
-/// Handles initialization, reset, and help support for the dialog.
-/// # Arguments
-/// * `h_dlg` - Handle to the dialog window.
-/// * `message` - The message being processed.
-/// * `w_param` - Additional message information (WPARAM).
-/// * `l_param` - Additional message information (LPARAM).
-/// # Returns
-/// * `isize` - Returns 1 if the message was processed, 0 otherwise
-extern "system" fn BestDlgProc(
-    h_dlg: HWND,
-    message: co::WM,
-    w_param: usize,
-    l_param: isize,
-) -> isize {
-    // High-score dialog with reset + context help support.
-    match message {
-        co::WM::INITDIALOG => {
-            let snapshot = {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                (
-                    prefs.rgTime[GameType::Begin as usize],
-                    prefs.rgTime[GameType::Inter as usize],
-                    prefs.rgTime[GameType::Expert as usize],
-                    prefs.szBegin,
-                    prefs.szInter,
-                    prefs.szExpert,
-                )
-            };
-            let (time_begin, time_inter, time_expert, name_begin, name_inter, name_expert) =
-                snapshot;
-            reset_best_dialog(
-                &h_dlg,
-                time_begin,
-                time_inter,
-                time_expert,
-                name_begin,
-                name_inter,
-                name_expert,
-            );
-            return 1;
+    fn show_modal(&self, parent: &impl GuiParent) {
+        if let Err(e) = self.dlg.show_modal(parent) {
+            eprintln!("Failed to show best-times dialog: {e}");
         }
-        co::WM::COMMAND => match command_id(w_param) {
-            id if id == ControlId::BtnReset as u16 => {
-                let snapshot = if let Ok(mut prefs) = preferences_mutex().lock() {
-                    prefs.rgTime[GameType::Begin as usize] = 999;
-                    prefs.rgTime[GameType::Inter as usize] = 999;
-                    prefs.rgTime[GameType::Expert as usize] = 999;
-                    copy_from_default(&mut prefs.szBegin);
-                    copy_from_default(&mut prefs.szInter);
-                    copy_from_default(&mut prefs.szExpert);
+    }
+
+    fn events(&self) {
+        self.dlg.on().wm_init_dialog({
+            let dlg = self.dlg.clone();
+            move |_| -> w::AnyResult<bool> {
+                let snapshot = {
+                    let prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
                     (
                         prefs.rgTime[GameType::Begin as usize],
                         prefs.rgTime[GameType::Inter as usize],
@@ -1565,40 +1525,13 @@ extern "system" fn BestDlgProc(
                         prefs.szBegin,
                         prefs.szInter,
                         prefs.szExpert,
-                    )
-                } else if let Err(poisoned) = preferences_mutex().lock() {
-                    let mut prefs = poisoned.into_inner();
-                    prefs.rgTime[GameType::Begin as usize] = 999;
-                    prefs.rgTime[GameType::Inter as usize] = 999;
-                    prefs.rgTime[GameType::Expert as usize] = 999;
-                    copy_from_default(&mut prefs.szBegin);
-                    copy_from_default(&mut prefs.szInter);
-                    copy_from_default(&mut prefs.szExpert);
-                    (
-                        prefs.rgTime[GameType::Begin as usize],
-                        prefs.rgTime[GameType::Inter as usize],
-                        prefs.rgTime[GameType::Expert as usize],
-                        prefs.szBegin,
-                        prefs.szInter,
-                        prefs.szExpert,
-                    )
-                } else {
-                    (
-                        999,
-                        999,
-                        999,
-                        [0; CCH_NAME_MAX],
-                        [0; CCH_NAME_MAX],
-                        [0; CCH_NAME_MAX],
                     )
                 };
 
                 let (time_begin, time_inter, time_expert, name_begin, name_inter, name_expert) =
                     snapshot;
-
-                UPDATE_INI.store(true, Ordering::Relaxed);
                 reset_best_dialog(
-                    &h_dlg,
+                    dlg.hwnd(),
                     time_begin,
                     time_inter,
                     time_expert,
@@ -1606,131 +1539,299 @@ extern "system" fn BestDlgProc(
                     name_inter,
                     name_expert,
                 );
-                return 1;
+                Ok(true)
             }
-            id if id == ControlId::BtnOk as u16
-                || id == co::DLGID::OK.raw()
-                || id == ControlId::BtnCancel as u16
-                || id == co::DLGID::CANCEL.raw() =>
-            {
-                let _ = h_dlg.EndDialog(1);
-                return 1;
+        });
+
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnReset as u16, co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let snapshot = {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.rgTime[GameType::Begin as usize] = 999;
+                        prefs.rgTime[GameType::Inter as usize] = 999;
+                        prefs.rgTime[GameType::Expert as usize] = 999;
+                        copy_from_default(&mut prefs.szBegin);
+                        copy_from_default(&mut prefs.szInter);
+                        copy_from_default(&mut prefs.szExpert);
+                        (
+                            prefs.rgTime[GameType::Begin as usize],
+                            prefs.rgTime[GameType::Inter as usize],
+                            prefs.rgTime[GameType::Expert as usize],
+                            prefs.szBegin,
+                            prefs.szInter,
+                            prefs.szExpert,
+                        )
+                    };
+
+                    let (time_begin, time_inter, time_expert, name_begin, name_inter, name_expert) =
+                        snapshot;
+                    UPDATE_INI.store(true, Ordering::Relaxed);
+                    reset_best_dialog(
+                        dlg.hwnd(),
+                        time_begin,
+                        time_inter,
+                        time_expert,
+                        name_begin,
+                        name_inter,
+                        name_expert,
+                    );
+                    Ok(())
+                }
+            });
+
+        let close = {
+            let dlg = self.dlg.clone();
+            move || -> w::AnyResult<()> {
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
             }
-            _ => {}
-        },
-        co::WM::HELP => {
-            apply_help_from_info(
-                unsafe { &*(l_param as *const winsafe::HELPINFO) },
-                &BEST_HELP_IDS,
-            );
-            return 1;
-        }
-        co::WM::CONTEXTMENU => {
-            let target = unsafe { HWND::from_ptr(w_param as _) };
-            apply_help_to_control(target, &BEST_HELP_IDS);
-            return 1;
-        }
-        _ => {}
+        };
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, close);
+        self.dlg
+            .on()
+            .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+        self.dlg
+            .on()
+            .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+
+        self.dlg.on().wm_help({
+            move |help| {
+                apply_help_from_info(help.helpinfo, &BEST_HELP_IDS);
+                Ok(())
+            }
+        });
+        self.dlg.on().wm(co::WM::CONTEXTMENU, {
+            move |msg: WndMsg| -> w::AnyResult<isize> {
+                let target = unsafe { HWND::from_ptr(msg.wparam as _) };
+                apply_help_to_control(target, &BEST_HELP_IDS);
+                Ok(1)
+            }
+        });
     }
-    0
 }
 
-/// Dialog procedure for entering a name when achieving a high score.
-/// Handles initialization and command processing for the dialog.
-/// # Arguments
-/// * `h_dlg` - Handle to the dialog window.
-/// * `message` - The message being processed.
-/// * `w_param` - Additional message information (WPARAM).
-/// * `l_param` - Additional message information (LPARAM).
-/// # Returns
-/// * `isize` - Returns 1 if the message was processed, 0 otherwise
-extern "system" fn EnterDlgProc(
-    h_dlg: HWND,
-    message: co::WM,
-    w_param: usize,
-    _l_param: isize,
-) -> isize {
-    // Name entry dialog shown when a player beats a high score.
-    let h_dlg_raw = h_dlg.ptr();
-    match message {
-        co::WM::INITDIALOG => {
-            let (game_type, current_name) = {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                let name = match prefs.wGameType {
-                    GameType::Begin => prefs.szBegin,
-                    GameType::Inter => prefs.szInter,
-                    _ => prefs.szExpert,
-                };
-                (prefs.wGameType, name)
-            };
+/// New record name entry dialog
+#[derive(Clone)]
+struct EnterDialog {
+    dlg: gui::WindowModal,
+}
 
-            unsafe {
-                let mut buffer = [0u16; CCH_MSG_MAX];
-                let string_id = ID_MSG_BEGIN + game_type as u16;
-                if let Err(e) = LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32) {
-                    eprintln!("Failed to load dialog string {}: {}", string_id, e);
-                } else {
-                    SetDlgItemTextW(h_dlg_raw as _, ControlId::TextBest as i32, buffer.as_ptr());
-                }
-                if let Ok(edit_hwnd) = h_dlg.GetDlgItem(ControlId::EditName as u16) {
-                    let _ = edit_hwnd.SendMessage(WndMsg::new(
-                        co::WM::from_raw(co::EM::SETLIMITTEXT.raw()),
-                        CCH_NAME_MAX,
-                        0,
-                    ));
-                }
-                SetDlgItemTextW(
-                    h_dlg_raw as _,
-                    ControlId::EditName as i32,
-                    current_name.as_ptr(),
-                );
-            }
-            return 1;
+impl EnterDialog {
+    fn new() -> Self {
+        let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Enter as u16);
+        let new_self = Self { dlg };
+        new_self.events();
+        new_self
+    }
+
+    fn show_modal(&self, parent: &impl GuiParent) {
+        if let Err(e) = self.dlg.show_modal(parent) {
+            eprintln!("Failed to show name-entry dialog: {e}");
         }
-        co::WM::COMMAND => match command_id(w_param) {
-            id if id == ControlId::BtnOk as u16
-                || id == co::DLGID::OK.raw()
-                || id == ControlId::BtnCancel as u16
-                || id == co::DLGID::CANCEL.raw() =>
-            {
+    }
+
+    fn events(&self) {
+        self.dlg.on().wm_init_dialog({
+            let dlg = self.dlg.clone();
+            move |_| -> w::AnyResult<bool> {
+                let (game_type, current_name) = {
+                    let prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    let name = match prefs.wGameType {
+                        GameType::Begin => prefs.szBegin,
+                        GameType::Inter => prefs.szInter,
+                        _ => prefs.szExpert,
+                    };
+                    (prefs.wGameType, name)
+                };
+
+                unsafe {
+                    let hdlg_raw = dlg.hwnd().ptr() as _;
+
+                    let mut buffer = [0u16; CCH_MSG_MAX];
+                    let string_id = ID_MSG_BEGIN + game_type as u16;
+                    if let Err(e) = LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32) {
+                        eprintln!("Failed to load dialog string {string_id}: {e}");
+                    } else {
+                        SetDlgItemTextW(hdlg_raw, ControlId::TextBest as i32, buffer.as_ptr());
+                    }
+
+                    if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
+                        let _ = edit_hwnd.SendMessage(WndMsg::new(
+                            co::WM::from_raw(co::EM::SETLIMITTEXT.raw()),
+                            CCH_NAME_MAX,
+                            0,
+                        ));
+                    }
+
+                    SetDlgItemTextW(hdlg_raw, ControlId::EditName as i32, current_name.as_ptr());
+                }
+
+                Ok(true)
+            }
+        });
+
+        let on_close = {
+            let dlg = self.dlg.clone();
+            move || -> w::AnyResult<()> {
                 let mut buffer = [0u16; CCH_NAME_MAX];
                 unsafe {
                     GetDlgItemTextW(
-                        h_dlg_raw as _,
+                        dlg.hwnd().ptr() as _,
                         ControlId::EditName as i32,
                         buffer.as_mut_ptr(),
                         CCH_NAME_MAX as i32,
                     );
                 }
 
-                let lock = preferences_mutex().lock();
-                if let Ok(mut prefs) = lock {
-                    match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin = buffer,
-                        GameType::Inter => prefs.szInter = buffer,
-                        _ => prefs.szExpert = buffer,
-                    }
-                } else if let Err(poisoned) = preferences_mutex().lock() {
-                    let mut prefs = poisoned.into_inner();
-                    match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin = buffer,
-                        GameType::Inter => prefs.szInter = buffer,
-                        _ => prefs.szExpert = buffer,
-                    }
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                match prefs.wGameType {
+                    GameType::Begin => prefs.szBegin = buffer,
+                    GameType::Inter => prefs.szInter = buffer,
+                    _ => prefs.szExpert = buffer,
                 }
 
-                let _ = h_dlg.EndDialog(1);
-                return 1;
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
             }
-            _ => {}
-        },
-        _ => {}
-    }
+        };
 
-    0
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, on_close);
+        self.dlg
+            .on()
+            .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let mut buffer = [0u16; CCH_NAME_MAX];
+                    unsafe {
+                        GetDlgItemTextW(
+                            dlg.hwnd().ptr() as _,
+                            ControlId::EditName as i32,
+                            buffer.as_mut_ptr(),
+                            CCH_NAME_MAX as i32,
+                        );
+                    }
+
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    match prefs.wGameType {
+                        GameType::Begin => prefs.szBegin = buffer,
+                        GameType::Inter => prefs.szInter = buffer,
+                        _ => prefs.szExpert = buffer,
+                    }
+
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+        self.dlg
+            .on()
+            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let mut buffer = [0u16; CCH_NAME_MAX];
+                    unsafe {
+                        GetDlgItemTextW(
+                            dlg.hwnd().ptr() as _,
+                            ControlId::EditName as i32,
+                            buffer.as_mut_ptr(),
+                            CCH_NAME_MAX as i32,
+                        );
+                    }
+
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    match prefs.wGameType {
+                        GameType::Begin => prefs.szBegin = buffer,
+                        GameType::Inter => prefs.szInter = buffer,
+                        _ => prefs.szExpert = buffer,
+                    }
+
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+        self.dlg
+            .on()
+            .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> w::AnyResult<()> {
+                    let mut buffer = [0u16; CCH_NAME_MAX];
+                    unsafe {
+                        GetDlgItemTextW(
+                            dlg.hwnd().ptr() as _,
+                            ControlId::EditName as i32,
+                            buffer.as_mut_ptr(),
+                            CCH_NAME_MAX as i32,
+                        );
+                    }
+
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    match prefs.wGameType {
+                        GameType::Begin => prefs.szBegin = buffer,
+                        GameType::Inter => prefs.szInter = buffer,
+                        _ => prefs.szExpert = buffer,
+                    }
+
+                    let _ = dlg.hwnd().EndDialog(1);
+                    Ok(())
+                }
+            });
+    }
+}
+
+/// Handles the high-score name entry dialog.
+pub fn DoEnterName(parent: &impl GuiParent) {
+    EnterDialog::new().show_modal(parent);
+    UPDATE_INI.store(true, Ordering::Relaxed);
+}
+
+/// Displays the high-score list dialog.
+pub fn DoDisplayBest(parent: &impl GuiParent) {
+    BestDialog::new().show_modal(parent);
 }
 
 /// Adjusts the main window size and position based on the current board and menu state.

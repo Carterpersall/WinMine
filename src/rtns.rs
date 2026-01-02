@@ -12,7 +12,7 @@ use crate::grafix::{
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
 use crate::sound::{EndTunes, PlayTune, Tune};
 use crate::util::{ReportErr, Rnd};
-use crate::winmine::{AdjustWindow, DoDisplayBest, DoEnterName};
+use crate::winmine::{AdjustWindow, NEW_RECORD_DLG};
 
 /// Encoded board values used to track each tile state.
 #[repr(u8)]
@@ -347,8 +347,26 @@ fn record_win_if_needed() {
         if game_idx < prefs.rgTime.len() && elapsed < prefs.rgTime[game_idx] {
             prefs.rgTime[game_idx] = elapsed;
             drop(prefs);
-            DoEnterName();
-            DoDisplayBest();
+
+            // Send a message to the main window to show the "New Record" dialog.
+            let state = global_state();
+            let hwnd_main = {
+                let guard = match state.hwnd_main.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                unsafe { winsafe::HWND::from_ptr(guard.ptr()) }
+            };
+
+            if hwnd_main.as_opt().is_some() {
+                unsafe {
+                    let _ = hwnd_main.PostMessage(winsafe::msg::WndMsg::new(
+                        winsafe::co::WM::APP,
+                        NEW_RECORD_DLG,
+                        0,
+                    ));
+                }
+            }
         }
     }
 }
