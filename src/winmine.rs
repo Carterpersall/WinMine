@@ -515,7 +515,7 @@ impl WinMineMainWindow {
                 FixMenus(game, color_enabled, mark_enabled, f_sound);
                 SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Best) => DoDisplayBest(&self.wnd),
+            Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
             Some(MenuCommand::Help) => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
             Some(MenuCommand::HowToPlay) => {
                 DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32)
@@ -747,7 +747,7 @@ impl WinMineMainWindow {
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
                     DoEnterName(&self2.wnd);
-                    DoDisplayBest(&self2.wnd);
+                    BestDialog::new().show_modal(&self2.wnd);
                     return Ok(0);
                 }
 
@@ -1812,14 +1812,11 @@ impl EnterDialog {
 }
 
 /// Handles the high-score name entry dialog.
+/// # Arguments
+/// * `parent`: The parent GUI element for the modal dialog.
 pub fn DoEnterName(parent: &impl GuiParent) {
     EnterDialog::new().show_modal(parent);
     UPDATE_INI.store(true, Ordering::Relaxed);
-}
-
-/// Displays the high-score list dialog.
-pub fn DoDisplayBest(parent: &impl GuiParent) {
-    BestDialog::new().show_modal(parent);
 }
 
 /// Adjusts the main window size and position based on the current board and menu state.
