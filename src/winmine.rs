@@ -1401,6 +1401,7 @@ impl PrefDialog {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
             move |_| -> w::AnyResult<bool> {
+                // Get current board settings from preferences
                 let (height, width, mines) = {
                     let prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
@@ -1409,6 +1410,7 @@ impl PrefDialog {
                     (prefs.Height, prefs.Width, prefs.Mines)
                 };
 
+                // Populate the dialog controls with the current settings
                 unsafe {
                     let hdlg_raw = dlg.hwnd().ptr() as _;
                     SetDlgItemInt(hdlg_raw, ControlId::EditHeight as i32, height as u32, 0);
@@ -1420,40 +1422,18 @@ impl PrefDialog {
             }
         });
 
-        // Some templates use a custom OK control ID, others use the standard IDOK.
-        self.dlg
-            .on()
-            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
-                    let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
-                    let max_mines = min(999, (height - 1) * (width - 1));
-                    let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
-
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.Height = height;
-                    prefs.Width = width;
-                    prefs.Mines = mines;
-
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
-
         self.dlg
             .on()
             .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
                 let dlg = self.dlg.clone();
                 move || -> w::AnyResult<()> {
+                    // Retrieve and validate user input from the dialog controls
                     let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
                     let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
                     let max_mines = min(999, (height - 1) * (width - 1));
                     let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
 
+                    // Update preferences with the new settings
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
@@ -1462,16 +1442,7 @@ impl PrefDialog {
                     prefs.Width = width;
                     prefs.Mines = mines;
 
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
-
-        self.dlg
-            .on()
-            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
+                    // Close the dialog
                     let _ = dlg.hwnd().EndDialog(1);
                     Ok(())
                 }
@@ -1482,6 +1453,7 @@ impl PrefDialog {
             .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
                 let dlg = self.dlg.clone();
                 move || -> w::AnyResult<()> {
+                    // Close the dialog without saving changes
                     let _ = dlg.hwnd().EndDialog(1);
                     Ok(())
                 }
