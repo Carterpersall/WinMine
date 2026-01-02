@@ -690,7 +690,18 @@ pub fn StartGame() {
 
     display_bomb_count();
 
-    AdjustWindow(f_adjust);
+    // TODO: Handle shared HWND better
+    if let Some(hwnd) = {
+        let state = global_state();
+        let guard = match state.hwnd_main.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        unsafe { winsafe::HWND::from_ptr(guard.ptr()) }
+    }.as_opt()
+    {
+        AdjustWindow(hwnd, f_adjust);
+    }
 }
 
 pub fn TrackMouse(x_new: i32, y_new: i32) {

@@ -415,7 +415,7 @@ pub fn SetMenuBar(f_active: MenuMode) {
         let null_menu = w::HMENU::NULL;
         let menu_arg = if menu_on { &menu_handle } else { &null_menu };
         let _ = hwnd.SetMenu(menu_arg);
-        AdjustWindow(AdjustFlag::Resize as i32);
+        AdjustWindow(hwnd, AdjustFlag::Resize as i32);
     }
 }
 

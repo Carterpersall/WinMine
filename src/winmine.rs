@@ -370,6 +370,24 @@ impl WinMineMainWindow {
         MakeGuess(x_box_from_xpos(point.x), y_box_from_ypos(point.y));
     }
 
+    /// Handles the "Custom" menu command by displaying the preferences dialog,
+    /// updating the game settings, and starting a new game.
+    fn DoPref(&self) {
+        PrefDialog::new().show_modal(&self.wnd);
+
+        let (game, f_color, f_mark, f_sound) = {
+            let mut prefs = match preferences_mutex().lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            prefs.wGameType = GameType::Other;
+            (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
+        };
+        FixMenus(game, f_color, f_mark, f_sound);
+        UPDATE_INI.store(true, Ordering::Relaxed);
+        StartGame();
+    }
+
     /// Handles command messages from the menu and accelerators.
     /// # Arguments
     /// * `w_param`: The wParam from the WM_COMMAND message.
@@ -415,7 +433,7 @@ impl WinMineMainWindow {
                 FixMenus(preset, f_color, f_mark, f_sound);
                 SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Custom) => DoPref(&self.wnd),
+            Some(MenuCommand::Custom) => self.DoPref(),
             Some(MenuCommand::Sound) => {
                 let current_sound = {
                     let prefs = match preferences_mutex().lock() {
@@ -608,7 +626,7 @@ impl WinMineMainWindow {
                 update_ui_metrics_for_dpi(dpi);
 
                 // Ensure the client area matches the board size for the active DPI.
-                AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                AdjustWindow(self2.wnd.hwnd(), AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
 
                 // Initialize local resources.
                 if let Err(e) = FInitLocal() {
@@ -688,7 +706,7 @@ impl WinMineMainWindow {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
-                AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                AdjustWindow(self2.wnd.hwnd(), AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
                 Ok(0)
             }
         });
@@ -1471,24 +1489,6 @@ impl PrefDialog {
     }
 }
 
-/// Handles the "Custom" menu command by displaying the preferences dialog,
-/// updating the game settings, and starting a new game.
-fn DoPref(parent: &impl GuiParent) {
-    PrefDialog::new().show_modal(parent);
-
-    let (game, f_color, f_mark, f_sound) = {
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        prefs.wGameType = GameType::Other;
-        (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
-    };
-    FixMenus(game, f_color, f_mark, f_sound);
-    UPDATE_INI.store(true, Ordering::Relaxed);
-    StartGame();
-}
-
 /// Best times dialog
 #[derive(Clone)]
 struct BestDialog {
@@ -1513,32 +1513,20 @@ impl BestDialog {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
             move |_| -> w::AnyResult<bool> {
-                let snapshot = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    (
-                        prefs.rgTime[GameType::Begin as usize],
-                        prefs.rgTime[GameType::Inter as usize],
-                        prefs.rgTime[GameType::Expert as usize],
-                        prefs.szBegin,
-                        prefs.szInter,
-                        prefs.szExpert,
-                    )
+                let prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
                 };
-
-                let (time_begin, time_inter, time_expert, name_begin, name_inter, name_expert) =
-                    snapshot;
                 reset_best_dialog(
                     dlg.hwnd(),
-                    time_begin,
-                    time_inter,
-                    time_expert,
-                    name_begin,
-                    name_inter,
-                    name_expert,
+                    prefs.rgTime[GameType::Begin as usize],
+                    prefs.rgTime[GameType::Inter as usize],
+                    prefs.rgTime[GameType::Expert as usize],
+                    prefs.szBegin,
+                    prefs.szInter,
+                    prefs.szExpert,
                 );
+
                 Ok(true)
             }
         });
@@ -1839,20 +1827,10 @@ pub fn DoDisplayBest(parent: &impl GuiParent) {
 /// This function is called whenever the board or menu state changes to ensure
 /// that the main window is appropriately sized and positioned on the screen.
 /// # Arguments
+/// * `hwnd` - A reference to the main window handle.
 /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
-pub fn AdjustWindow(mut f_adjust: i32) {
+pub fn AdjustWindow(hwnd: &HWND, mut f_adjust: i32) {
     let state = global_state();
-    let hwnd_main = {
-        let guard = match state.hwnd_main.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        unsafe { HWND::from_ptr(guard.ptr()) }
-    };
-    if hwnd_main.as_opt().is_none() {
-        return;
-    }
-
     let menu_handle = {
         let guard = match state.h_menu.lock() {
             Ok(g) => g,
@@ -1885,7 +1863,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
     let mut menu_extra = 0;
     let mut diff_level = false;
     if menu_visible
-        && let Some(hwnd) = hwnd_main.as_opt()
+        && let Some(hwnd) = hwnd.as_opt()
         && let Some(menu) = menu_handle.as_opt()
         && let (Ok(game_rect), Ok(help_rect)) =
             (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
@@ -1901,8 +1879,8 @@ pub fn AdjustWindow(mut f_adjust: i32) {
         right: dx_window,
         bottom: dy_window,
     };
-    let dw_style = hwnd_main.GetWindowLongPtr(GWLP::STYLE) as u32;
-    let dw_ex_style = hwnd_main.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
+    let dw_style = hwnd.GetWindowLongPtr(GWLP::STYLE) as u32;
+    let dw_ex_style = hwnd.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
     let mut frame_extra = CXBORDER.load(Ordering::Relaxed);
     let mut dyp_adjust;
     if let Ok(adjusted) = AdjustWindowRectExForDpi(
@@ -1939,7 +1917,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
 
     if !INIT_MINIMIZED.load(Ordering::Relaxed) {
         if (f_adjust & AdjustFlag::Resize as i32) != 0 {
-            let _ = hwnd_main.MoveWindow(
+            let _ = hwnd.MoveWindow(
                 POINT {
                     x: x_window,
                     y: y_window,
@@ -1958,16 +1936,16 @@ pub fn AdjustWindow(mut f_adjust: i32) {
             && menu_handle
                 .as_opt()
                 .and_then(|menu| {
-                    hwnd_main
+                    hwnd
                         .GetMenuItemRect(menu, 0)
                         .ok()
-                        .zip(hwnd_main.GetMenuItemRect(menu, 1).ok())
+                        .zip(hwnd.GetMenuItemRect(menu, 1).ok())
                 })
                 .is_some_and(|(g, h)| g.top == h.top)
         {
             dyp_adjust -= CYMENU.load(Ordering::Relaxed);
             WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
-            let _ = hwnd_main.MoveWindow(
+            let _ = hwnd.MoveWindow(
                 POINT {
                     x: x_window,
                     y: y_window,
@@ -1987,7 +1965,7 @@ pub fn AdjustWindow(mut f_adjust: i32) {
                 right: dx_window,
                 bottom: dy_window,
             };
-            let _ = hwnd_main.InvalidateRect(Some(&rect), true);
+            let _ = hwnd.InvalidateRect(Some(&rect), true);
         }
     }
 
