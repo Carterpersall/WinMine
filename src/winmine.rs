@@ -10,13 +10,12 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use winsafe::co::{self, GWLP, HELPW, ICC, IDC, MK, SC, SM, STOCK_BRUSH, VK, WS, WS_EX};
-use winsafe::gui;
 use winsafe::msg::WndMsg;
 use winsafe::prelude::*;
 use winsafe::{
-    self as w, AdjustWindowRectExForDpi, COLORREF, DLGPROC, GetSystemMetrics, HBRUSH, HINSTANCE,
-    HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT,
-    PeekMessage, PtsRc, RECT, SIZE, WINDOWPOS,
+    self as w, AdjustWindowRectExForDpi, COLORREF, DLGPROC, GetSystemMetrics, HBRUSH, HELPINFO,
+    HINSTANCE, HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG,
+    POINT, PeekMessage, PtsRc, RECT, SIZE, WINDOWPOS, gui,
 };
 
 use crate::globals::{
@@ -1459,13 +1458,10 @@ impl PrefDialog {
                 }
             });
 
-        self.dlg.on().wm(co::WM::HELP, {
-            move |msg: WndMsg| -> w::AnyResult<isize> {
-                Ok(if apply_help_from_info(msg.lparam, &PREF_HELP_IDS) {
-                    1
-                } else {
-                    0
-                })
+        self.dlg.on().wm_help({
+            move |help| {
+                apply_help_from_info(help.helpinfo, &PREF_HELP_IDS);
+                Ok(())
             }
         });
 
@@ -1623,9 +1619,11 @@ extern "system" fn BestDlgProc(
             _ => {}
         },
         co::WM::HELP => {
-            if apply_help_from_info(l_param, &BEST_HELP_IDS) {
-                return 1;
-            }
+            apply_help_from_info(
+                unsafe { &*(l_param as *const winsafe::HELPINFO) },
+                &BEST_HELP_IDS,
+            );
+            return 1;
         }
         co::WM::CONTEXTMENU => {
             let target = unsafe { HWND::from_ptr(w_param as _) };
@@ -2035,23 +2033,15 @@ fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {
 /// * `ids` - The array of help context IDs.
 /// # Returns
 /// True if help was applied, false otherwise.
-fn apply_help_from_info(l_param: isize, ids: &[u32]) -> bool {
-    if l_param == 0 {
-        return false;
-    }
-
-    let hwnd = unsafe { &*(l_param as *const winsafe::HELPINFO) }.hItemHandle();
-
+fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
     unsafe {
         HtmlHelpA(
-            hwnd.as_isize() as _,
+            help.hItemHandle().as_isize() as _,
             HELP_FILE.as_ptr(),
             HH_TP_HELP_WM_HELP as u32,
             ids.as_ptr() as usize,
         );
     }
-
-    true
 }
 
 /// Applies help context to a specific control.
