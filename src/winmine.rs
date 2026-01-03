@@ -124,7 +124,7 @@ enum ControlId {
     /// OK button
     BtnOk = 100,
     /// Cancel button
-    BtnCancel = 109,
+    _BtnCancel = 109,
     /// Reset best times button
     BtnReset = 707,
     /// Static text for best times
@@ -626,7 +626,10 @@ impl WinMineMainWindow {
                 update_ui_metrics_for_dpi(dpi);
 
                 // Ensure the client area matches the board size for the active DPI.
-                AdjustWindow(self2.wnd.hwnd(), AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                AdjustWindow(
+                    self2.wnd.hwnd(),
+                    AdjustFlag::Resize as i32 | AdjustFlag::Display as i32,
+                );
 
                 // Initialize local resources.
                 if let Err(e) = FInitLocal() {
@@ -706,7 +709,10 @@ impl WinMineMainWindow {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
-                AdjustWindow(self2.wnd.hwnd(), AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                AdjustWindow(
+                    self2.wnd.hwnd(),
+                    AdjustFlag::Resize as i32 | AdjustFlag::Display as i32,
+                );
                 Ok(0)
             }
         });
@@ -1573,16 +1579,6 @@ impl BestDialog {
                 }
             });
 
-        let close = {
-            let dlg = self.dlg.clone();
-            move || -> w::AnyResult<()> {
-                let _ = dlg.hwnd().EndDialog(1);
-                Ok(())
-            }
-        };
-        self.dlg
-            .on()
-            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, close);
         self.dlg
             .on()
             .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
@@ -1592,15 +1588,7 @@ impl BestDialog {
                     Ok(())
                 }
             });
-        self.dlg
-            .on()
-            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
+
         self.dlg
             .on()
             .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
@@ -1617,6 +1605,7 @@ impl BestDialog {
                 Ok(())
             }
         });
+
         self.dlg.on().wm(co::WM::CONTEXTMENU, {
             move |msg: WndMsg| -> w::AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as _) };
@@ -1644,6 +1633,28 @@ impl EnterDialog {
     fn show_modal(&self, parent: &impl GuiParent) {
         if let Err(e) = self.dlg.show_modal(parent) {
             eprintln!("Failed to show name-entry dialog: {e}");
+        }
+    }
+
+    fn save_high_score_name(&self) {
+        let mut buffer = [0u16; CCH_NAME_MAX];
+        unsafe {
+            GetDlgItemTextW(
+                self.dlg.hwnd().ptr() as _,
+                ControlId::EditName as i32,
+                buffer.as_mut_ptr(),
+                CCH_NAME_MAX as i32,
+            );
+        }
+
+        let mut prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match prefs.wGameType {
+            GameType::Begin => prefs.szBegin = buffer,
+            GameType::Inter => prefs.szInter = buffer,
+            _ => prefs.szExpert = buffer,
         }
     }
 
@@ -1690,121 +1701,24 @@ impl EnterDialog {
             }
         });
 
-        let on_close = {
-            let dlg = self.dlg.clone();
-            move || -> w::AnyResult<()> {
-                let mut buffer = [0u16; CCH_NAME_MAX];
-                unsafe {
-                    GetDlgItemTextW(
-                        dlg.hwnd().ptr() as _,
-                        ControlId::EditName as i32,
-                        buffer.as_mut_ptr(),
-                        CCH_NAME_MAX as i32,
-                    );
-                }
-
-                let mut prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                match prefs.wGameType {
-                    GameType::Begin => prefs.szBegin = buffer,
-                    GameType::Inter => prefs.szInter = buffer,
-                    _ => prefs.szExpert = buffer,
-                }
-
-                let _ = dlg.hwnd().EndDialog(1);
-                Ok(())
-            }
-        };
-
         self.dlg
             .on()
-            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, on_close);
-        self.dlg
-            .on()
-            .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
+            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, {
+                let self2 = self.clone();
                 move || -> w::AnyResult<()> {
-                    let mut buffer = [0u16; CCH_NAME_MAX];
-                    unsafe {
-                        GetDlgItemTextW(
-                            dlg.hwnd().ptr() as _,
-                            ControlId::EditName as i32,
-                            buffer.as_mut_ptr(),
-                            CCH_NAME_MAX as i32,
-                        );
-                    }
-
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin = buffer,
-                        GameType::Inter => prefs.szInter = buffer,
-                        _ => prefs.szExpert = buffer,
-                    }
-
-                    let _ = dlg.hwnd().EndDialog(1);
+                    self2.save_high_score_name();
+                    let _ = self2.dlg.hwnd().EndDialog(1);
                     Ok(())
                 }
             });
-        self.dlg
-            .on()
-            .wm_command(ControlId::BtnCancel as u16, co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    let mut buffer = [0u16; CCH_NAME_MAX];
-                    unsafe {
-                        GetDlgItemTextW(
-                            dlg.hwnd().ptr() as _,
-                            ControlId::EditName as i32,
-                            buffer.as_mut_ptr(),
-                            CCH_NAME_MAX as i32,
-                        );
-                    }
 
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin = buffer,
-                        GameType::Inter => prefs.szInter = buffer,
-                        _ => prefs.szExpert = buffer,
-                    }
-
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
         self.dlg
             .on()
             .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
+                let self2 = self.clone();
                 move || -> w::AnyResult<()> {
-                    let mut buffer = [0u16; CCH_NAME_MAX];
-                    unsafe {
-                        GetDlgItemTextW(
-                            dlg.hwnd().ptr() as _,
-                            ControlId::EditName as i32,
-                            buffer.as_mut_ptr(),
-                            CCH_NAME_MAX as i32,
-                        );
-                    }
-
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin = buffer,
-                        GameType::Inter => prefs.szInter = buffer,
-                        _ => prefs.szExpert = buffer,
-                    }
-
-                    let _ = dlg.hwnd().EndDialog(1);
+                    self2.save_high_score_name();
+                    let _ = self2.dlg.hwnd().EndDialog(1);
                     Ok(())
                 }
             });
@@ -1933,8 +1847,7 @@ pub fn AdjustWindow(hwnd: &HWND, mut f_adjust: i32) {
             && menu_handle
                 .as_opt()
                 .and_then(|menu| {
-                    hwnd
-                        .GetMenuItemRect(menu, 0)
+                    hwnd.GetMenuItemRect(menu, 0)
                         .ok()
                         .zip(hwnd.GetMenuItemRect(menu, 1).ok())
                 })

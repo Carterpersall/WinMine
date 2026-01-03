@@ -698,7 +698,8 @@ pub fn StartGame() {
             Err(poisoned) => poisoned.into_inner(),
         };
         unsafe { winsafe::HWND::from_ptr(guard.ptr()) }
-    }.as_opt()
+    }
+    .as_opt()
     {
         AdjustWindow(hwnd, f_adjust);
     }
