@@ -7,10 +7,10 @@ use winsafe::prelude::*;
 
 use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag, global_state};
 use crate::grafix::{
-    ButtonSprite, DisplayBlk, DisplayBombCount, DisplayButton, DisplayGrid, DisplayTime,
+    ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
 };
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
-use crate::sound::{EndTunes, PlayTune, Tune};
+use crate::sound::{PlayTune, Tune, stop_all_sounds};
 use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, NEW_RECORD_DLG};
 
@@ -343,44 +343,6 @@ fn check_win() -> bool {
     C_BOX_VISIT.load(Ordering::Relaxed) == CBOX_VISIT_MAC.load(Ordering::Relaxed)
 }
 
-/// Display a single block at the specified coordinates.
-///
-/// TODO: Remove this
-/// # Arguments
-/// * `x` - The X coordinate.
-/// * `y` - The Y coordinate.
-fn display_block(x: i32, y: i32) {
-    DisplayBlk(x, y);
-}
-
-/// Display the entire game grid.
-///
-/// TODO: Remove this
-fn display_grid() {
-    DisplayGrid();
-}
-
-/// Display the button with the specified sprite state.
-///
-/// TODO: Remove this
-fn display_button(state: ButtonSprite) {
-    DisplayButton(state);
-}
-
-/// Display the elapsed time.
-///
-/// TODO: Remove this
-fn display_time() {
-    DisplayTime();
-}
-
-/// Display the current bomb count.
-///
-/// TODO: Remove this
-fn display_bomb_count() {
-    DisplayBombCount();
-}
-
 /// Play a logical tune if sound effects are enabled in preferences.
 /// # Arguments
 /// * `tune` - The tune to play.
@@ -396,13 +358,6 @@ fn play_tune(tune: Tune) {
     if sound_on {
         PlayTune(tune);
     }
-}
-
-/// Stop all currently playing audio.
-///
-/// TODO: Remove this
-fn stop_all_audio() {
-    EndTunes();
 }
 
 /// Reveal all bombs on the board and mark incorrect guesses.
@@ -687,7 +642,7 @@ fn step_block(x_center: i32, y_center: i32) {
 /// # Arguments
 /// * `x` - The X coordinate of the square.
 /// * `y` - The Y coordinate of the square.
-fn make_guess_internal(x: i32, y: i32) {
+pub fn make_guess(x: i32, y: i32) {
     // Cycle through blank -> flag -> question mark states depending on preferences.
     if !f_in_range(x, y) || is_visit(x, y) {
         return;
@@ -953,17 +908,6 @@ pub fn TrackMouse(x_new: i32, y_new: i32) {
     }
 }
 
-/// Handle a user guess (flag or question mark) on a square.
-///
-/// TODO: Remove this
-/// # Arguments
-/// * `x` - The X coordinate of the square.
-/// * `y` - The Y coordinate of the square.
-pub fn MakeGuess(x: i32, y: i32) {
-    // Toggle through flag/question mark states and update the bomb counter.
-    make_guess_internal(x, y);
-}
-
 /// Handle a left-button release: start the timer, then either chord or step.
 pub fn DoButton1Up() {
     let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
@@ -1012,7 +956,7 @@ pub fn DoButton1Up() {
 
 /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.
 pub fn PauseGame() {
-    stop_all_audio();
+    stop_all_sounds();
 
     if !status_pause() {
         F_OLD_TIMER_STATUS.store(F_TIMER.load(Ordering::Relaxed), Ordering::Relaxed);

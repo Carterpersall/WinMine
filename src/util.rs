@@ -101,19 +101,6 @@ fn class_ptr() -> *const u16 {
     guard.as_ptr()
 }
 
-/// Clamp a value within the specified minimum and maximum bounds.
-///
-/// TODO: Remove this
-/// # Arguments
-/// * `value` - The value to clamp.
-/// * `min` - The minimum bound.
-/// * `max` - The maximum bound.
-/// # Returns
-/// The clamped value.
-fn clamp(value: i32, min: i32, max: i32) -> i32 {
-    value.max(min).min(max)
-}
-
 /// Return a pseudo-random number in the [0, rnd_max) range
 /// # Arguments
 /// * `rnd_max` - Upper bound (exclusive) for the random number
@@ -204,7 +191,7 @@ pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -
     let value = unsafe {
         GetPrivateProfileIntW(class_ptr(), key.as_ptr(), val_default, ini_path.as_ptr()) as i32
     };
-    clamp(value, val_min, val_max)
+    value.clamp(val_min, val_max)
 }
 
 /// Read a string preference from the legacy .ini file into the provided buffer.
@@ -346,8 +333,8 @@ pub fn InitConst() {
     } else {
         SoundState::Off
     };
-    prefs.fMark = bool_from_int(ReadIniInt(PrefKey::Mark, 1, 0, 1));
-    prefs.fTick = bool_from_int(ReadIniInt(PrefKey::Tick, 0, 0, 1));
+    prefs.fMark = ReadIniInt(PrefKey::Mark, 1, 0, 1) != 0;
+    prefs.fTick = ReadIniInt(PrefKey::Tick, 0, 0, 1) != 0;
     let menu_raw = ReadIniInt(
         PrefKey::Menu,
         MenuMode::AlwaysOn as i32,
@@ -385,7 +372,7 @@ pub fn InitConst() {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        prefs.fColor = bool_from_int(ReadIniInt(PrefKey::Color, default_color, 0, 1));
+        prefs.fColor = ReadIniInt(PrefKey::Color, default_color, 0, 1) != 0;
 
         if prefs.fSound == SoundState::On {
             prefs.fSound = FInitTunes();
@@ -583,16 +570,5 @@ pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 
     let mut success = 0i32;
     let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &mut success, 0) };
     let value = value as i32;
-    clamp(value, num_lo, num_hi)
-}
-
-/// Convert an integer value to a boolean.
-///
-/// TODO: Remove this
-/// # Arguments
-/// * `value` - The integer value to convert.
-/// # Returns
-/// `true` if the value is non-zero, `false` otherwise.
-fn bool_from_int(value: i32) -> bool {
-    value != 0
+    value.clamp(num_lo, num_hi)
 }

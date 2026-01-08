@@ -138,12 +138,12 @@ pub fn ReadInt(
         return val_default;
     }
 
-    let key_name = match pref_name_string(key) {
+    let key_name = match pref_key_literal(key) {
         Some(name) => name,
         None => return val_default,
     };
 
-    let value = match handle.RegQueryValueEx(Some(&key_name)) {
+    let value = match handle.RegQueryValueEx(Some(key_name)) {
         Ok(RegistryValue::Dword(val)) => val as i32,
         _ => return val_default,
     };
@@ -162,11 +162,11 @@ pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
         return copy_default_name();
     }
 
-    let Some(key_name) = pref_name_string(key) else {
+    let Some(key_name) = pref_key_literal(key) else {
         return copy_default_name();
     };
 
-    match handle.RegQueryValueEx(Some(&key_name)) {
+    match handle.RegQueryValueEx(Some(key_name)) {
         Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => value,
         _ => copy_default_name(),
     }
@@ -339,12 +339,12 @@ pub fn WriteInt(
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());
     }
-    let key_name = match pref_name_string(key) {
+    let key_name = match pref_key_literal(key) {
         Some(name) => name,
         None => return Err("Invalid preference key".into()),
     };
 
-    handle.RegSetValueEx(Some(&key_name), RegistryValue::Dword(val as u32))?;
+    handle.RegSetValueEx(Some(key_name), RegistryValue::Dword(val as u32))?;
     Ok(())
 }
 
@@ -367,7 +367,7 @@ pub fn WriteSz(
     if sz.is_null() {
         return Err("Invalid string pointer".into());
     }
-    let key_name = match pref_name_string(key) {
+    let key_name = match pref_key_literal(key) {
         Some(name) => name,
         None => return Err("Invalid preference key".into()),
     };
@@ -377,7 +377,7 @@ pub fn WriteSz(
         None => return Err("Invalid string data".into()),
     };
 
-    handle.RegSetValueEx(Some(&key_name), RegistryValue::Sz(value))?;
+    handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(value))?;
     Ok(())
 }
 
@@ -388,15 +388,6 @@ pub fn WriteSz(
 /// Option containing the string literal, or None if the key is invalid
 pub(crate) fn pref_key_literal(key: PrefKey) -> Option<&'static str> {
     PREF_STRINGS.get(key as usize).copied()
-}
-
-/// Retrieve the string name for a given preference key.
-/// # Arguments
-/// * `key` - Preference key to look up
-/// # Returns
-/// Option containing the string name, or None if the key is invalid
-fn pref_name_string(key: PrefKey) -> Option<String> {
-    pref_key_literal(key).map(|s| s.to_string())
 }
 
 /// Convert a string slice into a fixed-size UTF-16 array suitable for registry storage

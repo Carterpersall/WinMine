@@ -30,17 +30,10 @@ pub fn FInitTunes() -> SoundState {
     }
 }
 
-/// Terminate any currently playing sounds.
-/// TODO: Get rid of this function
-pub fn EndTunes() {
-    // Purge the playback queue; callers decide whether sound is enabled.
-    let _ = stop_all_sounds();
-}
-
 /// Stop all currently playing sounds.
 /// # Returns
 /// `true` if the operation succeeded, `false` otherwise.
-fn stop_all_sounds() -> bool {
+pub fn stop_all_sounds() -> bool {
     // Passing NULL tells PlaySound to purge the current queue.
     unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
 }

@@ -25,8 +25,8 @@ use crate::globals::{
 };
 use crate::grafix::{
     ButtonSprite, CleanUp, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
-    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, DisplayButton, DisplayScreen,
-    DrawScreen, FInitLocal, FLoadBitmaps, FreeBitmaps, scale_dpi,
+    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, DisplayScreen, DrawScreen,
+    FInitLocal, FreeBitmaps, display_button, load_bitmaps, scale_dpi,
 };
 use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, ReadPreferences, SoundState,
@@ -34,10 +34,10 @@ use crate::pref::{
 };
 use crate::rtns::{
     AdjustFlag, BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BTN_FACE_STATE, BlockMask, C_BLK_MAX,
-    CURSOR_X_POS, CURSOR_Y_POS, DoButton1Up, DoTimer, ID_TIMER, MakeGuess, PauseGame, ResumeGame,
-    StartGame, TrackMouse, board_mutex, preferences_mutex,
+    CURSOR_X_POS, CURSOR_Y_POS, DoButton1Up, DoTimer, ID_TIMER, PauseGame, ResumeGame, StartGame,
+    TrackMouse, board_mutex, make_guess, preferences_mutex,
 };
-use crate::sound::{EndTunes, FInitTunes};
+use crate::sound::{FInitTunes, stop_all_sounds};
 use crate::util::{
     CCH_MSG_MAX, CheckEm, DoAbout, DoHelp, GetDlgInt, IconId, InitConst, LoadSz, ReportErr,
     SetMenuBar,
@@ -300,7 +300,7 @@ impl WinMineMainWindow {
         LEFT_CLK_DOWN.store(true, Ordering::Relaxed);
         CURSOR_X_POS.store(-1, Ordering::Relaxed);
         CURSOR_Y_POS.store(-1, Ordering::Relaxed);
-        DisplayButton(ButtonSprite::Caution);
+        display_button(ButtonSprite::Caution);
     }
 
     /// Finishes a primary button drag operation.
@@ -367,7 +367,7 @@ impl WinMineMainWindow {
         }
 
         // Regular right-click: make a guess
-        MakeGuess(x_box_from_xpos(point.x), y_box_from_ypos(point.y));
+        make_guess(x_box_from_xpos(point.x), y_box_from_ypos(point.y));
     }
 
     /// Handles the "Custom" menu command by displaying the preferences dialog,
@@ -444,7 +444,7 @@ impl WinMineMainWindow {
                 };
                 let new_sound = match current_sound {
                     SoundState::On => {
-                        EndTunes();
+                        stop_all_sounds();
                         SoundState::Off
                     }
                     SoundState::Off => FInitTunes(),
@@ -477,7 +477,7 @@ impl WinMineMainWindow {
                     )
                 };
                 FreeBitmaps();
-                if let Err(e) = FLoadBitmaps() {
+                if let Err(e) = load_bitmaps() {
                     eprintln!("Failed to reload bitmaps: {}", e);
                     ReportErr(ID_ERR_MEM);
                     unsafe {
@@ -563,7 +563,7 @@ impl WinMineMainWindow {
         }
 
         let mut capture_guard = self.wnd.hwnd().as_opt().map(|hwnd| hwnd.SetCapture());
-        DisplayButton(ButtonSprite::Down);
+        display_button(ButtonSprite::Down);
         let _ = self
             .wnd
             .hwnd()
@@ -582,7 +582,7 @@ impl WinMineMainWindow {
                     co::WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
-                            DisplayButton(ButtonSprite::Happy);
+                            display_button(ButtonSprite::Happy);
                             StartGame();
                         }
                         capture_guard.take();
@@ -592,11 +592,11 @@ impl WinMineMainWindow {
                         if winsafe::PtInRect(rc, msg.pt) {
                             if !pressed {
                                 pressed = true;
-                                DisplayButton(ButtonSprite::Down);
+                                display_button(ButtonSprite::Down);
                             }
                         } else if pressed {
                             pressed = false;
-                            DisplayButton(current_face_sprite());
+                            display_button(current_face_sprite());
                         }
                     }
                     _ => {}
@@ -705,7 +705,7 @@ impl WinMineMainWindow {
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
                 FreeBitmaps();
-                if let Err(e) = FLoadBitmaps() {
+                if let Err(e) = load_bitmaps() {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
@@ -1155,7 +1155,7 @@ fn handle_keydown(key: VK) {
             if matches!(current_sound, SoundState::On | SoundState::Off) {
                 let new_sound = match current_sound {
                     SoundState::On => {
-                        EndTunes();
+                        stop_all_sounds();
                         SoundState::Off
                     }
                     SoundState::Off => FInitTunes(),

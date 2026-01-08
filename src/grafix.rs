@@ -18,7 +18,7 @@ use crate::rtns::{
     BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
     ClearField, SECS_ELAPSED, board_mutex, preferences_mutex,
 };
-use crate::sound::EndTunes;
+use crate::sound::stop_all_sounds;
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -200,18 +200,9 @@ fn main_window() -> Option<w::HWND> {
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
 pub fn FInitLocal() -> Result<(), Box<dyn std::error::Error>> {
-    FLoadBitmaps()?;
+    load_bitmaps()?;
     ClearField();
     Ok(())
-}
-
-/// Load and prepare the bitmap resources for rendering.
-///
-/// TODO: Why does this function exist as a wrapper around `load_bitmaps_impl`?
-/// # Returns
-/// Ok(()) if successful, or an error if loading resources failed.
-pub fn FLoadBitmaps() -> Result<(), Box<dyn std::error::Error>> {
-    load_bitmaps_impl()
 }
 
 /// Free all loaded bitmap resources and cached DCs.
@@ -270,7 +261,7 @@ pub fn FreeBitmaps() {
 /// Clean up graphics resources and silence audio on exit.
 pub fn CleanUp() {
     FreeBitmaps();
-    EndTunes();
+    stop_all_sounds();
 }
 
 /// Draw a single block at the specified board coordinates.
@@ -306,7 +297,7 @@ fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
 /// # Arguments
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-pub fn DisplayBlk(x: i32, y: i32) {
+pub fn display_block(x: i32, y: i32) {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
@@ -347,7 +338,7 @@ fn DrawGrid(hdc: &w::HDC) {
 }
 
 /// Display the entire minefield grid.
-pub fn DisplayGrid() {
+pub fn display_grid() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
@@ -422,7 +413,7 @@ fn DrawBombCount(hdc: &w::HDC) {
 }
 
 /// Display the bomb counter.
-pub fn DisplayBombCount() {
+pub fn display_bomb_count() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
@@ -472,7 +463,7 @@ fn DrawTime(hdc: &w::HDC) {
 }
 
 /// Display the timer.
-pub fn DisplayTime() {
+pub fn display_time() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
@@ -654,7 +645,7 @@ fn create_resampled_bitmap(
 /// Display the face button with the specified sprite.
 /// # Arguments
 /// * `sprite` - The button sprite to display.
-pub fn DisplayButton(sprite: ButtonSprite) {
+pub fn display_button(sprite: ButtonSprite) {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
@@ -844,7 +835,7 @@ pub fn DisplayScreen() {
 /// Load the bitmap resources and prepare cached DCs for rendering.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
+pub fn load_bitmaps() -> Result<(), Box<dyn std::error::Error>> {
     let color_on = current_color_flag();
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -875,7 +866,7 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
             Err(_) => w::HPEN::NULL,
         }
     } else {
-        match w::HPEN::CreatePen(PS::SOLID, 1, rgb(128, 128, 128)) {
+        match w::HPEN::CreatePen(PS::SOLID, 1, w::COLORREF::from_rgb(128, 128, 128)) {
             Ok(mut pen) => pen.leak(),
             Err(_) => w::HPEN::NULL,
         }
@@ -1218,17 +1209,4 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
         .copied()
         .map(|value| (value & BlockMask::Data as i8) as usize)
         .unwrap_or(0)
-}
-
-/// Create a COLORREF value from RGB components.
-///
-/// TODO: Remove this
-/// # Arguments
-/// * `r` - Red component (0-255)
-/// * `g` - Green component (0-255)
-/// * `b` - Blue component (0-255)
-/// # Returns
-/// A COLORREF value representing the specified color
-const fn rgb(r: u8, g: u8, b: u8) -> w::COLORREF {
-    w::COLORREF::from_rgb(r, g, b)
 }
