@@ -305,9 +305,7 @@ pub fn InitConst() {
         co::KEY::READ,
         None,
     ) {
-        unsafe {
-            already_played = ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
-        }
+        already_played = ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
     }
 
     if already_played {
@@ -394,10 +392,8 @@ pub fn InitConst() {
         }
     }
 
-    unsafe {
-        if let Err(e) = WritePreferences() {
-            eprintln!("Failed to write preferences during initialization: {}", e);
-        }
+    if let Err(e) = WritePreferences() {
+        eprintln!("Failed to write preferences during initialization: {}", e);
     }
 }
 

@@ -781,12 +781,10 @@ impl WinMineMainWindow {
                 CleanUp();
 
                 // Write preferences if they have changed
-                if UPDATE_INI.load(Ordering::Relaxed) {
-                    unsafe {
-                        if let Err(e) = WritePreferences() {
-                            eprintln!("Failed to write preferences: {e}");
-                        }
-                    }
+                if UPDATE_INI.load(Ordering::Relaxed)
+                    && let Err(e) = WritePreferences()
+                {
+                    eprintln!("Failed to write preferences: {e}");
                 }
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(w::msg::wm::Destroy {}) };
@@ -979,9 +977,7 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
         .LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))
         .ok();
 
-    unsafe {
-        ReadPreferences();
-    }
+    ReadPreferences();
 
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);

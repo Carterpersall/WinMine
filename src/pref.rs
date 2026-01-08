@@ -126,7 +126,7 @@ pub struct Pref {
 /// * `val_max` - Maximum allowed value
 /// # Returns
 /// The retrieved integer value, clamped within the specified range
-pub unsafe fn ReadInt(
+pub fn ReadInt(
     handle: &w::HKEY,
     key: PrefKey,
     val_default: i32,
@@ -173,7 +173,7 @@ pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
 }
 
 /// Read all user preferences from the registry into the shared PREF struct.
-pub unsafe fn ReadPreferences() {
+pub fn ReadPreferences() {
     // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
     let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -191,63 +191,61 @@ pub unsafe fn ReadPreferences() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    unsafe {
-        let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
-        BOARD_HEIGHT.store(height, Ordering::Relaxed);
-        prefs.Height = height;
+    let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
+    BOARD_HEIGHT.store(height, Ordering::Relaxed);
+    prefs.Height = height;
 
-        let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
-        BOARD_WIDTH.store(width, Ordering::Relaxed);
-        prefs.Width = width;
+    let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
+    BOARD_WIDTH.store(width, Ordering::Relaxed);
+    prefs.Width = width;
 
-        let game_raw = ReadInt(
-            &key_guard,
-            PrefKey::Difficulty,
-            GameType::Begin as i32,
-            GameType::Begin as i32,
-            GameType::Expert as i32 + 1,
-        );
-        prefs.wGameType = match game_raw {
-            0 => GameType::Begin,
-            1 => GameType::Inter,
-            2 => GameType::Expert,
-            _ => GameType::Other,
-        };
-        prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
-        prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024);
-        prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024);
+    let game_raw = ReadInt(
+        &key_guard,
+        PrefKey::Difficulty,
+        GameType::Begin as i32,
+        GameType::Begin as i32,
+        GameType::Expert as i32 + 1,
+    );
+    prefs.wGameType = match game_raw {
+        0 => GameType::Begin,
+        1 => GameType::Inter,
+        2 => GameType::Expert,
+        _ => GameType::Other,
+    };
+    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
+    prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024);
+    prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024);
 
-        let sound_raw = ReadInt(
-            &key_guard,
-            PrefKey::Sound,
-            SoundState::Off as i32,
-            SoundState::Off as i32,
-            SoundState::On as i32,
-        );
-        prefs.fSound = if sound_raw == SoundState::On as i32 {
-            SoundState::On
-        } else {
-            SoundState::Off
-        };
-        prefs.fMark = ReadInt(&key_guard, PrefKey::Mark, 1, 0, 1) != 0;
-        prefs.fTick = ReadInt(&key_guard, PrefKey::Tick, 0, 0, 1) != 0;
-        let menu_raw = ReadInt(
-            &key_guard,
-            PrefKey::Menu,
-            MenuMode::AlwaysOn as i32,
-            MenuMode::AlwaysOn as i32,
-            MenuMode::On as i32,
-        );
-        prefs.fMenu = menu_mode_from_raw(menu_raw);
+    let sound_raw = ReadInt(
+        &key_guard,
+        PrefKey::Sound,
+        SoundState::Off as i32,
+        SoundState::Off as i32,
+        SoundState::On as i32,
+    );
+    prefs.fSound = if sound_raw == SoundState::On as i32 {
+        SoundState::On
+    } else {
+        SoundState::Off
+    };
+    prefs.fMark = ReadInt(&key_guard, PrefKey::Mark, 1, 0, 1) != 0;
+    prefs.fTick = ReadInt(&key_guard, PrefKey::Tick, 0, 0, 1) != 0;
+    let menu_raw = ReadInt(
+        &key_guard,
+        PrefKey::Menu,
+        MenuMode::AlwaysOn as i32,
+        MenuMode::AlwaysOn as i32,
+        MenuMode::On as i32,
+    );
+    prefs.fMenu = menu_mode_from_raw(menu_raw);
 
-        prefs.rgTime[GameType::Begin as usize] = ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999);
-        prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
-        prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
+    prefs.rgTime[GameType::Begin as usize] = ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999);
+    prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
+    prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
 
-        prefs.szBegin = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name1));
-        prefs.szInter = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name2));
-        prefs.szExpert = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name3));
-    }
+    prefs.szBegin = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name1));
+    prefs.szInter = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name2));
+    prefs.szExpert = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name3));
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
     let desktop = w::HWND::GetDesktopWindow();
@@ -261,7 +259,7 @@ pub unsafe fn ReadPreferences() {
         }
         Err(_) => 0,
     };
-    prefs.fColor = unsafe { ReadInt(&key_guard, PrefKey::Color, default_color, 0, 1) } != 0;
+    prefs.fColor = ReadInt(&key_guard, PrefKey::Color, default_color, 0, 1) != 0;
 
     // If sound is enabled, verify that the system can actually play the resources.
     if prefs.fSound == SoundState::On {
@@ -272,7 +270,7 @@ pub unsafe fn ReadPreferences() {
 /// Write all user preferences from the shared PREF struct into the registry.
 /// # Returns
 /// Result indicating success or failure
-pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
+pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
     let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -291,39 +289,37 @@ pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Persist the difficulty, board dimensions, and flags exactly as the original did.
-    unsafe {
-        WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as i32)?;
-        WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
-        WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
-        WriteInt(&key_guard, PrefKey::Mines, prefs.Mines)?;
-        WriteInt(&key_guard, PrefKey::Mark, prefs.fMark as i32)?;
-        WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
+    WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as i32)?;
+    WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
+    WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
+    WriteInt(&key_guard, PrefKey::Mines, prefs.Mines)?;
+    WriteInt(&key_guard, PrefKey::Mark, prefs.fMark as i32)?;
+    WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
-        WriteInt(&key_guard, PrefKey::Color, prefs.fColor as i32)?;
-        WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as i32)?;
-        WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow)?;
-        WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow)?;
+    WriteInt(&key_guard, PrefKey::Color, prefs.fColor as i32)?;
+    WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as i32)?;
+    WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow)?;
+    WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow)?;
 
-        WriteInt(
-            &key_guard,
-            PrefKey::Time1,
-            prefs.rgTime[GameType::Begin as usize],
-        )?;
-        WriteInt(
-            &key_guard,
-            PrefKey::Time2,
-            prefs.rgTime[GameType::Inter as usize],
-        )?;
-        WriteInt(
-            &key_guard,
-            PrefKey::Time3,
-            prefs.rgTime[GameType::Expert as usize],
-        )?;
+    WriteInt(
+        &key_guard,
+        PrefKey::Time1,
+        prefs.rgTime[GameType::Begin as usize],
+    )?;
+    WriteInt(
+        &key_guard,
+        PrefKey::Time2,
+        prefs.rgTime[GameType::Inter as usize],
+    )?;
+    WriteInt(
+        &key_guard,
+        PrefKey::Time3,
+        prefs.rgTime[GameType::Expert as usize],
+    )?;
 
-        WriteSz(&key_guard, PrefKey::Name1, prefs.szBegin.as_ptr())?;
-        WriteSz(&key_guard, PrefKey::Name2, prefs.szInter.as_ptr())?;
-        WriteSz(&key_guard, PrefKey::Name3, prefs.szExpert.as_ptr())?;
-    }
+    WriteSz(&key_guard, PrefKey::Name1, prefs.szBegin.as_ptr())?;
+    WriteSz(&key_guard, PrefKey::Name2, prefs.szInter.as_ptr())?;
+    WriteSz(&key_guard, PrefKey::Name3, prefs.szExpert.as_ptr())?;
     Ok(())
 }
 
@@ -334,7 +330,7 @@ pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
 /// * `val` - Integer value to store
 /// # Returns
 /// Result indicating success or failure
-pub unsafe fn WriteInt(
+pub fn WriteInt(
     handle: &w::HKEY,
     key: PrefKey,
     val: i32,
@@ -359,7 +355,7 @@ pub unsafe fn WriteInt(
 /// * `sz` - Pointer to zero-terminated UTF-16 string to store
 /// # Returns
 /// Result indicating success or failure
-pub unsafe fn WriteSz(
+pub fn WriteSz(
     handle: &w::HKEY,
     key: PrefKey,
     sz: *const u16,
@@ -376,7 +372,7 @@ pub unsafe fn WriteSz(
         None => return Err("Invalid preference key".into()),
     };
 
-    let value = match unsafe { wide_ptr_to_string(sz) } {
+    let value = match wide_ptr_to_string(sz) {
         Some(text) => text,
         None => return Err("Invalid string data".into()),
     };
@@ -424,12 +420,12 @@ fn string_to_fixed_wide(src: &str) -> [u16; CCH_NAME_MAX] {
 /// * `ptr` - Pointer to the UTF-16 string
 /// # Returns
 /// Option containing the String, or None if the pointer is null
-unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
+fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
 
-    let len = unsafe { wide_len(ptr) };
+    let len = wide_len(ptr);
     let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
     Some(String::from_utf16_lossy(slice))
 }
@@ -439,7 +435,7 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
 /// * `ptr` - Pointer to the UTF-16 string
 /// # Returns
 /// Length of the string in UTF-16 code units
-unsafe fn wide_len(mut ptr: *const u16) -> usize {
+fn wide_len(mut ptr: *const u16) -> usize {
     if ptr.is_null() {
         return 0;
     }
