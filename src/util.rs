@@ -20,7 +20,7 @@ const RNG_MULTIPLIER: u32 = 1_103_515_245;
 const RNG_INCREMENT: u32 = 12_345;
 /// Default seed applied when the RNG would otherwise start at zero.
 const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
-
+/// Shared state of the linear congruential generator.
 static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
 
 /// Localized string resources.
@@ -60,13 +60,21 @@ pub const CCH_MSG_MAX: usize = 128;
 const CCH_MAX_PATHNAME: usize = 250;
 
 /// Legacy initialization file name used for first-run migration.
+///
+/// TODO: Remove this once preferences are fully migrated to the registry.
 const SZ_INI_FILE: &str = "entpack.ini";
 
+/// Seed the RNG with the specified seed value.
+/// # Arguments
+/// * `seed` - The seed value to initialize the RNG with. If zero, a default seed is used.
 fn seed_rng(seed: u32) {
     let value = if seed == 0 { RNG_DEFAULT_SEED } else { seed };
     RNG_STATE.store(value, Ordering::Relaxed);
 }
 
+/// Generate the next pseudo-random number using a linear congruential generator.
+/// # Returns
+/// The next pseudo-random number.
 fn next_rand() -> i32 {
     let mut current = RNG_STATE.load(Ordering::Relaxed);
     loop {
@@ -80,6 +88,9 @@ fn next_rand() -> i32 {
     }
 }
 
+/// Retrieve a pointer to the window class name string.
+/// # Returns
+/// A pointer to the UTF-16 encoded window class name.
 #[inline]
 fn class_ptr() -> *const u16 {
     let state = global_state();
@@ -90,6 +101,15 @@ fn class_ptr() -> *const u16 {
     guard.as_ptr()
 }
 
+/// Clamp a value within the specified minimum and maximum bounds.
+///
+/// TODO: Remove this
+/// # Arguments
+/// * `value` - The value to clamp.
+/// * `min` - The minimum bound.
+/// * `max` - The maximum bound.
+/// # Returns
+/// The clamped value.
 fn clamp(value: i32, min: i32, max: i32) -> i32 {
     value.max(min).min(max)
 }
@@ -107,6 +127,9 @@ pub fn Rnd(rnd_max: i32) -> i32 {
     }
 }
 
+/// Display an error message box for the specified error ID.
+/// # Arguments
+/// * `id_err` - The error string resource ID.
 pub fn ReportErr(id_err: u16) {
     // Format either a catalog string or the "unknown error" template before showing the dialog.
     let state = global_state();
@@ -130,8 +153,14 @@ pub fn ReportErr(id_err: u16) {
     let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
 }
 
+/// Load a localized string resource into the provided buffer.
+/// # Arguments
+/// * `id` - The string resource ID to load.
+/// * `sz` - Pointer to the buffer that receives the string (UTF-16).
+/// * `cch` - Size of the buffer in UTF-16 code units.
+/// # Returns
+/// Ok(()) if successful, or an error if loading failed.
 pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) -> Result<(), Box<dyn std::error::Error>> {
-    // Wrapper around LoadString that raises the original fatal error if the resource is missing.
     let state = global_state();
     let inst_guard = match state.h_inst.lock() {
         Ok(g) => g,
@@ -157,8 +186,15 @@ pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) -> Result<(), Box<dyn std::error:
     Ok(())
 }
 
+/// Read an integer preference from the legacy .ini file, clamping it within the specified bounds.
+/// # Arguments
+/// * `pref` - The preference key to read.
+/// * `val_default` - Default value if the key is missing or invalid.
+/// * `val_min` - Minimum allowed value.
+/// * `val_max` - Maximum allowed value.
+/// # Returns
+/// The clamped integer preference value.
 pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
-    // Pull an integer from the legacy .ini file, honoring the same clamp the game always used.
     let key = match pref_key_literal(pref) {
         Some(name) => WString::from_str(name),
         None => return val_default,
@@ -171,6 +207,10 @@ pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -
     clamp(value, val_min, val_max)
 }
 
+/// Read a string preference from the legacy .ini file into the provided buffer.
+/// # Arguments
+/// * `pref` - The preference key to read.
+/// * `sz_ret` - Pointer to the buffer that receives the string (UTF-16).
 pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
     // Grab the string from entpack.ini or fall back to the default Hall of Fame name.
     if sz_ret.is_null() {
@@ -218,8 +258,8 @@ pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
     }
 }
 
+/// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
 pub fn InitConst() {
-    // Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
     let ticks = (w::GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
 
@@ -361,6 +401,10 @@ pub fn InitConst() {
     }
 }
 
+/// Check or uncheck a menu item based on the specified command ID.
+/// # Arguments
+/// * `idm` - The menu command ID.
+/// * `f_check` - `true` to check the item, `false` to uncheck it.
 pub fn CheckEm(idm: MenuCommand, f_check: bool) {
     // Maintain the old menu checkmark toggles (e.g. question marks, sound).
     let state = global_state();
@@ -374,6 +418,9 @@ pub fn CheckEm(idm: MenuCommand, f_check: bool) {
     }
 }
 
+/// Show or hide the menu bar based on the specified mode.
+/// # Arguments
+/// * `f_active` - The desired menu mode.
 pub fn SetMenuBar(f_active: MenuMode) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
     let (menu_on, menu_checks);
@@ -419,8 +466,8 @@ pub fn SetMenuBar(f_active: MenuMode) {
     }
 }
 
+/// Display the About dialog box with version and credit information.
 pub fn DoAbout() {
-    // Show the stock About box with the localized title and credit strings.
     let hwnd_guard = {
         let state = global_state();
         match state.hwnd_main.lock() {
@@ -468,6 +515,10 @@ pub fn DoAbout() {
     let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon);
 }
 
+/// Display the Help dialog for the given command.
+/// # Arguments
+/// * `w_command` - The help command (e.g., HELPONHELP).
+/// * `l_param` - Additional parameter for the help command.
 pub fn DoHelp(w_command: u16, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
@@ -514,11 +565,24 @@ pub fn DoHelp(w_command: u16, l_param: u32) {
     }
 }
 
+/// Convert a UTF-16 buffer to a Rust String, stopping at the first null terminator.
+/// # Arguments
+/// * `buf` - The UTF-16 buffer to convert.
+/// # Returns
+/// A Rust String containing the converted text.
 fn utf16_buffer_to_string(buf: &[u16]) -> String {
     let len = buf.iter().position(|&ch| ch == 0).unwrap_or(buf.len());
     String::from_utf16_lossy(&buf[..len])
 }
 
+/// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
+/// # Arguments
+/// * `h_dlg` - Handle to the dialog window.
+/// * `dlg_id` - The dialog item ID.
+/// * `num_lo` - Minimum allowed value.
+/// * `num_hi` - Maximum allowed value.
+/// # Returns
+/// The clamped integer value from the dialog item.
 pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     let mut success = 0i32;
     let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &mut success, 0) };
@@ -526,6 +590,13 @@ pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 
     clamp(value, num_lo, num_hi)
 }
 
+/// Convert an integer value to a boolean.
+///
+/// TODO: Remove this
+/// # Arguments
+/// * `value` - The integer value to convert.
+/// # Returns
+/// `true` if the value is non-zero, `false` otherwise.
 fn bool_from_int(value: i32) -> bool {
     value != 0
 }

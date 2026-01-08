@@ -20,6 +20,10 @@ use crate::rtns::{
 };
 use crate::sound::EndTunes;
 
+/*
+    Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
+    These are scaled at runtime to match the current UI DPI.
+*/
 /// Width of a single board cell sprite in pixels.
 pub const DX_BLK_96: i32 = 16;
 /// Height of a single board cell sprite in pixels.
@@ -50,11 +54,6 @@ pub const DY_GRID_OFF_96: i32 = DY_TOP_LED_96 + DY_LED_96 + 16;
 pub const DX_LEFT_BOMB_96: i32 = DX_LEFT_SPACE_96 + 5;
 /// X coordinate offset from the right edge for the timer counter.
 pub const DX_RIGHT_TIME_96: i32 = DX_RIGHT_SPACE_96 + 5;
-
-// Classic WinMine assets and layout were authored for 96 DPI.
-//
-// The *resource bitmaps* remain in these fixed pixel sizes, but all *UI layout*
-// must be scaled according to the current DPI.
 
 /// Scale a 96-DPI measurement to the current UI DPI
 /// # Arguments
@@ -160,12 +159,19 @@ impl Default for GrafixState {
     }
 }
 
+/// Shared variable containing the graphics state
 static GRAFIX_STATE: OnceLock<Mutex<GrafixState>> = OnceLock::new();
 
+/// Accessor for the shared graphics state
+/// # Returns
+/// Reference to the Mutex protecting the GrafixState
 fn grafix_state() -> &'static Mutex<GrafixState> {
     GRAFIX_STATE.get_or_init(|| Mutex::new(GrafixState::default()))
 }
 
+/// Retrieve whether color mode is enabled from preferences.
+/// # Returns
+/// `true` if color mode is enabled, `false` otherwise.
 fn current_color_flag() -> bool {
     let prefs = match preferences_mutex().lock() {
         Ok(g) => g,
@@ -174,6 +180,11 @@ fn current_color_flag() -> bool {
     prefs.fColor
 }
 
+/// Retrieve the main application window handle.
+///
+/// TODO: Remove this function and use the value shared in the window message handlers.
+/// # Returns
+/// Option containing the main window handle, or None if not set.
 fn main_window() -> Option<w::HWND> {
     let state = global_state();
     let guard = match state.hwnd_main.lock() {
@@ -185,20 +196,28 @@ fn main_window() -> Option<w::HWND> {
         .map(|hwnd| unsafe { w::HWND::from_ptr(hwnd.ptr()) })
 }
 
+/// Initialize local graphics resources and reset the minefield before the game starts.
+/// # Returns
+/// Ok(()) if successful, or an error if loading resources failed.
 pub fn FInitLocal() -> Result<(), Box<dyn std::error::Error>> {
-    // Load the sprite resources and reset the minefield before gameplay starts.
     FLoadBitmaps()?;
     ClearField();
     Ok(())
 }
 
+/// Load and prepare the bitmap resources for rendering.
+///
+/// TODO: Why does this function exist as a wrapper around `load_bitmaps_impl`?
+/// # Returns
+/// Ok(()) if successful, or an error if loading resources failed.
 pub fn FLoadBitmaps() -> Result<(), Box<dyn std::error::Error>> {
-    // Wrapper retained for compatibility with the original export table.
     load_bitmaps_impl()
 }
 
+/// Free all loaded bitmap resources and cached DCs.
+///
+/// TODO: Does this function need to exist now that we use WinSafe?
 pub fn FreeBitmaps() {
-    // Tear down cached pens, handles, and scratch DCs when leaving the app.
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -254,8 +273,12 @@ pub fn CleanUp() {
     EndTunes();
 }
 
+/// Draw a single block at the specified board coordinates.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
+/// * `x` - The X coordinate of the block (1-based).
+/// * `y` - The Y coordinate of the block (1-based).
 fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
-    // Bit-blit a single cell sprite using the precalculated offsets.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -279,8 +302,11 @@ fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
     );
 }
 
+/// Display a single block at the specified board coordinates.
+/// # Arguments
+/// * `x` - The X coordinate of the block (1-based).
+/// * `y` - The Y coordinate of the block (1-based).
 pub fn DisplayBlk(x: i32, y: i32) {
-    // Convenience wrapper that repaints one tile directly to the main window.
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
     {
@@ -288,8 +314,10 @@ pub fn DisplayBlk(x: i32, y: i32) {
     }
 }
 
+/// Draw the entire minefield grid onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
 fn DrawGrid(hdc: &w::HDC) {
-    // Rebuild the visible grid by iterating over the current rgBlk contents.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -318,6 +346,7 @@ fn DrawGrid(hdc: &w::HDC) {
     }
 }
 
+/// Display the entire minefield grid.
 pub fn DisplayGrid() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
@@ -326,6 +355,11 @@ pub fn DisplayGrid() {
     }
 }
 
+/// Draw a single LED digit at the specified X coordinate.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
+/// * `x` - The X coordinate to draw the LED digit.
+/// * `i_led` - The index of the LED digit to draw.
 fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
@@ -351,6 +385,9 @@ fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
     );
 }
 
+/// Draw the bomb counter onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
 fn DrawBombCount(hdc: &w::HDC) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
@@ -384,6 +421,7 @@ fn DrawBombCount(hdc: &w::HDC) {
     }
 }
 
+/// Display the bomb counter.
 pub fn DisplayBombCount() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
@@ -392,6 +430,9 @@ pub fn DisplayBombCount() {
     }
 }
 
+/// Draw the timer onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
 fn DrawTime(hdc: &w::HDC) {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
@@ -430,6 +471,7 @@ fn DrawTime(hdc: &w::HDC) {
     }
 }
 
+/// Display the timer.
 pub fn DisplayTime() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
@@ -438,6 +480,10 @@ pub fn DisplayTime() {
     }
 }
 
+/// Draw the face button onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
+/// * `sprite` - The button sprite to draw.
 fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
     // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
@@ -605,6 +651,9 @@ fn create_resampled_bitmap(
     Ok(dst_bmp)
 }
 
+/// Display the face button with the specified sprite.
+/// # Arguments
+/// * `sprite` - The button sprite to display.
 pub fn DisplayButton(sprite: ButtonSprite) {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
@@ -613,6 +662,10 @@ pub fn DisplayButton(sprite: ButtonSprite) {
     }
 }
 
+/// Set the pen for drawing based on the normal flag.
+/// # Arguments
+/// * `hdc` - The device context to set the pen on.
+/// * `f_normal` - The normal flag determining the pen style.
 fn SetThePen(hdc: &w::HDC, f_normal: i32) {
     // Reproduce the old pen combos: even values use the gray pen, odd values use white.
     if (f_normal & 1) != 0 {
@@ -634,6 +687,15 @@ fn SetThePen(hdc: &w::HDC, f_normal: i32) {
     }
 }
 
+/// Draw a beveled border rectangle onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
+/// * `x1` - The left X coordinate of the rectangle.
+/// * `y1` - The top Y coordinate of the rectangle.
+/// * `x2` - The right X coordinate of the rectangle.
+/// * `y2` - The bottom Y coordinate of the rectangle.
+/// * `width` - The width of the border in pixels.
+/// * `f_normal` - The normal flag determining the border style.
 fn DrawBorder(
     hdc: &w::HDC,
     mut x1: i32,
@@ -644,7 +706,7 @@ fn DrawBorder(
     f_normal: i32,
 ) {
     let mut i = 0;
-    // Draw the raised or sunken beveled rectangle one pixel at a time, just like the Win16 code.
+    // Draw the raised or sunken beveled rectangle one pixel at a time
     SetThePen(hdc, f_normal);
 
     while i < width {
@@ -674,6 +736,9 @@ fn DrawBorder(
     }
 }
 
+/// Draw the entire window background and chrome elements onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
 fn DrawBackground(hdc: &w::HDC) {
     // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
@@ -748,6 +813,9 @@ fn DrawBackground(hdc: &w::HDC) {
     );
 }
 
+/// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
+/// # Arguments
+/// * `hdc` - The device context to draw on.
 pub fn DrawScreen(hdc: &w::HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
@@ -764,6 +832,7 @@ pub fn DrawScreen(hdc: &w::HDC) {
     DrawGrid(hdc);
 }
 
+/// Display the entire screen (background, counters, button, timer, grid).
 pub fn DisplayScreen() {
     if let Some(hwnd) = main_window()
         && let Ok(hdc) = hwnd.GetDC()
@@ -772,6 +841,9 @@ pub fn DisplayScreen() {
     }
 }
 
+/// Load the bitmap resources and prepare cached DCs for rendering.
+/// # Returns
+/// Ok(()) if successful, or an error if loading resources failed.
 fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
     let color_on = current_color_flag();
     let mut state = match grafix_state().lock() {
@@ -1059,6 +1131,12 @@ fn load_bitmaps_impl() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Load a bitmap resource from the application resources.
+/// # Arguments
+/// * `id` - The bitmap resource ID to load.
+/// * `color_on` - Whether color mode is enabled.
+/// # Returns
+/// Optionally, a tuple containing the resource handle and a pointer to the bitmap data.
 fn load_bitmap_resource(id: BitmapId, color_on: bool) -> Option<(HRSRCMEM, *const u8)> {
     let offset = if color_on { 0 } else { 1 };
     let resource_id = (id as u16) + offset;
@@ -1121,6 +1199,12 @@ fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
     state.mem_blk_dc[idx].as_ref()
 }
 
+/// Determine the sprite index for the block at the given board coordinates.
+/// # Arguments
+/// * `x` - X coordinate on the board (1-based)
+/// * `y` - Y coordinate on the board (1-based)
+/// # Returns
+/// The sprite index for the block at the specified coordinates
 fn block_sprite_index(x: i32, y: i32) -> usize {
     // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
@@ -1136,6 +1220,15 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
         .unwrap_or(0)
 }
 
+/// Create a COLORREF value from RGB components.
+///
+/// TODO: Remove this
+/// # Arguments
+/// * `r` - Red component (0-255)
+/// * `g` - Green component (0-255)
+/// * `b` - Blue component (0-255)
+/// # Returns
+/// A COLORREF value representing the specified color
 const fn rgb(r: u8, g: u8, b: u8) -> w::COLORREF {
     w::COLORREF::from_rgb(r, g, b)
 }

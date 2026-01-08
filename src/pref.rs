@@ -11,7 +11,7 @@ pub const CCH_NAME_MAX: usize = 32;
 /// Total count of preference keys mirrored from the WinMine registry hive.
 pub const PREF_KEY_COUNT: usize = 18;
 
-/// Preference key identifiers matching the legacy registry order.
+/// Preference keys used to read and write settings from the registry.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum PrefKey {
@@ -35,7 +35,7 @@ pub enum PrefKey {
     AlreadyPlayed = 17,
 }
 
-/// Discrete sound preference persisted to the registry.
+/// Sound effect preferences stored in the registry.
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SoundState {
@@ -74,7 +74,9 @@ pub enum GameType {
     Other = 3,
 }
 
-// Registry value names, ordered to match the legacy iszPref constants.
+/// Strings corresponding to each preference key for registry access.
+///
+/// The order matches the `PrefKey` enum.
 const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
     "Difficulty",
     "Mines",
@@ -96,6 +98,7 @@ const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
     "AlreadyPlayed",
 ];
 
+/// Structure containing all user preferences.
 pub struct Pref {
     pub wGameType: GameType,
     pub Mines: i32,
@@ -114,6 +117,15 @@ pub struct Pref {
     pub szExpert: [u16; CCH_NAME_MAX],
 }
 
+/// Read an integer preference from the registry with clamping.
+/// # Arguments
+/// * `handle` - Open registry key handle
+/// * `key` - Preference key to read
+/// * `val_default` - Default value if the read fails
+/// * `val_min` - Minimum allowed value
+/// * `val_max` - Maximum allowed value
+/// # Returns
+/// The retrieved integer value, clamped within the specified range
 pub unsafe fn ReadInt(
     handle: &w::HKEY,
     key: PrefKey,
@@ -139,7 +151,7 @@ pub unsafe fn ReadInt(
     value.max(val_min).min(val_max)
 }
 
-/// Read a zero-terminated UTF-16 string from the registry, falling back to the default name.
+/// Read a string preference from the registry.
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to read
@@ -160,6 +172,7 @@ pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
     }
 }
 
+/// Read all user preferences from the registry into the shared PREF struct.
 pub unsafe fn ReadPreferences() {
     // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
     let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
@@ -256,6 +269,9 @@ pub unsafe fn ReadPreferences() {
     }
 }
 
+/// Write all user preferences from the shared PREF struct into the registry.
+/// # Returns
+/// Result indicating success or failure
 pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
     let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
@@ -311,6 +327,13 @@ pub unsafe fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Write an integer preference to the registry.
+/// # Arguments
+/// * `handle` - Open registry key handle
+/// * `key` - Preference key to write
+/// * `val` - Integer value to store
+/// # Returns
+/// Result indicating success or failure
 pub unsafe fn WriteInt(
     handle: &w::HKEY,
     key: PrefKey,
@@ -329,6 +352,13 @@ pub unsafe fn WriteInt(
     Ok(())
 }
 
+/// Write a string preference to the registry.
+/// # Arguments
+/// * `handle` - Open registry key handle
+/// * `key` - Preference key to write
+/// * `sz` - Pointer to zero-terminated UTF-16 string to store
+/// # Returns
+/// Result indicating success or failure
 pub unsafe fn WriteSz(
     handle: &w::HKEY,
     key: PrefKey,
@@ -355,15 +385,25 @@ pub unsafe fn WriteSz(
     Ok(())
 }
 
+/// Retrieve the string literal for a given preference key.
+/// # Arguments
+/// * `key` - Preference key to look up
+/// # Returns
+/// Option containing the string literal, or None if the key is invalid
 pub(crate) fn pref_key_literal(key: PrefKey) -> Option<&'static str> {
     PREF_STRINGS.get(key as usize).copied()
 }
 
+/// Retrieve the string name for a given preference key.
+/// # Arguments
+/// * `key` - Preference key to look up
+/// # Returns
+/// Option containing the string name, or None if the key is invalid
 fn pref_name_string(key: PrefKey) -> Option<String> {
     pref_key_literal(key).map(|s| s.to_string())
 }
 
-/// Convert a Rust string slice into a fixed-size UTF-16 array suitable for registry storage
+/// Convert a string slice into a fixed-size UTF-16 array suitable for registry storage
 /// # Arguments
 /// * `src` - Source string slice to convert
 /// # Returns
@@ -379,6 +419,11 @@ fn string_to_fixed_wide(src: &str) -> [u16; CCH_NAME_MAX] {
     out
 }
 
+/// Convert a pointer to a zero-terminated UTF-16 string into a String.
+/// # Arguments
+/// * `ptr` - Pointer to the UTF-16 string
+/// # Returns
+/// Option containing the String, or None if the pointer is null
 unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
     if ptr.is_null() {
         return None;
@@ -389,6 +434,11 @@ unsafe fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
     Some(String::from_utf16_lossy(slice))
 }
 
+/// Calculate the length of a zero-terminated UTF-16 string.
+/// # Arguments
+/// * `ptr` - Pointer to the UTF-16 string
+/// # Returns
+/// Length of the string in UTF-16 code units
 unsafe fn wide_len(mut ptr: *const u16) -> usize {
     if ptr.is_null() {
         return 0;
@@ -403,10 +453,10 @@ unsafe fn wide_len(mut ptr: *const u16) -> usize {
     len
 }
 
-/// Copy the default name from the global state into a Rust String.
+/// Retrieve the default player name from the global state.
 /// These defaults are used when registry reads fail.
 /// # Returns
-/// The default name as a Rust String
+/// The default name as a String
 fn copy_default_name() -> String {
     let state = global_state();
     let guard = match state.sz_default_name.lock() {
@@ -414,10 +464,15 @@ fn copy_default_name() -> String {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    // Collect the default name from the global buffer into a Rust String
+    // Collect the default name from the global buffer into a String
     String::from_utf16_lossy(guard.as_ref())
 }
 
+/// Convert a raw integer value into a MenuMode enum.
+/// # Arguments
+/// * `value` - Raw integer value from preferences
+/// # Returns
+/// Corresponding MenuMode enum variant
 fn menu_mode_from_raw(value: i32) -> MenuMode {
     match value {
         0 => MenuMode::AlwaysOn,

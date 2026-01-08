@@ -109,8 +109,12 @@ impl Default for GlobalState {
     }
 }
 
+/// Shared variable containing the global state
 static GLOBAL_STATE: OnceLock<GlobalState> = OnceLock::new();
 
+/// Accessor for the shared global state
+/// # Returns
+/// A reference to the global state singleton
 pub fn global_state() -> &'static GlobalState {
     GLOBAL_STATE.get_or_init(GlobalState::default)
 }

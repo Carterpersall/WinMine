@@ -66,8 +66,12 @@ pub enum AdjustFlag {
 /// Shift applied when converting x/y to the packed board index.
 pub const BOARD_INDEX_SHIFT: isize = 5;
 
+/// Current preferences stored in a global Mutex.
 static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
 
+/// Retrieve the global preferences mutex.
+/// # Returns
+/// A reference to the global preferences mutex.
 pub fn preferences_mutex() -> &'static Mutex<Pref> {
     PREFERENCES.get_or_init(|| {
         Mutex::new(Pref {
@@ -117,6 +121,9 @@ pub static CURSOR_Y_POS: AtomicI32 = AtomicI32::new(-1);
 /// Packed board cell values stored row-major including border
 static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
 
+/// Accessor for the packed board cell array.
+/// # Returns
+/// A mutex guard for the packed board cell array.
 pub fn board_mutex() -> MutexGuard<'static, [i8; C_BLK_MAX]> {
     match RG_BLK
         .get_or_init(|| Mutex::new([BlockCell::BlankUp as i8; C_BLK_MAX]))
@@ -139,30 +146,46 @@ static F_TIMER: AtomicBool = AtomicBool::new(false);
 /// Previous timer running state used to detect changes
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 
+/// Check if the game is currently in play mode.
+/// # Returns
+/// `true` if the game is in play mode, `false` otherwise.
 fn status_play() -> bool {
     (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0
 }
 
+/// Check if the game is currently in pause mode.
+/// # Returns
+/// `true` if the game is paused, `false` otherwise.
 fn status_pause() -> bool {
     (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) != 0
 }
 
+/// Set the game status to play mode.
 fn set_status_play() {
     GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed)
 }
 
+/// Set the game status to demo mode.
 fn set_status_demo() {
     GAME_STATUS.store(StatusFlag::Demo as i32, Ordering::Relaxed)
 }
 
+/// Set the game status to pause mode.
 fn set_status_pause() {
     GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
 }
 
+/// Clear the pause status flag.
 fn clr_status_pause() {
     GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
 }
 
+/// Calculate the board index for the given coordinates.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// An option containing the board index if valid, or None if out of range.
 fn board_index(x: i32, y: i32) -> Option<usize> {
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
@@ -172,6 +195,14 @@ fn board_index(x: i32, y: i32) -> Option<usize> {
     if idx < C_BLK_MAX { Some(idx) } else { None }
 }
 
+/// Retrieve the value of a block at the specified coordinates.
+///
+/// TODO: Return an enum instead of an u8
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// The value of the block, or 0 if out of range.
 fn block_value(x: i32, y: i32) -> u8 {
     let guard = board_mutex();
     board_index(x, y)
@@ -179,6 +210,11 @@ fn block_value(x: i32, y: i32) -> u8 {
         .unwrap_or(0) as u8
 }
 
+/// Set the value of a block at the specified coordinates.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// * `value` - The value to set.
 fn set_block_value(x: i32, y: i32, value: u8) {
     if let Some(idx) = board_index(x, y) {
         let mut guard = board_mutex();
@@ -192,6 +228,10 @@ fn set_block_value(x: i32, y: i32, value: u8) {
     }
 }
 
+/// Set a block as a border at the specified coordinates.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
 fn set_border(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
         let mut guard = board_mutex();
@@ -199,6 +239,10 @@ fn set_border(x: i32, y: i32) {
     }
 }
 
+/// Set a block as containing a bomb at the specified coordinates.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
 fn set_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
         let mut guard = board_mutex();
@@ -207,6 +251,10 @@ fn set_bomb(x: i32, y: i32) {
     }
 }
 
+/// Clear the bomb flag from a block at the specified coordinates.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
 fn clear_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
         let mut guard = board_mutex();
@@ -215,63 +263,127 @@ fn clear_bomb(x: i32, y: i32) {
     }
 }
 
+/// Check if a block at the specified coordinates contains a bomb.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// `true` if the block contains a bomb, `false` otherwise.
 fn is_bomb(x: i32, y: i32) -> bool {
     (block_value(x, y) & BlockMask::Bomb as u8) != 0
 }
 
+/// Check if a block at the specified coordinates has been visited.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// `true` if the block has been visited, `false` otherwise.
 fn is_visit(x: i32, y: i32) -> bool {
     (block_value(x, y) & BlockMask::Visit as u8) != 0
 }
 
+/// Check if a block at the specified coordinates is guessed to contain a bomb.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// `true` if the block is guessed to contain a bomb, `false` otherwise.
 fn guessed_bomb(x: i32, y: i32) -> bool {
     block_value(x, y) & BlockMask::Data as u8 == BlockCell::BombUp as u8
 }
 
+/// Check if a block at the specified coordinates is guessed to be marked.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// `true` if the block is guessed to be marked, `false` otherwise.
 fn guessed_mark(x: i32, y: i32) -> bool {
     block_value(x, y) & BlockMask::Data as u8 == BlockCell::GuessUp as u8
 }
 
+/// Check if the given coordinates are within the valid range of the board.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// `true` if the coordinates are within range, `false` otherwise.
 fn f_in_range(x: i32, y: i32) -> bool {
     let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
 }
 
+/// Set a raw block value at the specified coordinates, preserving only data and visit bits.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// * `block` - The raw block value to set.
 fn set_raw_block(x: i32, y: i32, block: i32) {
     // Keep only the data bits plus the Visit bit (when present).
     let masked = (block & (BlockMask::Data as i32 | BlockMask::Visit as i32)) as u8;
     set_block_value(x, y, masked);
 }
 
+/// Get the data bits of a block at the specified coordinates.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// The data bits of the block.
 fn block_data(x: i32, y: i32) -> i32 {
     (block_value(x, y) & BlockMask::Data as u8) as i32
 }
 
+/// Check if the player has won the game.
+/// # Returns
+/// `true` if the player has won, `false` otherwise.
 fn check_win() -> bool {
     C_BOX_VISIT.load(Ordering::Relaxed) == CBOX_VISIT_MAC.load(Ordering::Relaxed)
 }
 
+/// Display a single block at the specified coordinates.
+///
+/// TODO: Remove this
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
 fn display_block(x: i32, y: i32) {
     DisplayBlk(x, y);
 }
 
+/// Display the entire game grid.
+///
+/// TODO: Remove this
 fn display_grid() {
     DisplayGrid();
 }
 
+/// Display the button with the specified sprite state.
+///
+/// TODO: Remove this
 fn display_button(state: ButtonSprite) {
     DisplayButton(state);
 }
 
+/// Display the elapsed time.
+///
+/// TODO: Remove this
 fn display_time() {
     DisplayTime();
 }
 
+/// Display the current bomb count.
+///
+/// TODO: Remove this
 fn display_bomb_count() {
     DisplayBombCount();
 }
 
 /// Play a logical tune if sound effects are enabled in preferences.
+/// # Arguments
+/// * `tune` - The tune to play.
 fn play_tune(tune: Tune) {
     let sound_on = {
         let prefs = match preferences_mutex().lock() {
@@ -286,12 +398,19 @@ fn play_tune(tune: Tune) {
     }
 }
 
+/// Stop all currently playing audio.
+///
+/// TODO: Remove this
 fn stop_all_audio() {
     EndTunes();
 }
 
+/// Reveal all bombs on the board and mark incorrect guesses.
+///
+/// This is called when the game ends to show the final board state.
+/// # Arguments
+/// * `cell` - The block cell type to use for revealed bombs.
 fn show_bombs(cell: BlockCell) {
-    // Display hidden bombs and mark incorrect guesses.
     let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
 
@@ -311,8 +430,13 @@ fn show_bombs(cell: BlockCell) {
     display_grid();
 }
 
+/// Count the number of adjacent marked squares around the specified coordinates.
+/// # Arguments
+/// * `x_center` - The X coordinate of the center square.
+/// * `y_center` - The Y coordinate of the center square.
+/// # Returns
+/// The count of adjacent marked squares.
 fn count_marks(x_center: i32, y_center: i32) -> i32 {
-    // Count the number of adjacent flagged squares.
     let mut count = 0;
     for y in (y_center - 1)..=(y_center + 1) {
         for x in (x_center - 1)..=(x_center + 1) {
@@ -324,8 +448,10 @@ fn count_marks(x_center: i32, y_center: i32) -> i32 {
     count
 }
 
+/// Update the button face based on the game result.
+/// # Arguments
+/// * `win` - `true` if the player has won, `false` otherwise.
 fn update_button_for_result(win: bool) {
-    // Mirror the original happy/win/lose button logic when the game ends.
     let state = if win {
         ButtonSprite::Win
     } else {
@@ -335,6 +461,7 @@ fn update_button_for_result(win: bool) {
     display_button(state);
 }
 
+/// Record a new win time if it is a personal best.
 fn record_win_if_needed() {
     let elapsed = SECS_ELAPSED.load(Ordering::Relaxed);
     let mut prefs = match preferences_mutex().lock() {
@@ -371,12 +498,22 @@ fn record_win_if_needed() {
     }
 }
 
+/// Change a single block's value and repaint it immediately.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// * `block` - The new block value.
 fn change_blk(x: i32, y: i32, block: i32) {
-    // Update a single cell and repaint it immediately.
     set_raw_block(x, y, block);
     display_block(x, y);
 }
 
+/// Enqueue a square for flood-fill processing if it is empty.
+/// # Arguments
+/// * `queue` - The flood-fill work queue.
+/// * `tail` - The current tail index of the queue.
+/// * `x` - The X coordinate of the square.
+/// * `y` - The Y coordinate of the square.
 fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
     // Visit a square; enqueue it when empty so we flood-fill neighbors later.
     if let Some(idx) = board_index(x, y) {
@@ -446,8 +583,10 @@ fn step_box(x: i32, y: i32) {
     }
 }
 
+/// Handle the end of the game - stopping the timer, revealing bombs, updating the face, and recording wins.
+/// # Arguments
+/// * `win` - `true` if the player has won, `false` otherwise
 fn game_over(win: bool) {
-    // Stop the timer, reveal bombs, update the face, and record wins if needed.
     F_TIMER.store(false, Ordering::Relaxed);
     update_button_for_result(win);
     show_bombs(if win {
@@ -469,8 +608,11 @@ fn game_over(win: bool) {
     }
 }
 
+/// Handle a user click on a single square (first-click safety included).
+/// # Arguments
+/// * `x` - The X coordinate of the clicked square.
+/// * `y` - The Y coordinate of the clicked square.
 fn step_square(x: i32, y: i32) {
-    // Handle a user click on a single square (first-click safety included).
     if is_bomb(x, y) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         if visits == 0 {
@@ -502,8 +644,11 @@ fn step_square(x: i32, y: i32) {
     }
 }
 
+/// Handle a chord action on a revealed number square.
+/// # Arguments
+/// * `x_center` - The X coordinate of the center square.
+/// * `y_center` - The Y coordinate of the center square.
 fn step_block(x_center: i32, y_center: i32) {
-    // Chord around a revealed number once the flag count matches its value.
     if !is_visit(x_center, y_center)
         || block_data(x_center, y_center) != count_marks(x_center, y_center)
     {
@@ -538,6 +683,10 @@ fn step_block(x_center: i32, y_center: i32) {
     }
 }
 
+/// Handle a user guess (flag or question mark) on a square.
+/// # Arguments
+/// * `x` - The X coordinate of the square.
+/// * `y` - The Y coordinate of the square.
 fn make_guess_internal(x: i32, y: i32) {
     // Cycle through blank -> flag -> question mark states depending on preferences.
     if !f_in_range(x, y) || is_visit(x, y) {
@@ -573,8 +722,15 @@ fn make_guess_internal(x: i32, y: i32) {
     }
 }
 
+/// Depress a box visually.
+///
+/// Boxes are pushed down while the left mouse button is pressed over them.
+///
+/// TODO: Can push_box_down and pop_box_up be merged?
+/// # Arguments
+/// * `x` - The X coordinate of the box.
+/// * `y` - The Y coordinate of the box.
 fn push_box_down(x: i32, y: i32) {
-    // Depress covered neighbors while tracking mouse drags.
     let mut blk = block_data(x, y);
     blk = match blk {
         b if b == BlockCell::GuessUp as i32 => BlockCell::GuessDown as i32,
@@ -584,8 +740,13 @@ fn push_box_down(x: i32, y: i32) {
     set_raw_block(x, y, blk);
 }
 
+/// Restore a depressed box visually.
+///
+/// Boxes are restored to their raised state when the left mouse button is released or the cursor is no longer over them.
+/// # Arguments
+/// * `x` - The X coordinate of the box.
+/// * `y` - The Y coordinate of the box.
 fn pop_box_up(x: i32, y: i32) {
-    // Restore a previously pushed square back to its raised variant.
     let mut blk = block_data(x, y);
     blk = match blk {
         b if b == BlockCell::GuessDown as i32 => BlockCell::GuessUp as i32,
@@ -595,18 +756,26 @@ fn pop_box_up(x: i32, y: i32) {
     set_raw_block(x, y, blk);
 }
 
+/// Change the bomb count by the specified delta and update the display.
+/// # Arguments
+/// * `delta` - The change in bomb count (positive or negative).
 fn update_bomb_count_internal(delta: i32) {
-    // Adjust the visible bomb counter and repaint the LEDs.
     BOMBS_LEFT.fetch_add(delta, Ordering::Relaxed);
     display_bomb_count();
 }
 
+/// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
+/// # Arguments
+/// * `x` - The X coordinate.
+/// * `y` - The Y coordinate.
+/// # Returns
+/// `true` if the coordinate is valid for flood-fill, `false` otherwise.
 fn in_range_step(x: i32, y: i32) -> bool {
     f_in_range(x, y) && !is_visit(x, y) && !guessed_bomb(x, y)
 }
 
+/// Reset the game field to its initial blank state and rebuild the border.
 pub fn ClearField() {
-    // Reset every cell to blank-up and rebuild the sentinel border.
     {
         let mut board = board_mutex();
         board.iter_mut().for_each(|b| *b = BlockCell::BlankUp as i8);
@@ -625,6 +794,7 @@ pub fn ClearField() {
     }
 }
 
+/// Handle the per-second game timer tick.
 pub fn DoTimer() {
     let secs = SECS_ELAPSED.load(Ordering::Relaxed);
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
@@ -634,8 +804,8 @@ pub fn DoTimer() {
     }
 }
 
+/// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
 pub fn StartGame() {
-    // Reset globals, randomize bombs, and resize the window if the board changed.
     F_TIMER.store(false, Ordering::Relaxed);
 
     let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
@@ -705,8 +875,11 @@ pub fn StartGame() {
     }
 }
 
+/// Track mouse movement over the board and provide visual feedback.
+/// # Arguments
+/// * `x_new` - The new X coordinate of the mouse.
+/// * `y_new` - The new Y coordinate of the mouse.
 pub fn TrackMouse(x_new: i32, y_new: i32) {
-    // Provide the classic pressed-square feedback during mouse drags.
     let x_old = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_old = CURSOR_Y_POS.load(Ordering::Relaxed);
 
@@ -780,13 +953,19 @@ pub fn TrackMouse(x_new: i32, y_new: i32) {
     }
 }
 
+/// Handle a user guess (flag or question mark) on a square.
+///
+/// TODO: Remove this
+/// # Arguments
+/// * `x` - The X coordinate of the square.
+/// * `y` - The Y coordinate of the square.
 pub fn MakeGuess(x: i32, y: i32) {
     // Toggle through flag/question mark states and update the bomb counter.
     make_guess_internal(x, y);
 }
 
+/// Handle a left-button release: start the timer, then either chord or step.
 pub fn DoButton1Up() {
-    // Handle a left-button release: start the timer, then either chord or step.
     let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_pos = CURSOR_Y_POS.load(Ordering::Relaxed);
 
@@ -831,8 +1010,8 @@ pub fn DoButton1Up() {
     display_button(button);
 }
 
+/// Pause the game by silencing audio, storing the timer state, and setting the pause flag.
 pub fn PauseGame() {
-    // Pause by silencing audio, remembering timer state, and setting the flag.
     stop_all_audio();
 
     if !status_pause() {
@@ -845,8 +1024,8 @@ pub fn PauseGame() {
     set_status_pause();
 }
 
+/// Resume the game by restoring the timer state and clearing the pause flag.
 pub fn ResumeGame() {
-    // Resume from pause by restoring the timer state and clearing the flag.
     if status_play() {
         F_TIMER.store(
             F_OLD_TIMER_STATUS.load(Ordering::Relaxed),
