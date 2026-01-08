@@ -14,8 +14,8 @@ use winsafe::msg::WndMsg;
 use winsafe::prelude::*;
 use winsafe::{
     self as w, AdjustWindowRectExForDpi, COLORREF, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE,
-    HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT,
-    PeekMessage, PtsRc, RECT, SIZE, WINDOWPOS, gui,
+    HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage,
+    PtsRc, RECT, SIZE, WINDOWPOS, gui,
 };
 
 use crate::globals::{
@@ -952,15 +952,6 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
         };
         unsafe { HINSTANCE::from_ptr(guard.ptr()) }
     };
-
-    let icon = hinst_wrap.LoadIcon(IdIdiStr::Id(IconId::Main as u16)).ok();
-    {
-        let mut icon_guard = match state.h_icon_main.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *icon_guard = icon;
-    }
 
     let menu = hinst_wrap
         .LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))

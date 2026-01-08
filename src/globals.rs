@@ -1,7 +1,7 @@
 use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use winsafe::guard::{DestroyIconGuard, DestroyMenuGuard};
+use winsafe::guard::DestroyMenuGuard;
 use winsafe::prelude::Handle;
 use winsafe::{self as w, HINSTANCE};
 
@@ -86,11 +86,15 @@ pub static GAME_STATUS: AtomicI32 =
 
 /// Shared Win32 handles and string buffers used throughout the app.
 pub struct GlobalState {
+    /// Handle to the application module, retreived using `GetModuleHandle(NULL)`.
     pub h_inst: Mutex<HINSTANCE>,
+    /// Handle to the main menu, wrapped in a guard for automatic cleanup.
     pub h_menu: Mutex<Option<DestroyMenuGuard>>,
-    pub h_icon_main: Mutex<Option<DestroyIconGuard>>,
+    /// The main window class name.
     pub sz_class: Mutex<[u16; CCH_NAME_MAX]>,
+    /// Buffer for formatting time strings.
     pub sz_time: Mutex<[u16; CCH_NAME_MAX]>,
+    /// Buffer for the default player name.
     pub sz_default_name: Mutex<[u16; CCH_NAME_MAX]>,
 }
 
@@ -99,7 +103,6 @@ impl Default for GlobalState {
         Self {
             h_inst: Mutex::new(HINSTANCE::NULL),
             h_menu: Mutex::new(None),
-            h_icon_main: Mutex::new(None),
             sz_class: Mutex::new([0; CCH_NAME_MAX]),
             sz_time: Mutex::new([0; CCH_NAME_MAX]),
             sz_default_name: Mutex::new([0; CCH_NAME_MAX]),
