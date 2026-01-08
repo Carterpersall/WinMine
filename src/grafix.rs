@@ -7,7 +7,7 @@ use windows_sys::Win32::Graphics::Gdi::{
     GDI_ERROR, GetLayout, R2_COPYPEN, R2_WHITE, SetDIBitsToDevice, SetLayout, SetROP2,
 };
 use winsafe::{
-    self as w, BITMAPINFO, BITMAPINFOHEADER, HRSRCMEM, IdStr, RtStr,
+    self as w, BITMAPINFO, BITMAPINFOHEADER, HRSRCMEM, HWND, IdStr, RtStr,
     co::{DIB, LAYOUT, PS, ROP, RT, STOCK_PEN},
     guard::{DeleteDCGuard, DeleteObjectGuard},
     prelude::*,
@@ -180,27 +180,13 @@ fn current_color_flag() -> bool {
     prefs.fColor
 }
 
-/// Retrieve the main application window handle.
-///
-/// TODO: Remove this function and use the value shared in the window message handlers.
-/// # Returns
-/// Option containing the main window handle, or None if not set.
-fn main_window() -> Option<w::HWND> {
-    let state = global_state();
-    let guard = match state.hwnd_main.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    guard
-        .as_opt()
-        .map(|hwnd| unsafe { w::HWND::from_ptr(hwnd.ptr()) })
-}
-
 /// Initialize local graphics resources and reset the minefield before the game starts.
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-pub fn FInitLocal() -> Result<(), Box<dyn std::error::Error>> {
-    load_bitmaps()?;
+pub fn FInitLocal(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
+    load_bitmaps(hwnd)?;
     ClearField();
     Ok(())
 }
@@ -297,10 +283,8 @@ fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
 /// # Arguments
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-pub fn display_block(x: i32, y: i32) {
-    if let Some(hwnd) = main_window()
-        && let Ok(hdc) = hwnd.GetDC()
-    {
+pub fn display_block(hwnd: &HWND, x: i32, y: i32) {
+    if let Ok(hdc) = hwnd.GetDC() {
         DrawBlk(&hdc, x, y);
     }
 }
@@ -338,10 +322,10 @@ fn DrawGrid(hdc: &w::HDC) {
 }
 
 /// Display the entire minefield grid.
-pub fn display_grid() {
-    if let Some(hwnd) = main_window()
-        && let Ok(hdc) = hwnd.GetDC()
-    {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn display_grid(hwnd: &HWND) {
+    if let Ok(hdc) = hwnd.GetDC() {
         DrawGrid(&hdc);
     }
 }
@@ -413,10 +397,10 @@ fn DrawBombCount(hdc: &w::HDC) {
 }
 
 /// Display the bomb counter.
-pub fn display_bomb_count() {
-    if let Some(hwnd) = main_window()
-        && let Ok(hdc) = hwnd.GetDC()
-    {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn display_bomb_count(hwnd: &HWND) {
+    if let Ok(hdc) = hwnd.GetDC() {
         DrawBombCount(&hdc);
     }
 }
@@ -463,10 +447,10 @@ fn DrawTime(hdc: &w::HDC) {
 }
 
 /// Display the timer.
-pub fn display_time() {
-    if let Some(hwnd) = main_window()
-        && let Ok(hdc) = hwnd.GetDC()
-    {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn display_time(hwnd: &HWND) {
+    if let Ok(hdc) = hwnd.GetDC() {
         DrawTime(&hdc);
     }
 }
@@ -644,11 +628,10 @@ fn create_resampled_bitmap(
 
 /// Display the face button with the specified sprite.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `sprite` - The button sprite to display.
-pub fn display_button(sprite: ButtonSprite) {
-    if let Some(hwnd) = main_window()
-        && let Ok(hdc) = hwnd.GetDC()
-    {
+pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) {
+    if let Ok(hdc) = hwnd.GetDC() {
         DrawButton(&hdc, sprite);
     }
 }
@@ -824,18 +807,20 @@ pub fn DrawScreen(hdc: &w::HDC) {
 }
 
 /// Display the entire screen (background, counters, button, timer, grid).
-pub fn DisplayScreen() {
-    if let Some(hwnd) = main_window()
-        && let Ok(hdc) = hwnd.GetDC()
-    {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn DisplayScreen(hwnd: &HWND) {
+    if let Ok(hdc) = hwnd.GetDC() {
         DrawScreen(&hdc);
     }
 }
 
 /// Load the bitmap resources and prepare cached DCs for rendering.
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-pub fn load_bitmaps() -> Result<(), Box<dyn std::error::Error>> {
+pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
     let color_on = current_color_flag();
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -892,11 +877,6 @@ pub fn load_bitmaps() -> Result<(), Box<dyn std::error::Error>> {
     for (i, off) in state.rg_dib_button_off.iter_mut().enumerate() {
         *off = header + i * cb_button;
     }
-
-    let hwnd = match main_window() {
-        Some(hwnd) => hwnd,
-        None => return Err("Main window not available".into()),
-    };
 
     let hdc = match hwnd.GetDC() {
         Ok(dc) => dc,

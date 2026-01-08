@@ -3,9 +3,9 @@ use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::atomic::AtomicU8;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use winsafe::prelude::*;
+use winsafe::{HWND, prelude::*};
 
-use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag, global_state};
+use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag};
 use crate::grafix::{
     ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
 };
@@ -364,8 +364,9 @@ fn play_tune(tune: Tune) {
 ///
 /// This is called when the game ends to show the final board state.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `cell` - The block cell type to use for revealed bombs.
-fn show_bombs(cell: BlockCell) {
+fn show_bombs(hwnd: &HWND, cell: BlockCell) {
     let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
 
@@ -382,7 +383,7 @@ fn show_bombs(cell: BlockCell) {
             }
         }
     }
-    display_grid();
+    display_grid(hwnd);
 }
 
 /// Count the number of adjacent marked squares around the specified coordinates.
@@ -405,19 +406,22 @@ fn count_marks(x_center: i32, y_center: i32) -> i32 {
 
 /// Update the button face based on the game result.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `win` - `true` if the player has won, `false` otherwise.
-fn update_button_for_result(win: bool) {
+fn update_button_for_result(hwnd: &HWND, win: bool) {
     let state = if win {
         ButtonSprite::Win
     } else {
         ButtonSprite::Lose
     };
     BTN_FACE_STATE.store(state as u8, Ordering::Relaxed);
-    display_button(state);
+    display_button(hwnd, state);
 }
 
 /// Record a new win time if it is a personal best.
-fn record_win_if_needed() {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+fn record_win_if_needed(hwnd: &HWND) {
     let elapsed = SECS_ELAPSED.load(Ordering::Relaxed);
     let mut prefs = match preferences_mutex().lock() {
         Ok(guard) => guard,
@@ -430,19 +434,9 @@ fn record_win_if_needed() {
             prefs.rgTime[game_idx] = elapsed;
             drop(prefs);
 
-            // Send a message to the main window to show the "New Record" dialog.
-            let state = global_state();
-            let hwnd_main = {
-                let guard = match state.hwnd_main.lock() {
-                    Ok(g) => g,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                unsafe { winsafe::HWND::from_ptr(guard.ptr()) }
-            };
-
-            if hwnd_main.as_opt().is_some() {
+            if hwnd.as_opt().is_some() {
                 unsafe {
-                    let _ = hwnd_main.PostMessage(winsafe::msg::WndMsg::new(
+                    let _ = hwnd.PostMessage(winsafe::msg::WndMsg::new(
                         winsafe::co::WM::APP,
                         NEW_RECORD_DLG,
                         0,
@@ -455,21 +449,23 @@ fn record_win_if_needed() {
 
 /// Change a single block's value and repaint it immediately.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x` - The X coordinate.
 /// * `y` - The Y coordinate.
 /// * `block` - The new block value.
-fn change_blk(x: i32, y: i32, block: i32) {
+fn change_blk(hwnd: &HWND, x: i32, y: i32, block: i32) {
     set_raw_block(x, y, block);
-    display_block(x, y);
+    display_block(hwnd, x, y);
 }
 
 /// Enqueue a square for flood-fill processing if it is empty.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `queue` - The flood-fill work queue.
 /// * `tail` - The current tail index of the queue.
 /// * `x` - The X coordinate of the square.
 /// * `y` - The Y coordinate of the square.
-fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
+fn step_xy(hwnd: &HWND, queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i32) {
     // Visit a square; enqueue it when empty so we flood-fill neighbors later.
     if let Some(idx) = board_index(x, y) {
         let mut board = board_mutex();
@@ -498,7 +494,7 @@ fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i3
         blk = BlockMask::Visit as u8 | ((bombs as u8) & BlockMask::Data as u8);
         board[idx] = blk as i8;
         drop(board);
-        display_block(x, y);
+        display_block(hwnd, x, y);
 
         if bombs == 0 && *tail < I_STEP_MAX {
             queue[*tail] = (x, y);
@@ -509,65 +505,71 @@ fn step_xy(queue: &mut [(i32, i32); I_STEP_MAX], tail: &mut usize, x: i32, y: i3
 
 /// Flood-fill contiguous empty squares starting from (x, y).
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x` - X coordinate of the starting square
 /// * `y` - Y coordinate of the starting square
-fn step_box(x: i32, y: i32) {
+fn step_box(hwnd: &HWND, x: i32, y: i32) {
     let mut queue = [(0, 0); I_STEP_MAX];
     let mut head = 0usize;
     let mut tail = 0usize;
 
-    step_xy(&mut queue, &mut tail, x, y);
+    step_xy(hwnd, &mut queue, &mut tail, x, y);
 
     while head < tail {
         let (sx, sy) = queue[head];
         head += 1;
 
         let mut ty = sy - 1;
-        step_xy(&mut queue, &mut tail, sx - 1, ty);
-        step_xy(&mut queue, &mut tail, sx, ty);
-        step_xy(&mut queue, &mut tail, sx + 1, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty);
 
         ty += 1;
-        step_xy(&mut queue, &mut tail, sx - 1, ty);
-        step_xy(&mut queue, &mut tail, sx + 1, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty);
 
         ty += 1;
-        step_xy(&mut queue, &mut tail, sx - 1, ty);
-        step_xy(&mut queue, &mut tail, sx, ty);
-        step_xy(&mut queue, &mut tail, sx + 1, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx, ty);
+        step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty);
     }
 }
 
 /// Handle the end of the game - stopping the timer, revealing bombs, updating the face, and recording wins.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `win` - `true` if the player has won, `false` otherwise
-fn game_over(win: bool) {
+fn game_over(hwnd: &HWND, win: bool) {
     F_TIMER.store(false, Ordering::Relaxed);
-    update_button_for_result(win);
-    show_bombs(if win {
-        BlockCell::BombUp
-    } else {
-        BlockCell::BombDown
-    });
+    update_button_for_result(hwnd, win);
+    show_bombs(
+        hwnd,
+        if win {
+            BlockCell::BombUp
+        } else {
+            BlockCell::BombDown
+        },
+    );
     if win {
         let bombs_left = BOMBS_LEFT.load(Ordering::Relaxed);
         if bombs_left != 0 {
-            update_bomb_count_internal(-bombs_left);
+            update_bomb_count_internal(hwnd, -bombs_left);
         }
     }
     play_tune(if win { Tune::WinGame } else { Tune::LoseGame });
     set_status_demo();
 
     if win {
-        record_win_if_needed();
+        record_win_if_needed(hwnd);
     }
 }
 
 /// Handle a user click on a single square (first-click safety included).
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x` - The X coordinate of the clicked square.
 /// * `y` - The Y coordinate of the clicked square.
-fn step_square(x: i32, y: i32) {
+fn step_square(hwnd: &HWND, x: i32, y: i32) {
     if is_bomb(x, y) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         if visits == 0 {
@@ -578,36 +580,38 @@ fn step_square(x: i32, y: i32) {
                     if !is_bomb(x_t, y_t) {
                         clear_bomb(x, y);
                         set_bomb(x_t, y_t);
-                        step_box(x, y);
+                        step_box(hwnd, x, y);
                         return;
                     }
                 }
             }
         } else {
             change_blk(
+                hwnd,
                 x,
                 y,
                 (BlockMask::Visit as u8 | BlockCell::Explode as u8) as i32,
             );
-            game_over(false);
+            game_over(hwnd, false);
         }
     } else {
-        step_box(x, y);
+        step_box(hwnd, x, y);
         if check_win() {
-            game_over(true);
+            game_over(hwnd, true);
         }
     }
 }
 
 /// Handle a chord action on a revealed number square.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x_center` - The X coordinate of the center square.
 /// * `y_center` - The Y coordinate of the center square.
-fn step_block(x_center: i32, y_center: i32) {
+fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
     if !is_visit(x_center, y_center)
         || block_data(x_center, y_center) != count_marks(x_center, y_center)
     {
-        TrackMouse(-2, -2);
+        TrackMouse(hwnd, -2, -2);
         return;
     }
 
@@ -621,28 +625,30 @@ fn step_block(x_center: i32, y_center: i32) {
             if is_bomb(x, y) {
                 lose = true;
                 change_blk(
+                    hwnd,
                     x,
                     y,
                     (BlockMask::Visit as u8 | BlockCell::Explode as u8) as i32,
                 );
             } else {
-                step_box(x, y);
+                step_box(hwnd, x, y);
             }
         }
     }
 
     if lose {
-        game_over(false);
+        game_over(hwnd, false);
     } else if check_win() {
-        game_over(true);
+        game_over(hwnd, true);
     }
 }
 
 /// Handle a user guess (flag or question mark) on a square.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x` - The X coordinate of the square.
 /// * `y` - The Y coordinate of the square.
-pub fn make_guess(x: i32, y: i32) {
+pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
     // Cycle through blank -> flag -> question mark states depending on preferences.
     if !f_in_range(x, y) || is_visit(x, y) {
         return;
@@ -657,7 +663,7 @@ pub fn make_guess(x: i32, y: i32) {
     };
 
     let block = if guessed_bomb(x, y) {
-        update_bomb_count_internal(1);
+        update_bomb_count_internal(hwnd, 1);
         if allow_marks {
             BlockCell::GuessUp as i32
         } else {
@@ -666,14 +672,14 @@ pub fn make_guess(x: i32, y: i32) {
     } else if guessed_mark(x, y) {
         BlockCell::BlankUp as i32
     } else {
-        update_bomb_count_internal(-1);
+        update_bomb_count_internal(hwnd, -1);
         BlockCell::BombUp as i32
     };
 
-    change_blk(x, y, block);
+    change_blk(hwnd, x, y, block);
 
     if guessed_bomb(x, y) && check_win() {
-        game_over(true);
+        game_over(hwnd, true);
     }
 }
 
@@ -713,10 +719,11 @@ fn pop_box_up(x: i32, y: i32) {
 
 /// Change the bomb count by the specified delta and update the display.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `delta` - The change in bomb count (positive or negative).
-fn update_bomb_count_internal(delta: i32) {
+fn update_bomb_count_internal(hwnd: &HWND, delta: i32) {
     BOMBS_LEFT.fetch_add(delta, Ordering::Relaxed);
-    display_bomb_count();
+    display_bomb_count(hwnd);
 }
 
 /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
@@ -750,17 +757,21 @@ pub fn ClearField() {
 }
 
 /// Handle the per-second game timer tick.
-pub fn DoTimer() {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn DoTimer(hwnd: &HWND) {
     let secs = SECS_ELAPSED.load(Ordering::Relaxed);
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
-        display_time();
+        display_time(hwnd);
         play_tune(Tune::Tick);
     }
 }
 
 /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
-pub fn StartGame() {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn StartGame(hwnd: &HWND) {
     F_TIMER.store(false, Ordering::Relaxed);
 
     let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
@@ -813,28 +824,17 @@ pub fn StartGame() {
     CBOX_VISIT_MAC.store((width * height) - total_bombs, Ordering::Relaxed);
     set_status_play();
 
-    display_bomb_count();
+    display_bomb_count(hwnd);
 
-    // TODO: Handle shared HWND better
-    if let Some(hwnd) = {
-        let state = global_state();
-        let guard = match state.hwnd_main.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        unsafe { winsafe::HWND::from_ptr(guard.ptr()) }
-    }
-    .as_opt()
-    {
-        AdjustWindow(hwnd, f_adjust);
-    }
+    AdjustWindow(hwnd, f_adjust);
 }
 
 /// Track mouse movement over the board and provide visual feedback.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x_new` - The new X coordinate of the mouse.
 /// * `y_new` - The new Y coordinate of the mouse.
-pub fn TrackMouse(x_new: i32, y_new: i32) {
+pub fn TrackMouse(hwnd: &HWND, x_new: i32, y_new: i32) {
     let x_old = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_old = CURSOR_Y_POS.load(Ordering::Relaxed);
 
@@ -884,7 +884,7 @@ pub fn TrackMouse(x_new: i32, y_new: i32) {
         if valid_old {
             for y in y_old_min..=y_old_max {
                 for x in x_old_min..=x_old_max {
-                    display_block(x, y);
+                    display_block(hwnd, x, y);
                 }
             }
         }
@@ -892,24 +892,26 @@ pub fn TrackMouse(x_new: i32, y_new: i32) {
         if valid_new {
             for y in y_cur_min..=y_cur_max {
                 for x in x_cur_min..=x_cur_max {
-                    display_block(x, y);
+                    display_block(hwnd, x, y);
                 }
             }
         }
     } else {
         if f_in_range(x_old, y_old) && !is_visit(x_old, y_old) {
             pop_box_up(x_old, y_old);
-            display_block(x_old, y_old);
+            display_block(hwnd, x_old, y_old);
         }
         if f_in_range(x_new, y_new) && in_range_step(x_new, y_new) {
             push_box_down(x_new, y_new);
-            display_block(x_new, y_new);
+            display_block(hwnd, x_new, y_new);
         }
     }
 }
 
 /// Handle a left-button release: start the timer, then either chord or step.
-pub fn DoButton1Up() {
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn DoButton1Up(hwnd: &HWND) {
     let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_pos = CURSOR_Y_POS.load(Ordering::Relaxed);
 
@@ -919,13 +921,9 @@ pub fn DoButton1Up() {
         if visits == 0 && secs == 0 {
             play_tune(Tune::Tick);
             SECS_ELAPSED.store(1, Ordering::Relaxed);
-            display_time();
+            display_time(hwnd);
             F_TIMER.store(true, Ordering::Relaxed);
-            let hwnd_guard = match global_state().hwnd_main.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            if let Some(hwnd) = hwnd_guard.as_opt()
+            if let Some(hwnd) = hwnd.as_opt()
                 && hwnd.SetTimer(ID_TIMER, 1000, None).is_err()
             {
                 ReportErr(ID_ERR_TIMER);
@@ -938,9 +936,9 @@ pub fn DoButton1Up() {
         }
 
         if BLK_BTN_INPUT.load(Ordering::Relaxed) {
-            step_block(x_pos, y_pos);
+            step_block(hwnd, x_pos, y_pos);
         } else if in_range_step(x_pos, y_pos) {
-            step_square(x_pos, y_pos);
+            step_square(hwnd, x_pos, y_pos);
         }
     }
 
@@ -951,7 +949,7 @@ pub fn DoButton1Up() {
         3 => ButtonSprite::Win,
         _ => ButtonSprite::Down,
     };
-    display_button(button);
+    display_button(hwnd, button);
 }
 
 /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.

@@ -3,7 +3,7 @@ use std::sync::{Mutex, OnceLock};
 
 use winsafe::guard::{DestroyIconGuard, DestroyMenuGuard};
 use winsafe::prelude::Handle;
-use winsafe::{self as w, HINSTANCE, HWND};
+use winsafe::{self as w, HINSTANCE};
 
 use crate::pref::CCH_NAME_MAX;
 
@@ -87,7 +87,6 @@ pub static GAME_STATUS: AtomicI32 =
 /// Shared Win32 handles and string buffers used throughout the app.
 pub struct GlobalState {
     pub h_inst: Mutex<HINSTANCE>,
-    pub hwnd_main: Mutex<HWND>,
     pub h_menu: Mutex<Option<DestroyMenuGuard>>,
     pub h_icon_main: Mutex<Option<DestroyIconGuard>>,
     pub sz_class: Mutex<[u16; CCH_NAME_MAX]>,
@@ -99,7 +98,6 @@ impl Default for GlobalState {
     fn default() -> Self {
         Self {
             h_inst: Mutex::new(HINSTANCE::NULL),
-            hwnd_main: Mutex::new(HWND::NULL),
             h_menu: Mutex::new(None),
             h_icon_main: Mutex::new(None),
             sz_class: Mutex::new([0; CCH_NAME_MAX]),

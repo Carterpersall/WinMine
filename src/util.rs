@@ -3,7 +3,7 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{self as w, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
+use winsafe::{self as w, HWND, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
 use crate::globals::{CXBORDER, CYCAPTION, CYMENU, global_state};
 use crate::pref::{
@@ -403,8 +403,9 @@ pub fn CheckEm(idm: MenuCommand, f_check: bool) {
 
 /// Show or hide the menu bar based on the specified mode.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `f_active` - The desired menu mode.
-pub fn SetMenuBar(f_active: MenuMode) {
+pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
     let (menu_on, menu_checks);
     {
@@ -420,28 +421,18 @@ pub fn SetMenuBar(f_active: MenuMode) {
     FixMenus(menu_checks.0, menu_checks.1, menu_checks.2, menu_checks.3);
 
     let state = global_state();
-    let (menu_handle, hwnd_main) = {
-        let menu_handle = {
-            let guard = match state.h_menu.lock() {
-                Ok(g) => g,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            guard
-                .as_ref()
-                .map(|menu| unsafe { w::HMENU::from_ptr(menu.ptr()) })
-                .unwrap_or(w::HMENU::NULL)
+    let menu_handle = {
+        let guard = match state.h_menu.lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
         };
-        let hwnd_main = {
-            let guard = match state.hwnd_main.lock() {
-                Ok(g) => g,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            unsafe { w::HWND::from_ptr(guard.ptr()) }
-        };
-        (menu_handle, hwnd_main)
+        guard
+            .as_ref()
+            .map(|menu| unsafe { w::HMENU::from_ptr(menu.ptr()) })
+            .unwrap_or(w::HMENU::NULL)
     };
 
-    if let Some(hwnd) = hwnd_main.as_opt() {
+    if let Some(hwnd) = hwnd.as_opt() {
         let null_menu = w::HMENU::NULL;
         let menu_arg = if menu_on { &menu_handle } else { &null_menu };
         let _ = hwnd.SetMenu(menu_arg);
@@ -450,20 +441,9 @@ pub fn SetMenuBar(f_active: MenuMode) {
 }
 
 /// Display the About dialog box with version and credit information.
-pub fn DoAbout() {
-    let hwnd_guard = {
-        let state = global_state();
-        match state.hwnd_main.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-    };
-
-    let hwnd = match hwnd_guard.as_opt() {
-        Some(hwnd) => hwnd,
-        None => return,
-    };
-
+/// # Arguments
+/// * `hwnd` - Handle to the main window.
+pub fn DoAbout(hwnd: &HWND) {
     let mut sz_version = [0u16; CCH_MSG_MAX];
     let mut sz_credit = [0u16; CCH_MSG_MAX];
 

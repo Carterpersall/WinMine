@@ -300,16 +300,16 @@ impl WinMineMainWindow {
         LEFT_CLK_DOWN.store(true, Ordering::Relaxed);
         CURSOR_X_POS.store(-1, Ordering::Relaxed);
         CURSOR_Y_POS.store(-1, Ordering::Relaxed);
-        display_button(ButtonSprite::Caution);
+        display_button(self.wnd.hwnd(), ButtonSprite::Caution);
     }
 
     /// Finishes a primary button drag operation.
     fn finish_primary_button_drag(&self) {
         LEFT_CLK_DOWN.store(false, Ordering::Relaxed);
         if status_play() {
-            DoButton1Up();
+            DoButton1Up(self.wnd.hwnd());
         } else {
-            TrackMouse(-2, -2);
+            TrackMouse(self.wnd.hwnd(), -2, -2);
         }
     }
 
@@ -321,7 +321,11 @@ impl WinMineMainWindow {
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
             // If the left button is down, the user is dragging
             if status_play() {
-                TrackMouse(x_box_from_xpos(point.x), y_box_from_ypos(point.y));
+                TrackMouse(
+                    self.wnd.hwnd(),
+                    x_box_from_xpos(point.x),
+                    y_box_from_ypos(point.y),
+                );
             } else {
                 self.finish_primary_button_drag();
             }
@@ -347,7 +351,7 @@ impl WinMineMainWindow {
         }
 
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-            TrackMouse(-3, -3);
+            TrackMouse(self.wnd.hwnd(), -3, -3);
             set_block_flag(true);
             unsafe {
                 // TODO: Change this
@@ -367,7 +371,11 @@ impl WinMineMainWindow {
         }
 
         // Regular right-click: make a guess
-        make_guess(x_box_from_xpos(point.x), y_box_from_ypos(point.y));
+        make_guess(
+            self.wnd.hwnd(),
+            x_box_from_xpos(point.x),
+            y_box_from_ypos(point.y),
+        );
     }
 
     /// Handles the "Custom" menu command by displaying the preferences dialog,
@@ -385,7 +393,7 @@ impl WinMineMainWindow {
         };
         FixMenus(game, f_color, f_mark, f_sound);
         UPDATE_INI.store(true, Ordering::Relaxed);
-        StartGame();
+        StartGame(self.wnd.hwnd());
     }
 
     /// Handles command messages from the menu and accelerators.
@@ -395,7 +403,7 @@ impl WinMineMainWindow {
     /// Some exit code if the command resulted in application exit, None otherwise.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
         match menu_command(w_param) {
-            Some(MenuCommand::New) => StartGame(),
+            Some(MenuCommand::New) => StartGame(self.wnd.hwnd()),
             Some(MenuCommand::Exit) => {
                 self.wnd.hwnd().ShowWindow(co::SW::HIDE);
                 unsafe {
@@ -428,10 +436,10 @@ impl WinMineMainWindow {
                     }
                     (game, prefs.fColor, prefs.fMark, prefs.fSound, prefs.fMenu)
                 };
-                StartGame();
+                StartGame(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(preset, f_color, f_mark, f_sound);
-                SetMenuBar(f_menu);
+                SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Custom) => self.DoPref(),
             Some(MenuCommand::Sound) => {
@@ -459,7 +467,7 @@ impl WinMineMainWindow {
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(game, f_color, f_mark, new_sound);
-                SetMenuBar(f_menu);
+                SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Color) => {
                 let (color_enabled, game, f_mark, f_sound, f_menu) = {
@@ -477,7 +485,7 @@ impl WinMineMainWindow {
                     )
                 };
                 FreeBitmaps();
-                if let Err(e) = load_bitmaps() {
+                if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
                     eprintln!("Failed to reload bitmaps: {}", e);
                     ReportErr(ID_ERR_MEM);
                     unsafe {
@@ -491,10 +499,10 @@ impl WinMineMainWindow {
                 }
 
                 // Repaint immediately so toggling color off updates without restarting.
-                DisplayScreen();
+                DisplayScreen(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(game, color_enabled, f_mark, f_sound);
-                SetMenuBar(f_menu);
+                SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Mark) => {
                 let (game, color_enabled, mark_enabled, f_sound, f_menu) = {
@@ -513,7 +521,7 @@ impl WinMineMainWindow {
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(game, color_enabled, mark_enabled, f_sound);
-                SetMenuBar(f_menu);
+                SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
             Some(MenuCommand::Help) => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
@@ -524,7 +532,7 @@ impl WinMineMainWindow {
                 DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32)
             }
             Some(MenuCommand::HelpAbout) => {
-                DoAbout();
+                DoAbout(self.wnd.hwnd());
                 return Some(0);
             }
             None => {}
@@ -563,7 +571,7 @@ impl WinMineMainWindow {
         }
 
         let mut capture_guard = self.wnd.hwnd().as_opt().map(|hwnd| hwnd.SetCapture());
-        display_button(ButtonSprite::Down);
+        display_button(self.wnd.hwnd(), ButtonSprite::Down);
         let _ = self
             .wnd
             .hwnd()
@@ -582,8 +590,8 @@ impl WinMineMainWindow {
                     co::WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
-                            display_button(ButtonSprite::Happy);
-                            StartGame();
+                            display_button(self.wnd.hwnd(), ButtonSprite::Happy);
+                            StartGame(self.wnd.hwnd());
                         }
                         capture_guard.take();
                         return true;
@@ -592,11 +600,11 @@ impl WinMineMainWindow {
                         if winsafe::PtInRect(rc, msg.pt) {
                             if !pressed {
                                 pressed = true;
-                                display_button(ButtonSprite::Down);
+                                display_button(self.wnd.hwnd(), ButtonSprite::Down);
                             }
                         } else if pressed {
                             pressed = false;
-                            display_button(current_face_sprite());
+                            display_button(self.wnd.hwnd(), current_face_sprite());
                         }
                     }
                     _ => {}
@@ -610,16 +618,6 @@ impl WinMineMainWindow {
         self.wnd.on().wm_create({
             let self2 = self.clone();
             move |create| -> winsafe::AnyResult<i32> {
-                // Store the main HWND in the global state so legacy code continues working.
-                {
-                    let state = global_state();
-                    let mut hwnd_guard = match state.hwnd_main.lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    *hwnd_guard = unsafe { self2.wnd.hwnd().raw_copy() };
-                }
-
                 // Sync global DPI state to the actual monitor DPI where the window was created.
                 let dpi = self2.wnd.hwnd().GetDpiForWindow();
                 UI_DPI.store(if dpi == 0 { BASE_DPI } else { dpi }, Ordering::Relaxed);
@@ -632,7 +630,7 @@ impl WinMineMainWindow {
                 );
 
                 // Initialize local resources.
-                if let Err(e) = FInitLocal() {
+                if let Err(e) = FInitLocal(self2.wnd.hwnd()) {
                     eprintln!("Failed to initialize local resources: {e}");
                     ReportErr(ID_ERR_MEM);
                     return Err(std::io::Error::other(e.to_string()).into());
@@ -646,8 +644,8 @@ impl WinMineMainWindow {
                     };
                     prefs_guard.fMenu
                 };
-                SetMenuBar(f_menu);
-                StartGame();
+                SetMenuBar(self2.wnd.hwnd(), f_menu);
+                StartGame(self2.wnd.hwnd());
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
                 Ok(0)
@@ -705,7 +703,7 @@ impl WinMineMainWindow {
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
                 FreeBitmaps();
-                if let Err(e) = load_bitmaps() {
+                if let Err(e) = load_bitmaps(self2.wnd.hwnd()) {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
@@ -765,7 +763,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_key_down({
             let self2 = self.clone();
             move |key| {
-                handle_keydown(key.vkey_code);
+                handle_keydown(self2.wnd.hwnd(), key.vkey_code);
                 unsafe { self2.wnd.hwnd().DefWindowProc(key) };
                 Ok(())
             }
@@ -904,8 +902,9 @@ impl WinMineMainWindow {
         });
 
         self.wnd.on().wm_timer(ID_TIMER, {
+            let self2 = self.clone();
             move || {
-                DoTimer();
+                DoTimer(self2.wnd.hwnd());
                 Ok(())
             }
         });
@@ -1140,8 +1139,9 @@ fn menu_command(w_param: usize) -> Option<MenuCommand> {
 
 /// Handles the WM_KEYDOWN message.
 /// # Arguments
+/// * `hwnd`: A reference to the window handle.
 /// * `key`: The virtual key code of the key that was pressed.
-fn handle_keydown(key: VK) {
+fn handle_keydown(hwnd: &HWND, key: VK) {
     match key {
         code if code == co::VK::F4 => {
             let current_sound = {
@@ -1172,7 +1172,7 @@ fn handle_keydown(key: VK) {
 
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(game, color_enabled, mark_enabled, new_sound);
-                SetMenuBar(f_menu);
+                SetMenuBar(hwnd, f_menu);
             }
         }
         code if code == co::VK::F5 => {
@@ -1185,7 +1185,7 @@ fn handle_keydown(key: VK) {
             };
 
             if !matches!(menu_value, MenuMode::AlwaysOn) {
-                SetMenuBar(MenuMode::Hidden);
+                SetMenuBar(hwnd, MenuMode::Hidden);
             }
         }
         code if code == co::VK::F6 => {
@@ -1198,7 +1198,7 @@ fn handle_keydown(key: VK) {
             };
 
             if !matches!(menu_value, MenuMode::AlwaysOn) {
-                SetMenuBar(MenuMode::On);
+                SetMenuBar(hwnd, MenuMode::On);
             }
         }
         code if code == co::VK::SHIFT => handle_xyzzys_shift(),
