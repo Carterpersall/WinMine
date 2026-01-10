@@ -91,7 +91,7 @@ pub struct GlobalState {
     /// Handle to the main menu, wrapped in a guard for automatic cleanup.
     pub h_menu: Mutex<Option<DestroyMenuGuard>>,
     /// The main window class name.
-    pub sz_class: Mutex<[u16; CCH_NAME_MAX]>,
+    pub sz_class: Mutex<&'static str>,
     /// Buffer for formatting time strings.
     pub sz_time: Mutex<[u16; CCH_NAME_MAX]>,
     /// Buffer for the default player name.
@@ -103,7 +103,7 @@ impl Default for GlobalState {
         Self {
             h_inst: Mutex::new(HINSTANCE::NULL),
             h_menu: Mutex::new(None),
-            sz_class: Mutex::new([0; CCH_NAME_MAX]),
+            sz_class: Mutex::new(""),
             sz_time: Mutex::new([0; CCH_NAME_MAX]),
             sz_default_name: Mutex::new([0; CCH_NAME_MAX]),
         }

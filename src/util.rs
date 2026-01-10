@@ -88,19 +88,6 @@ fn next_rand() -> i32 {
     }
 }
 
-/// Retrieve a pointer to the window class name string.
-/// # Returns
-/// A pointer to the UTF-16 encoded window class name.
-#[inline]
-fn class_ptr() -> *const u16 {
-    let state = global_state();
-    let guard = match state.sz_class.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    guard.as_ptr()
-}
-
 /// Return a pseudo-random number in the [0, rnd_max) range
 /// # Arguments
 /// * `rnd_max` - Upper bound (exclusive) for the random number
@@ -141,6 +128,8 @@ pub fn ReportErr(id_err: u16) {
 }
 
 /// Load a localized string resource into the provided buffer.
+///
+/// TODO: Use UTF-8 instead of UTF-16
 /// # Arguments
 /// * `id` - The string resource ID to load.
 /// * `sz` - Pointer to the buffer that receives the string (UTF-16).
@@ -187,9 +176,18 @@ pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -
         None => return val_default,
     };
 
+    let class_str = match global_state().sz_class.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
+    };
     let ini_path = WString::from_str(SZ_INI_FILE);
     let value = unsafe {
-        GetPrivateProfileIntW(class_ptr(), key.as_ptr(), val_default, ini_path.as_ptr()) as i32
+        GetPrivateProfileIntW(
+            class_str.encode_utf16().collect::<Vec<u16>>().as_ptr(),
+            key.as_ptr(),
+            val_default,
+            ini_path.as_ptr(),
+        ) as i32
     };
     value.clamp(val_min, val_max)
 }
@@ -210,7 +208,7 @@ pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
     };
 
     let state = global_state();
-    let class_buf = {
+    let section = {
         let guard = match state.sz_class.lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
@@ -225,11 +223,10 @@ pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
         *guard
     };
 
-    let section = utf16_buffer_to_string(&class_buf);
     let key_text = key.to_string();
     let default_name = utf16_buffer_to_string(&default_buf);
 
-    let value = match w::GetPrivateProfileString(&section, &key_text, SZ_INI_FILE) {
+    let value = match w::GetPrivateProfileString(section, &key_text, SZ_INI_FILE) {
         Ok(Some(text)) => text,
         _ => default_name,
     };
@@ -251,10 +248,10 @@ pub fn InitConst() {
     seed_rng(ticks as u32);
 
     let state = global_state();
-    if let Ok(mut class_buf) = state.sz_class.lock()
+    if let Ok(class_buf) = state.sz_class.lock()
         && let Err(e) = LoadSz(
             StringId::GameName as u16,
-            class_buf.as_mut_ptr(),
+            class_buf.encode_utf16().collect::<Vec<u16>>().as_mut_ptr(),
             CCH_NAME_MAX as u32,
         )
     {

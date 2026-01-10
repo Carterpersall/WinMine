@@ -972,13 +972,9 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
 
-    let class_name = {
-        let guard = match state.sz_class.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        let len = guard.iter().position(|&c| c == 0).unwrap_or(guard.len());
-        String::from_utf16_lossy(&guard[..len])
+    let class_name = match state.sz_class.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
     };
 
     // WinSafe `gui::WindowMain` owns the application message loop.
