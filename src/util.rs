@@ -207,20 +207,16 @@ pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
         };
         *guard
     };
-    let default_buf = {
-        let guard = match state.sz_default_name.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *guard
+    let default_name = match state.sz_default_name.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
     };
 
     let key_text = key.to_string();
-    let default_name = utf16_buffer_to_string(&default_buf);
 
     let value = match w::GetPrivateProfileString(section, &key_text, SZ_INI_FILE) {
         Ok(Some(text)) => text,
-        _ => default_name,
+        _ => default_name.to_string(),
     };
 
     let slice = unsafe { core::slice::from_raw_parts_mut(sz_ret, CCH_NAME_MAX) };
@@ -265,11 +261,9 @@ pub fn InitConst() {
     match LoadSz(StringId::NameDefault as u16, CCH_NAME_MAX) {
         Ok(text) => {
             if let Ok(mut default_buf) = state.sz_default_name.lock() {
-                text.encode_utf16()
-                    .chain(Some(0))
-                    .take(default_buf.len())
-                    .enumerate()
-                    .for_each(|(i, code_unit)| default_buf[i] = code_unit);
+                // Leak the string to obtain a &'static str reference.
+                // This is safe because sz_default_name is only read after this initialization.
+                *default_buf = Box::leak(text.into_boxed_str());
             }
         }
         Err(e) => eprintln!("Failed to load default name string: {}", e),
@@ -514,16 +508,6 @@ pub fn DoHelp(w_command: u16, l_param: u32) {
     unsafe {
         HtmlHelpA(desktop.ptr() as _, buffer.as_ptr(), l_param, 0);
     }
-}
-
-/// Convert a UTF-16 buffer to a Rust String, stopping at the first null terminator.
-/// # Arguments
-/// * `buf` - The UTF-16 buffer to convert.
-/// # Returns
-/// A Rust String containing the converted text.
-fn utf16_buffer_to_string(buf: &[u16]) -> String {
-    let len = buf.iter().position(|&ch| ch == 0).unwrap_or(buf.len());
-    String::from_utf16_lossy(&buf[..len])
 }
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.

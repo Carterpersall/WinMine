@@ -159,16 +159,25 @@ pub fn ReadInt(
 /// The retrieved string, or the default name on failure
 pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
     if handle.ptr().is_null() {
-        return copy_default_name();
+        return match global_state().sz_default_name.lock() {
+            Ok(g) => g.to_string(),
+            Err(poisoned) => poisoned.into_inner().to_string(),
+        };
     }
 
     let Some(key_name) = pref_key_literal(key) else {
-        return copy_default_name();
+        return match global_state().sz_default_name.lock() {
+            Ok(g) => g.to_string(),
+            Err(poisoned) => poisoned.into_inner().to_string(),
+        };
     };
 
     match handle.RegQueryValueEx(Some(key_name)) {
         Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => value,
-        _ => copy_default_name(),
+        _ => match global_state().sz_default_name.lock() {
+            Ok(g) => g.to_string(),
+            Err(poisoned) => poisoned.into_inner().to_string(),
+        },
     }
 }
 
@@ -438,21 +447,6 @@ fn wide_len(mut ptr: *const u16) -> usize {
         }
     }
     len
-}
-
-/// Retrieve the default player name from the global state.
-/// These defaults are used when registry reads fail.
-/// # Returns
-/// The default name as a String
-fn copy_default_name() -> String {
-    let state = global_state();
-    let guard = match state.sz_default_name.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    // Collect the default name from the global buffer into a String
-    String::from_utf16_lossy(guard.as_ref())
 }
 
 /// Convert a raw integer value into a MenuMode enum.

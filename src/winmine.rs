@@ -1525,17 +1525,32 @@ impl BestDialog {
             .wm_command(ControlId::BtnReset as u16, co::BN::CLICKED, {
                 let dlg = self.dlg.clone();
                 move || -> w::AnyResult<()> {
+                    // Generate a snapshot of the default preferences to reset the best times
                     let snapshot = {
                         let mut prefs = match preferences_mutex().lock() {
                             Ok(guard) => guard,
                             Err(poisoned) => poisoned.into_inner(),
                         };
+
+                        // Set all best times to 999 seconds
                         prefs.rgTime[GameType::Begin as usize] = 999;
                         prefs.rgTime[GameType::Inter as usize] = 999;
                         prefs.rgTime[GameType::Expert as usize] = 999;
-                        copy_from_default(&mut prefs.szBegin);
-                        copy_from_default(&mut prefs.szInter);
-                        copy_from_default(&mut prefs.szExpert);
+
+                        // Get the default name from global state, and copy it into all three name fields
+                        match global_state().sz_default_name.lock() {
+                            Ok(g) => g,
+                            Err(poisoned) => poisoned.into_inner(),
+                        }
+                        .encode_utf16()
+                        .take(CCH_NAME_MAX - 1)
+                        .enumerate()
+                        .for_each(|(i, ch)| {
+                            prefs.szBegin[i] = ch;
+                            prefs.szInter[i] = ch;
+                            prefs.szExpert[i] = ch;
+                        });
+
                         (
                             prefs.rgTime[GameType::Begin as usize],
                             prefs.rgTime[GameType::Inter as usize],
@@ -1975,28 +1990,6 @@ fn reset_best_dialog(
         time_expert,
         &name_expert,
     );
-}
-
-/// Copies the default name into the provided destination array.
-/// # Arguments
-/// * `dst` - The destination array to copy the default name into.
-fn copy_from_default(dst: &mut [u16; CCH_NAME_MAX]) {
-    let state = global_state();
-    let source = {
-        let guard = match state.sz_default_name.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *guard
-    };
-
-    for (i, ch) in source.iter().copied().enumerate().take(CCH_NAME_MAX) {
-        dst[i] = ch;
-        if ch == 0 {
-            return;
-        }
-    }
-    dst[CCH_NAME_MAX - 1] = 0;
 }
 
 /// Applies help context based on the HELPINFO structure pointed to by l_param.

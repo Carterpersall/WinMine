@@ -5,8 +5,6 @@ use winsafe::guard::DestroyMenuGuard;
 use winsafe::prelude::Handle;
 use winsafe::{self as w, HINSTANCE};
 
-use crate::pref::CCH_NAME_MAX;
-
 /// Base DPI used by Win32 when coordinates are expressed in 1:1 pixels.
 pub const BASE_DPI: u32 = 96;
 
@@ -91,11 +89,13 @@ pub struct GlobalState {
     /// Handle to the main menu, wrapped in a guard for automatic cleanup.
     pub h_menu: Mutex<Option<DestroyMenuGuard>>,
     /// The main window class name.
+    ///
+    /// TODO: Why does this need to exist? Specifically, why does it need to be mutable instead of just being a constant?
     pub sz_class: Mutex<&'static str>,
     /// Format string for the time display.
     pub sz_time: Mutex<&'static str>,
-    /// Buffer for the default player name.
-    pub sz_default_name: Mutex<[u16; CCH_NAME_MAX]>,
+    /// Default name used for saving games.
+    pub sz_default_name: Mutex<&'static str>,
 }
 
 impl Default for GlobalState {
@@ -105,7 +105,7 @@ impl Default for GlobalState {
             h_menu: Mutex::new(None),
             sz_class: Mutex::new(""),
             sz_time: Mutex::new(""),
-            sz_default_name: Mutex::new([0; CCH_NAME_MAX]),
+            sz_default_name: Mutex::new(""),
         }
     }
 }
