@@ -128,38 +128,30 @@ pub fn ReportErr(id_err: u16) {
 }
 
 /// Load a localized string resource into the provided buffer.
-///
-/// TODO: Use UTF-8 instead of UTF-16
 /// # Arguments
 /// * `id` - The string resource ID to load.
-/// * `sz` - Pointer to the buffer that receives the string (UTF-16).
 /// * `cch` - Size of the buffer in UTF-16 code units.
 /// # Returns
-/// Ok(()) if successful, or an error if loading failed.
-pub fn LoadSz(id: u16, sz: *mut u16, cch: u32) -> Result<(), Box<dyn std::error::Error>> {
-    let state = global_state();
-    let inst_guard = match state.h_inst.lock() {
+/// A `Result` containing the loaded string on success, or an error message on failure.
+pub fn LoadSz(id: u16, max: usize) -> Result<String, Box<dyn std::error::Error>> {
+    // 1. Acquire a lock on the global instance handle
+    let inst_guard = match global_state().h_inst.lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
     };
 
+    // 2. Load the string resource
     let text = inst_guard
         .LoadString(id)
         .map_err(|e| format!("Failed to load string resource {}: {}", id, e))?;
+
+    // 3. Validate that the string is not empty
     if text.is_empty() {
         return Err(format!("Empty string resource {}", id).into());
     }
 
-    if sz.is_null() || cch == 0 {
-        return Err("Invalid buffer parameters".into());
-    }
-
-    let max = cch as usize;
-    let slice = unsafe { core::slice::from_raw_parts_mut(sz, max) };
-    for (i, code_unit) in text.encode_utf16().chain(Some(0)).take(max).enumerate() {
-        slice[i] = code_unit;
-    }
-    Ok(())
+    // 4. Truncate the string if it exceeds the specified maximum length and return it
+    Ok(text[..max.min(text.len())].to_string())
 }
 
 /// Read an integer preference from the legacy .ini file, clamping it within the specified bounds.
@@ -248,32 +240,39 @@ pub fn InitConst() {
     seed_rng(ticks as u32);
 
     let state = global_state();
-    if let Ok(class_buf) = state.sz_class.lock()
-        && let Err(e) = LoadSz(
-            StringId::GameName as u16,
-            class_buf.encode_utf16().collect::<Vec<u16>>().as_mut_ptr(),
-            CCH_NAME_MAX as u32,
-        )
-    {
-        eprintln!("Failed to load game name string: {}", e);
+    match LoadSz(StringId::GameName as u16, CCH_NAME_MAX) {
+        Ok(text) => {
+            if let Ok(mut class_buf) = state.sz_class.lock() {
+                // Leak the string to obtain a &'static str reference.
+                // This is safe because sz_class is only read after this initialization.
+                *class_buf = Box::leak(text.into_boxed_str());
+            }
+        }
+        Err(e) => eprintln!("Failed to load game name string: {}", e),
     }
-    if let Ok(mut time_buf) = state.sz_time.lock()
-        && let Err(e) = LoadSz(
-            StringId::MsgSeconds as u16,
-            time_buf.as_mut_ptr(),
-            CCH_NAME_MAX as u32,
-        )
-    {
-        eprintln!("Failed to load time format string: {}", e);
+
+    match LoadSz(StringId::MsgSeconds as u16, CCH_NAME_MAX) {
+        Ok(text) => {
+            if let Ok(mut time_buf) = state.sz_time.lock() {
+                // Leak the string to obtain a &'static str reference.
+                // This is safe because sz_time is only read after this initialization.
+                *time_buf = Box::leak(text.into_boxed_str());
+            }
+        }
+        Err(e) => eprintln!("Failed to load time format string: {}", e),
     }
-    if let Ok(mut default_buf) = state.sz_default_name.lock()
-        && let Err(e) = LoadSz(
-            StringId::NameDefault as u16,
-            default_buf.as_mut_ptr(),
-            CCH_NAME_MAX as u32,
-        )
-    {
-        eprintln!("Failed to load default name string: {}", e);
+
+    match LoadSz(StringId::NameDefault as u16, CCH_NAME_MAX) {
+        Ok(text) => {
+            if let Ok(mut default_buf) = state.sz_default_name.lock() {
+                text.encode_utf16()
+                    .chain(Some(0))
+                    .take(default_buf.len())
+                    .enumerate()
+                    .for_each(|(i, code_unit)| default_buf[i] = code_unit);
+            }
+        }
+        Err(e) => eprintln!("Failed to load default name string: {}", e),
     }
 
     CYCAPTION.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
@@ -441,28 +440,20 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 pub fn DoAbout(hwnd: &HWND) {
-    let mut sz_version = [0u16; CCH_MSG_MAX];
-    let mut sz_credit = [0u16; CCH_MSG_MAX];
-
-    if let Err(e) = LoadSz(
-        StringId::MsgVersion as u16,
-        sz_version.as_mut_ptr(),
-        CCH_MSG_MAX as u32,
-    ) {
-        eprintln!("Failed to load version string: {}", e);
-        return;
-    }
-    if let Err(e) = LoadSz(
-        StringId::MsgCredit as u16,
-        sz_credit.as_mut_ptr(),
-        CCH_MSG_MAX as u32,
-    ) {
-        eprintln!("Failed to load credit string: {}", e);
-        return;
-    }
-
-    let title = utf16_buffer_to_string(&sz_version);
-    let credit = utf16_buffer_to_string(&sz_credit);
+    let title = match LoadSz(StringId::MsgVersion as u16, CCH_MSG_MAX) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("Failed to load version string: {}", e);
+            return;
+        }
+    };
+    let credit = match LoadSz(StringId::MsgCredit as u16, CCH_MSG_MAX) {
+        Ok(text) => text,
+        Err(e) => {
+            eprintln!("Failed to load credit string: {}", e);
+            return;
+        }
+    };
     let inst_guard = match global_state().h_inst.lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),

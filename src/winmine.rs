@@ -1661,12 +1661,16 @@ impl EnterDialog {
                 unsafe {
                     let hdlg_raw = dlg.hwnd().ptr() as _;
 
-                    let mut buffer = [0u16; CCH_MSG_MAX];
                     let string_id = ID_MSG_BEGIN + game_type as u16;
-                    if let Err(e) = LoadSz(string_id, buffer.as_mut_ptr(), buffer.len() as u32) {
-                        eprintln!("Failed to load dialog string {string_id}: {e}");
-                    } else {
-                        SetDlgItemTextW(hdlg_raw, ControlId::TextBest as i32, buffer.as_ptr());
+                    match LoadSz(string_id, CCH_MSG_MAX) {
+                        Ok(text) => {
+                            SetDlgItemTextW(
+                                hdlg_raw,
+                                ControlId::TextBest as i32,
+                                w::WString::from_str(&text).as_ptr(),
+                            );
+                        }
+                        Err(e) => eprintln!("Failed to load dialog string {string_id}: {e}"),
                     }
 
                     if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
@@ -1923,13 +1927,9 @@ fn command_id(w_param: usize) -> u16 {
 /// * `name` - The name associated with the time.
 fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
     let state = global_state();
-    let time_fmt = {
-        let guard = match state.sz_time.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        let len = guard.iter().position(|&ch| ch == 0).unwrap_or(guard.len());
-        String::from_utf16_lossy(&guard[..len])
+    let time_fmt = match state.sz_time.lock() {
+        Ok(g) => g,
+        Err(poisoned) => poisoned.into_inner(),
     };
 
     let mut buffer = [0u16; CCH_NAME_MAX];
