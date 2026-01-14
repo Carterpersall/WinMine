@@ -140,9 +140,8 @@ pub fn ReadInt(
         return val_default;
     }
 
-    let key_name = match pref_key_literal(key) {
-        Some(name) => name,
-        None => return val_default,
+    let Some(key_name) = pref_key_literal(key) else {
+        return val_default;
     };
 
     let value = match handle.RegQueryValueEx(Some(key_name)) {
@@ -177,15 +176,14 @@ fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
 /// Read all user preferences from the registry into the shared PREF struct.
 pub fn ReadPreferences() {
     // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
-    let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    let Ok((key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         co::REG_OPTION::default(),
         co::KEY::READ,
         None,
-    ) {
-        Ok(result) => result,
-        Err(_) => return,
+    ) else {
+        return;
     };
 
     let mut prefs = match preferences_mutex().lock() {
@@ -345,9 +343,8 @@ fn WriteInt(handle: &w::HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std:
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());
     }
-    let key_name = match pref_key_literal(key) {
-        Some(name) => name,
-        None => return Err("Invalid preference key".into()),
+    let Some(key_name) = pref_key_literal(key) else {
+        return Err("Invalid preference key".into());
     };
 
     handle.RegSetValueEx(Some(key_name), RegistryValue::Dword(val as u32))?;
@@ -373,14 +370,12 @@ fn WriteSz(
     if sz.is_null() {
         return Err("Invalid string pointer".into());
     }
-    let key_name = match pref_key_literal(key) {
-        Some(name) => name,
-        None => return Err("Invalid preference key".into()),
+    let Some(key_name) = pref_key_literal(key) else {
+        return Err("Invalid preference key".into());
     };
 
-    let value = match wide_ptr_to_string(sz) {
-        Some(text) => text,
-        None => return Err("Invalid string data".into()),
+    let Some(value) = wide_ptr_to_string(sz) else {
+        return Err("Invalid string data".into());
     };
 
     handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(value))?;
