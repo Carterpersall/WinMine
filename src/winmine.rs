@@ -498,7 +498,7 @@ impl WinMineMainWindow {
                 };
                 FreeBitmaps();
                 if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
-                    eprintln!("Failed to reload bitmaps: {}", e);
+                    eprintln!("Failed to reload bitmaps: {e}");
                     ReportErr(ERR_OUT_OF_MEMORY);
                     unsafe {
                         let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
@@ -1354,7 +1354,7 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
                     Ok(())
                 })
                 .unwrap_or_else(|e| {
-                    eprintln!("Failed to draw pixel at (0,0): {}", e);
+                    eprintln!("Failed to draw pixel at (0,0): {e}");
                 });
         }
     }
@@ -1420,7 +1420,7 @@ impl PrefDialog {
 
                 // Populate the dialog controls with the current settings
                 unsafe {
-                    let hdlg_raw = dlg.hwnd().ptr() as _;
+                    let hdlg_raw = dlg.hwnd().ptr();
                     SetDlgItemInt(hdlg_raw, ControlId::EditHeight as i32, height as u32, 0);
                     SetDlgItemInt(hdlg_raw, ControlId::EditWidth as i32, width as u32, 0);
                     SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines as u32, 0);
@@ -1641,7 +1641,7 @@ impl EnterDialog {
         let mut buffer = [0u16; CCH_NAME_MAX];
         unsafe {
             GetDlgItemTextW(
-                self.dlg.hwnd().ptr() as _,
+                self.dlg.hwnd().ptr(),
                 ControlId::EditName as i32,
                 buffer.as_mut_ptr(),
                 CCH_NAME_MAX as i32,
@@ -1678,7 +1678,7 @@ impl EnterDialog {
 
                 // TODO: Do this better
                 unsafe {
-                    let hdlg_raw = dlg.hwnd().ptr() as _;
+                    let hdlg_raw = dlg.hwnd().ptr();
 
                     let string = match game_type {
                         GameType::Begin => MSG_FASTEST_BEGINNER,
@@ -1788,15 +1788,15 @@ pub fn AdjustWindow(hwnd: &HWND, mut f_adjust: i32) {
         right: dx_window,
         bottom: dy_window,
     };
-    let dw_style = hwnd.GetWindowLongPtr(GWLP::STYLE) as u32;
-    let dw_ex_style = hwnd.GetWindowLongPtr(GWLP::EXSTYLE) as u32;
+    let dw_style = hwnd.GetWindowLongPtr(GWLP::STYLE);
+    let dw_ex_style = hwnd.GetWindowLongPtr(GWLP::EXSTYLE);
     let mut frame_extra = CXBORDER.load(Ordering::Relaxed);
     let mut dyp_adjust;
     if let Ok(adjusted) = AdjustWindowRectExForDpi(
         desired,
-        unsafe { WS::from_raw(dw_style) },
+        unsafe { WS::from_raw(dw_style as _) },
         menu_visible,
-        unsafe { WS_EX::from_raw(dw_ex_style) },
+        unsafe { WS_EX::from_raw(dw_ex_style as _) },
         UI_DPI.load(Ordering::Relaxed),
     ) {
         let cx_total = adjusted.right - adjusted.left;
@@ -1941,8 +1941,8 @@ fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
     }
 
     unsafe {
-        SetDlgItemTextW(h_dlg.ptr() as _, id, buffer.as_ptr());
-        SetDlgItemTextW(h_dlg.ptr() as _, id + 1, name.as_ptr());
+        SetDlgItemTextW(h_dlg.ptr(), id, buffer.as_ptr());
+        SetDlgItemTextW(h_dlg.ptr(), id + 1, name.as_ptr());
     }
 }
 
@@ -1999,8 +1999,8 @@ fn apply_help_to_control(hwnd: HWND, ids: &[u32]) {
     if let Some(control) = hwnd.as_opt() {
         unsafe {
             HtmlHelpA(
-                control.ptr() as _,
-                HELP_FILE.as_ptr() as _,
+                control.ptr(),
+                HELP_FILE.as_ptr(),
                 HH_TP_HELP_CONTEXTMENU as _,
                 ids.as_ptr() as usize,
             );

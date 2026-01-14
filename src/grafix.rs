@@ -366,6 +366,7 @@ fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
 fn DrawBombCount(hdc: &w::HDC) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
+    // TODO: What in the world is this nonsense?
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
         unsafe {
@@ -490,6 +491,8 @@ fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
 
 /// Create a resampled bitmap using area averaging to avoid aliasing artifacts when using fractional scaling.
 /// This function reads the source bitmap bits, performs area averaging, and creates a new bitmap with the resampled data.
+///
+/// TODO: Why are the width and height parameters i32 instead of u32?
 /// # Arguments
 /// * `hdc` - The device context used for bitmap operations.
 /// * `src_bmp` - The source bitmap to be resampled.
@@ -885,7 +888,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
 
     let hdc = match hwnd.GetDC() {
         Ok(dc) => dc,
-        Err(e) => return Err(format!("Failed to get device context: {}", e).into()),
+        Err(e) => return Err(format!("Failed to get device context: {e}").into()),
     };
 
     // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
@@ -1138,10 +1141,12 @@ fn load_bitmap_resource(
 /// Size in bytes of the DIB header and palette
 fn dib_header_size(color_on: bool) -> usize {
     let palette_entries = if color_on { 16 } else { 2 };
-    size_of::<BITMAPINFOHEADER>() + (palette_entries as usize) * 4
+    size_of::<BITMAPINFOHEADER>() + palette_entries * 4
 }
 
 /// Calculate the byte size of a bitmap given its dimensions and color mode
+///
+/// TODO: Why are the width and height parameters i32 instead of u32?
 /// # Arguments
 /// * `color_on` - Whether color mode is enabled
 /// * `x` - Width of the bitmap in pixels
@@ -1175,6 +1180,8 @@ fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
 }
 
 /// Determine the sprite index for the block at the given board coordinates.
+///
+/// TODO: Why are the x and y parameters i32 instead of u32?
 /// # Arguments
 /// * `x` - X coordinate on the board (1-based)
 /// * `y` - Y coordinate on the board (1-based)
@@ -1191,6 +1198,5 @@ fn block_sprite_index(x: i32, y: i32) -> usize {
     board
         .get(idx)
         .copied()
-        .map(|value| (value & BlockMask::Data as i8) as usize)
-        .unwrap_or(0)
+        .map_or(0, |value| (value & BlockMask::Data as i8) as usize)
 }

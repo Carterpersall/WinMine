@@ -62,7 +62,7 @@ pub enum AdjustFlag {
 }
 
 /// Shift applied when converting x/y to the packed board index.
-pub const BOARD_INDEX_SHIFT: isize = 5;
+pub const BOARD_INDEX_SHIFT: usize = 5;
 
 /// Current preferences stored in a global Mutex.
 static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
@@ -117,6 +117,8 @@ pub static CURSOR_X_POS: AtomicI32 = AtomicI32::new(-1);
 pub static CURSOR_Y_POS: AtomicI32 = AtomicI32::new(-1);
 
 /// Packed board cell values stored row-major including border
+///
+/// TODO: Replace with a better data structure, perhaps using a struct?
 static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
 
 /// Accessor for the packed board cell array.
@@ -179,6 +181,9 @@ fn clr_status_pause() {
 }
 
 /// Calculate the board index for the given coordinates.
+///
+/// TODO: Return Result instead of Option
+/// TODO: X and Y should be usize or u32, negative indices make no sense
 /// # Arguments
 /// * `x` - The X coordinate.
 /// * `y` - The Y coordinate.
@@ -244,8 +249,8 @@ fn set_border(x: i32, y: i32) {
 fn set_bomb(x: i32, y: i32) {
     if let Some(idx) = board_index(x, y) {
         let mut guard = board_mutex();
-        let prev = guard[idx] as u8;
-        guard[idx] = (prev | BlockMask::Bomb as u8) as i8;
+        let prev = guard[idx];
+        guard[idx] = prev | BlockMask::Bomb as i8;
     }
 }
 

@@ -118,6 +118,8 @@ pub struct Pref {
 }
 
 /// Read an integer preference from the registry with clamping.
+///
+/// TODO: Change values to use u32, as that is the value of registry DWORDs.
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to read
@@ -167,7 +169,7 @@ fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
     };
 
     match handle.RegQueryValueEx(Some(key_name)) {
-        Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => value,
+        Ok(RegistryValue::Sz(value) | RegistryValue::ExpandSz(value)) => value,
         _ => DEFAULT_PLAYER_NAME.to_string(),
     }
 }
@@ -237,7 +239,13 @@ pub fn ReadPreferences() {
         MenuMode::AlwaysOn as i32,
         MenuMode::On as i32,
     );
-    prefs.fMenu = menu_mode_from_raw(menu_raw);
+    prefs.fMenu = match menu_raw {
+        0 => MenuMode::AlwaysOn,
+        1 => MenuMode::Hidden,
+        2 => MenuMode::On,
+        // Unreachable due to `ReadInt`'s clamping
+        _ => MenuMode::AlwaysOn,
+    };
 
     prefs.rgTime[GameType::Begin as usize] = ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999);
     prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
@@ -280,7 +288,7 @@ pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
         None,
     ) {
         Ok(result) => result,
-        Err(e) => return Err(format!("Failed to open registry key: {}", e).into()),
+        Err(e) => return Err(format!("Failed to open registry key: {e}").into()),
     };
 
     let prefs = match preferences_mutex().lock() {
@@ -324,6 +332,8 @@ pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Write an integer preference to the registry.
+///
+/// TODO: Change val to u32 to match registry DWORDs.
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to write
@@ -434,18 +444,4 @@ fn wide_len(mut ptr: *const u16) -> usize {
         }
     }
     len
-}
-
-/// Convert a raw integer value into a `MenuMode` enum.
-/// # Arguments
-/// * `value` - Raw integer value from preferences
-/// # Returns
-/// Corresponding `MenuMode` enum variant
-fn menu_mode_from_raw(value: i32) -> MenuMode {
-    match value {
-        0 => MenuMode::AlwaysOn,
-        1 => MenuMode::Hidden,
-        2 => MenuMode::On,
-        _ => MenuMode::AlwaysOn,
-    }
 }

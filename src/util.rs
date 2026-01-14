@@ -53,6 +53,8 @@ fn seed_rng(seed: u32) {
 /// Generate the next pseudo-random number using a linear congruential generator.
 /// # Returns
 /// The next pseudo-random number.
+///
+/// TODO: Change return type to u32 since the current RNG value is stored as a u32
 fn next_rand() -> i32 {
     let mut current = RNG_STATE.load(Ordering::Relaxed);
     loop {
@@ -255,7 +257,7 @@ pub fn InitConst() {
     }
 
     if let Err(e) = WritePreferences() {
-        eprintln!("Failed to write preferences during initialization: {}", e);
+        eprintln!("Failed to write preferences during initialization: {e}");
     }
 }
 
@@ -361,6 +363,8 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 }
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
+///
+/// TODO: Change types to u32 since `GetDlgItemInt` returns u32
 /// # Arguments
 /// * `h_dlg` - Handle to the dialog window.
 /// * `dlg_id` - The dialog item ID.
@@ -370,7 +374,7 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 /// The clamped integer value from the dialog item.
 pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     let mut success = 0i32;
-    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &mut success, 0) };
+    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) };
     let value = value as i32;
     value.clamp(num_lo, num_hi)
 }
