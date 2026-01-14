@@ -3,11 +3,11 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{self as w, HWND, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
+use winsafe::{self as w, HMENU, HWND, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
 use crate::globals::{
     CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_TITLE, GAME_NAME, MSG_CREDIT,
-    MSG_VERSION_NAME, global_state,
+    MSG_VERSION_NAME,
 };
 use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, ReadInt,
@@ -260,18 +260,13 @@ pub fn InitConst() {
 }
 
 /// Check or uncheck a menu item based on the specified command ID.
+///
+/// TODO: This function no longer needs to exist
 /// # Arguments
 /// * `idm` - The menu command ID.
 /// * `f_check` - `true` to check the item, `false` to uncheck it.
-pub fn CheckEm(idm: MenuCommand, f_check: bool) {
-    // Maintain the old menu checkmark toggles (e.g. question marks, sound).
-    let state = global_state();
-    let menu_guard = match state.h_menu.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    if let Some(menu) = menu_guard.as_ref() {
+pub fn CheckEm(hmenu: &HMENU, idm: MenuCommand, f_check: bool) {
+    if let Some(menu) = hmenu.as_opt() {
         let _ = menu.CheckMenuItem(IdPos::Id(idm as u16), f_check);
     }
 }
@@ -293,37 +288,26 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
         menu_checks = (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound);
     }
 
-    FixMenus(menu_checks.0, menu_checks.1, menu_checks.2, menu_checks.3);
+    FixMenus(
+        hwnd.GetMenu().unwrap_or(w::HMENU::NULL),
+        menu_checks.0,
+        menu_checks.1,
+        menu_checks.2,
+        menu_checks.3,
+    );
 
-    let state = global_state();
-    let menu_handle = {
-        let guard = match state.h_menu.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        guard
-            .as_ref()
-            .map(|menu| unsafe { w::HMENU::from_ptr(menu.ptr()) })
-            .unwrap_or(w::HMENU::NULL)
-    };
-
-    if let Some(hwnd) = hwnd.as_opt() {
-        let null_menu = w::HMENU::NULL;
-        let menu_arg = if menu_on { &menu_handle } else { &null_menu };
-        let _ = hwnd.SetMenu(menu_arg);
-        AdjustWindow(hwnd, AdjustFlag::Resize as i32);
-    }
+    let menu = hwnd.GetMenu().unwrap_or(w::HMENU::NULL);
+    let menu_arg = if menu_on { &menu } else { &w::HMENU::NULL };
+    let _ = hwnd.SetMenu(menu_arg);
+    AdjustWindow(hwnd, AdjustFlag::Resize as i32);
 }
 
 /// Display the About dialog box with version and credit information.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 pub fn DoAbout(hwnd: &HWND) {
-    let inst_guard = match global_state().h_inst.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    let icon_guard = inst_guard
+    let icon_guard = hwnd
+        .hinstance()
         .LoadIcon(w::IdIdiStr::Id(IconId::Main as u16))
         .ok();
     let icon = icon_guard.as_deref();
@@ -335,16 +319,12 @@ pub fn DoAbout(hwnd: &HWND) {
 /// # Arguments
 /// * `w_command` - The help command (e.g., HELPONHELP).
 /// * `l_param` - Additional parameter for the help command.
-pub fn DoHelp(w_command: u16, l_param: u32) {
+pub fn DoHelp(hwnd: &HWND, w_command: u16, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
-    let inst_guard = match global_state().h_inst.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
 
     if (w_command as u32) != HELPW::HELPONHELP.raw() {
-        let exe_path = inst_guard.GetModuleFileName().unwrap_or_default();
+        let exe_path = hwnd.hinstance().GetModuleFileName().unwrap_or_default();
         let mut bytes = exe_path.into_bytes();
         if bytes.len() + 1 > CCH_MAX_PATHNAME {
             bytes.truncate(CCH_MAX_PATHNAME - 1);
@@ -375,9 +355,8 @@ pub fn DoHelp(w_command: u16, l_param: u32) {
         buffer[..HELP_FILE.len()].copy_from_slice(HELP_FILE);
     }
 
-    let desktop = w::HWND::GetDesktopWindow();
     unsafe {
-        HtmlHelpA(desktop.ptr() as _, buffer.as_ptr(), l_param, 0);
+        HtmlHelpA(hwnd.ptr(), buffer.as_ptr(), l_param, 0);
     }
 }
 

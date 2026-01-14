@@ -3,7 +3,7 @@ use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::atomic::AtomicU8;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
-use winsafe::{HWND, prelude::*};
+use winsafe::{HINSTANCE, HWND, prelude::*};
 
 use crate::globals::{BLK_BTN_INPUT, ERR_TIMER, GAME_STATUS, StatusFlag};
 use crate::grafix::{
@@ -344,7 +344,7 @@ fn check_win() -> bool {
 /// Play a logical tune if sound effects are enabled in preferences.
 /// # Arguments
 /// * `tune` - The tune to play.
-fn play_tune(tune: Tune) {
+fn play_tune(hinst: HINSTANCE, tune: Tune) {
     let sound_on = {
         let prefs = match preferences_mutex().lock() {
             Ok(guard) => guard,
@@ -354,7 +354,7 @@ fn play_tune(tune: Tune) {
     };
 
     if sound_on {
-        PlayTune(tune);
+        PlayTune(hinst, tune);
     }
 }
 
@@ -554,7 +554,10 @@ fn game_over(hwnd: &HWND, win: bool) {
             update_bomb_count_internal(hwnd, -bombs_left);
         }
     }
-    play_tune(if win { Tune::WinGame } else { Tune::LoseGame });
+    play_tune(
+        hwnd.hinstance(),
+        if win { Tune::WinGame } else { Tune::LoseGame },
+    );
     set_status_demo();
 
     if win {
@@ -762,7 +765,7 @@ pub fn DoTimer(hwnd: &HWND) {
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
         display_time(hwnd);
-        play_tune(Tune::Tick);
+        play_tune(hwnd.hinstance(), Tune::Tick);
     }
 }
 
@@ -917,7 +920,7 @@ pub fn DoButton1Up(hwnd: &HWND) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         let secs = SECS_ELAPSED.load(Ordering::Relaxed);
         if visits == 0 && secs == 0 {
-            play_tune(Tune::Tick);
+            play_tune(hwnd.hinstance(), Tune::Tick);
             SECS_ELAPSED.store(1, Ordering::Relaxed);
             display_time(hwnd);
             F_TIMER.store(true, Ordering::Relaxed);

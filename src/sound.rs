@@ -2,8 +2,8 @@
 use core::ptr::{null, null_mut};
 
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
+use winsafe::HINSTANCE;
 
-use crate::globals::global_state;
 use crate::pref::SoundState;
 
 /// Logical UI tunes that map to embedded wave resources.
@@ -41,17 +41,10 @@ pub fn stop_all_sounds() -> bool {
 /// Play a specific UI tune using the sounds in the resource file
 /// # Arguments
 /// * `tune` - The tune to play
-pub fn PlayTune(tune: Tune) {
+pub fn PlayTune(hinst: HINSTANCE, tune: Tune) {
     let resource_ptr = tune as usize as *const u16;
-    let instance_ptr = {
-        let guard = match global_state().h_inst.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        guard.ptr()
-    };
     // Playback uses the async flag so the UI thread is never blocked.
     unsafe {
-        PlaySoundW(resource_ptr, instance_ptr, SND_RESOURCE | SND_ASYNC);
+        PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
     }
 }

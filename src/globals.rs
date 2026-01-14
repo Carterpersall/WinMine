@@ -1,9 +1,6 @@
 use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
-use std::sync::{Mutex, OnceLock};
 
-use winsafe::guard::DestroyMenuGuard;
-use winsafe::prelude::Handle;
-use winsafe::{self as w, HINSTANCE};
+use winsafe::{self as w};
 
 /* -------------------- */
 /* Constant Definitions */
@@ -145,30 +142,3 @@ pub static WND_Y_OFFSET: AtomicI32 = AtomicI32::new(0);
 /// Aggregated status flags shared between modules.
 pub static GAME_STATUS: AtomicI32 =
     AtomicI32::new(StatusFlag::Icon as i32 | StatusFlag::Demo as i32);
-
-/// Shared Win32 handles and string buffers used throughout the app.
-pub struct GlobalState {
-    /// Handle to the application module, retreived using `GetModuleHandle(NULL)`.
-    pub h_inst: Mutex<HINSTANCE>,
-    /// Handle to the main menu, wrapped in a guard for automatic cleanup.
-    pub h_menu: Mutex<Option<DestroyMenuGuard>>,
-}
-
-impl Default for GlobalState {
-    fn default() -> Self {
-        Self {
-            h_inst: Mutex::new(HINSTANCE::NULL),
-            h_menu: Mutex::new(None),
-        }
-    }
-}
-
-/// Shared variable containing the global state
-static GLOBAL_STATE: OnceLock<GlobalState> = OnceLock::new();
-
-/// Accessor for the shared global state
-/// # Returns
-/// A reference to the global state singleton
-pub fn global_state() -> &'static GlobalState {
-    GLOBAL_STATE.get_or_init(GlobalState::default)
-}

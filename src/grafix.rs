@@ -7,13 +7,13 @@ use windows_sys::Win32::Graphics::Gdi::{
     GDI_ERROR, GetLayout, R2_COPYPEN, R2_WHITE, SetDIBitsToDevice, SetLayout, SetROP2,
 };
 use winsafe::{
-    self as w, BITMAPINFO, BITMAPINFOHEADER, HRSRCMEM, HWND, IdStr, RtStr,
+    self as w, BITMAPINFO, BITMAPINFOHEADER, HINSTANCE, HRSRCMEM, HWND, IdStr, RtStr,
     co::{DIB, LAYOUT, PS, ROP, RT, STOCK_PEN},
     guard::{DeleteDCGuard, DeleteObjectGuard},
     prelude::*,
 };
 
-use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH, global_state};
+use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
 use crate::rtns::{
     BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
     ClearField, SECS_ELAPSED, board_mutex, preferences_mutex,
@@ -827,13 +827,18 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    let Some((h_blks, lp_blks)) = load_bitmap_resource(BitmapId::Blocks, color_on) else {
+    let Some((h_blks, lp_blks)) =
+        load_bitmap_resource(hwnd.hinstance(), BitmapId::Blocks, color_on)
+    else {
         return Err("Failed to load block bitmap resource".into());
     };
-    let Some((h_led, lp_led)) = load_bitmap_resource(BitmapId::Led, color_on) else {
+    let Some((h_led, lp_led)) = load_bitmap_resource(hwnd.hinstance(), BitmapId::Led, color_on)
+    else {
         return Err("Failed to load LED bitmap resource".into());
     };
-    let Some((h_button, lp_button)) = load_bitmap_resource(BitmapId::Button, color_on) else {
+    let Some((h_button, lp_button)) =
+        load_bitmap_resource(hwnd.hinstance(), BitmapId::Button, color_on)
+    else {
         return Err("Failed to load button bitmap resource".into());
     };
 
@@ -1108,22 +1113,19 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
 /// * `color_on` - Whether color mode is enabled.
 /// # Returns
 /// Optionally, a tuple containing the resource handle and a pointer to the bitmap data.
-fn load_bitmap_resource(id: BitmapId, color_on: bool) -> Option<(HRSRCMEM, *const u8)> {
+fn load_bitmap_resource(
+    hinst: HINSTANCE,
+    id: BitmapId,
+    color_on: bool,
+) -> Option<(HRSRCMEM, *const u8)> {
     let offset = if color_on { 0 } else { 1 };
     let resource_id = (id as u16) + offset;
     // Colorless devices load the grayscale resource IDs immediately following the color ones.
-    let inst_guard = match global_state().h_inst.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    let res_info = inst_guard
+    let res_info = hinst
         .FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))
         .ok()?;
-    let res_loaded = inst_guard.LoadResource(&res_info).ok()?;
-    let lp = inst_guard
-        .LockResource(&res_info, &res_loaded)
-        .ok()?
-        .as_ptr();
+    let res_loaded = hinst.LoadResource(&res_info).ok()?;
+    let lp = hinst.LockResource(&res_info, &res_loaded).ok()?.as_ptr();
     Some((res_loaded, lp))
 }
 

@@ -22,7 +22,7 @@ use crate::globals::{
     BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_OUT_OF_MEMORY,
     GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER,
     MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, StatusFlag, TIME_FORMAT, UI_DPI, WINDOW_HEIGHT,
-    WINDOW_WIDTH, WND_Y_OFFSET, global_state, update_ui_metrics_for_dpi,
+    WINDOW_WIDTH, WND_Y_OFFSET, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
     ButtonSprite, CleanUp, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -385,7 +385,13 @@ impl WinMineMainWindow {
             prefs.wGameType = GameType::Other;
             (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
         };
-        FixMenus(game, f_color, f_mark, f_sound);
+        FixMenus(
+            self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+            game,
+            f_color,
+            f_mark,
+            f_sound,
+        );
         UPDATE_INI.store(true, Ordering::Relaxed);
         StartGame(self.wnd.hwnd());
     }
@@ -432,7 +438,13 @@ impl WinMineMainWindow {
                 };
                 StartGame(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(preset, f_color, f_mark, f_sound);
+                FixMenus(
+                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    preset,
+                    f_color,
+                    f_mark,
+                    f_sound,
+                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Custom) => self.DoPref(),
@@ -460,7 +472,13 @@ impl WinMineMainWindow {
                     (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fMenu)
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(game, f_color, f_mark, new_sound);
+                FixMenus(
+                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    game,
+                    f_color,
+                    f_mark,
+                    new_sound,
+                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Color) => {
@@ -495,7 +513,13 @@ impl WinMineMainWindow {
                 // Repaint immediately so toggling color off updates without restarting.
                 DisplayScreen(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(game, color_enabled, f_mark, f_sound);
+                FixMenus(
+                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    game,
+                    color_enabled,
+                    f_mark,
+                    f_sound,
+                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Mark) => {
@@ -514,17 +538,31 @@ impl WinMineMainWindow {
                     )
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(game, color_enabled, mark_enabled, f_sound);
+                FixMenus(
+                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    game,
+                    color_enabled,
+                    mark_enabled,
+                    f_sound,
+                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
-            Some(MenuCommand::Help) => DoHelp(HELPW::INDEX.raw() as u16, HH_DISPLAY_TOPIC as u32),
-            Some(MenuCommand::HowToPlay) => {
-                DoHelp(HELPW::CONTEXT.raw() as u16, HH_DISPLAY_INDEX as u32)
-            }
-            Some(MenuCommand::HelpHelp) => {
-                DoHelp(HELPW::HELPONHELP.raw() as u16, HH_DISPLAY_TOPIC as u32)
-            }
+            Some(MenuCommand::Help) => DoHelp(
+                self.wnd.hwnd(),
+                HELPW::INDEX.raw() as u16,
+                HH_DISPLAY_TOPIC as u32,
+            ),
+            Some(MenuCommand::HowToPlay) => DoHelp(
+                self.wnd.hwnd(),
+                HELPW::CONTEXT.raw() as u16,
+                HH_DISPLAY_INDEX as u32,
+            ),
+            Some(MenuCommand::HelpHelp) => DoHelp(
+                self.wnd.hwnd(),
+                HELPW::HELPONHELP.raw() as u16,
+                HH_DISPLAY_TOPIC as u32,
+            ),
             Some(MenuCommand::HelpAbout) => {
                 DoAbout(self.wnd.hwnd());
                 return Some(0);
@@ -921,15 +959,7 @@ impl WinMineMainWindow {
 /// * `n_cmd_show`: The initial window show command.
 /// # Returns
 /// The application exit code.
-pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
-    let state = global_state();
-    {
-        let mut inst_guard = match state.h_inst.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *inst_guard = h_instance;
-    }
+pub fn run_winmine(hinst: HINSTANCE, n_cmd_show: i32) -> i32 {
     InitConst();
 
     // Initialize DPI to 96 (default) before creating the window
@@ -939,25 +969,13 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     INIT_MINIMIZED.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
 
     init_common_controls();
-    let hinst_wrap = {
-        let guard = match state.h_inst.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        unsafe { HINSTANCE::from_ptr(guard.ptr()) }
+
+    let Ok(mut menu) = hinst.LoadMenu(IdStr::Id(MenuResourceId::Menu as u16)) else {
+        eprintln!("Failed to load menu resource.");
+        return 0;
     };
 
-    let menu = hinst_wrap
-        .LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))
-        .ok();
-    {
-        let mut menu_guard = match state.h_menu.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *menu_guard = menu;
-    }
-    let h_accel = hinst_wrap
+    let h_accel = hinst
         .LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))
         .ok();
 
@@ -977,7 +995,7 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
         ),
         size: (dx_window, dy_window),
         style: co::WS::OVERLAPPED | co::WS::MINIMIZEBOX | co::WS::CAPTION | co::WS::SYSMENU,
-        menu: HMENU::NULL, // keep legacy ownership in `GlobalState::h_menu`
+        menu: menu.leak(),
         accel_table: h_accel,
         ..Default::default()
     });
@@ -1147,7 +1165,13 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
                 };
 
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(game, color_enabled, mark_enabled, new_sound);
+                FixMenus(
+                    hwnd.GetMenu().unwrap_or(HMENU::NULL),
+                    game,
+                    color_enabled,
+                    mark_enabled,
+                    new_sound,
+                );
                 SetMenuBar(hwnd, f_menu);
             }
         }
@@ -1346,20 +1370,22 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
 }
 
 /// Synchronizes the menu checkmarks with the current game settings.
+///
+/// TODO: This function is called a lot, and seems to be a band-aid fix for something.
 /// # Arguments
 /// * `game` - The current game type.
 /// * `f_color` - Whether color mode is enabled.
 /// * `f_mark` - Whether mark mode is enabled.
 /// * `f_sound` - The current sound state.
-pub fn FixMenus(game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
-    CheckEm(MenuCommand::Begin, game == GameType::Begin);
-    CheckEm(MenuCommand::Inter, game == GameType::Inter);
-    CheckEm(MenuCommand::Expert, game == GameType::Expert);
-    CheckEm(MenuCommand::Custom, game == GameType::Other);
+pub fn FixMenus(hmenu: HMENU, game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
+    CheckEm(&hmenu, MenuCommand::Begin, game == GameType::Begin);
+    CheckEm(&hmenu, MenuCommand::Inter, game == GameType::Inter);
+    CheckEm(&hmenu, MenuCommand::Expert, game == GameType::Expert);
+    CheckEm(&hmenu, MenuCommand::Custom, game == GameType::Other);
 
-    CheckEm(MenuCommand::Color, f_color);
-    CheckEm(MenuCommand::Mark, f_mark);
-    CheckEm(MenuCommand::Sound, f_sound == SoundState::On);
+    CheckEm(&hmenu, MenuCommand::Color, f_color);
+    CheckEm(&hmenu, MenuCommand::Mark, f_mark);
+    CheckEm(&hmenu, MenuCommand::Sound, f_sound == SoundState::On);
 }
 
 /// Struct containing the state shared by the Preferences dialog
@@ -1732,17 +1758,7 @@ pub fn DoEnterName(parent: &impl GuiParent) {
 /// * `hwnd` - A reference to the main window handle.
 /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
 pub fn AdjustWindow(hwnd: &HWND, mut f_adjust: i32) {
-    let state = global_state();
-    let menu_handle = {
-        let guard = match state.h_menu.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        guard
-            .as_ref()
-            .map(|menu| unsafe { HMENU::from_ptr(menu.ptr()) })
-            .unwrap_or(HMENU::NULL)
-    };
+    let menu_handle = hwnd.GetMenu().unwrap_or(HMENU::NULL);
 
     let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_boxes = BOARD_HEIGHT.load(Ordering::Relaxed);
