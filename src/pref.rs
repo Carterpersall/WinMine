@@ -157,7 +157,7 @@ pub fn ReadInt(
 /// * `key` - Preference key to read
 /// # Returns
 /// The retrieved string, or the default name on failure
-pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
+fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
     if handle.ptr().is_null() {
         return DEFAULT_PLAYER_NAME.to_string();
     }
@@ -330,11 +330,7 @@ pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
 /// * `val` - Integer value to store
 /// # Returns
 /// Result indicating success or failure
-pub fn WriteInt(
-    handle: &w::HKEY,
-    key: PrefKey,
-    val: i32,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn WriteInt(handle: &w::HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std::error::Error>> {
     // Simple DWORD setter used by both the registry migration and the dialog code.
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());
@@ -355,7 +351,7 @@ pub fn WriteInt(
 /// * `sz` - Pointer to zero-terminated UTF-16 string to store
 /// # Returns
 /// Result indicating success or failure
-pub fn WriteSz(
+fn WriteSz(
     handle: &w::HKEY,
     key: PrefKey,
     sz: *const u16,

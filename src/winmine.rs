@@ -1324,9 +1324,7 @@ fn handle_xyzzys_default_key(key: VK) {
 /// or if the cheat code has been fully entered,
 /// it reveals whether the cell under the cursor is a bomb or not by
 /// setting the pixel at (0,0) of the device context to black (bomb) or white (no bomb).
-///
 /// # Arguments
-///
 /// * `key` - The WPARAM from the mouse move message, containing key states.
 /// * `point` - The LPARAM from the mouse move message, containing cursor position.
 fn handle_xyzzys_mouse(key: MK, point: POINT) {
@@ -1745,7 +1743,7 @@ impl EnterDialog {
 /// Handles the high-score name entry dialog.
 /// # Arguments
 /// * `parent`: The parent GUI element for the modal dialog.
-pub fn DoEnterName(parent: &impl GuiParent) {
+fn DoEnterName(parent: &impl GuiParent) {
     EnterDialog::new().show_modal(parent);
     UPDATE_INI.store(true, Ordering::Relaxed);
 }

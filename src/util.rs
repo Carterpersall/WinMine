@@ -100,7 +100,7 @@ pub fn ReportErr(err: &str) {
 /// * `val_max` - Maximum allowed value.
 /// # Returns
 /// The clamped integer preference value.
-pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
+fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     let key = match pref_key_literal(pref) {
         Some(name) => WString::from_str(name),
         None => return val_default,
@@ -122,7 +122,7 @@ pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -
 /// # Arguments
 /// * `pref` - The preference key to read.
 /// * `sz_ret` - Pointer to the buffer that receives the string (UTF-16).
-pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
+fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
     // Grab the string from entpack.ini or fall back to the default Hall of Fame name.
     if sz_ret.is_null() {
         return;
