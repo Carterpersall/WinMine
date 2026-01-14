@@ -12,53 +12,42 @@ pub const BASE_DPI: u32 = 96;
 /* String Constants */
 
 /// The name of the game.
-/// (ID_GAMENAME = 1)
 ///
 /// This is used in the window title and as the window class name.
 pub const GAME_NAME: &str = "Minesweeper";
 
 /// Dialog title for error message boxes.
-/// (ID_ERR_TITLE = 3)
 pub const ERR_TITLE: &str = "Minesweeper Error";
 
 /// Error message given when allocating a timer fails.
-/// (ID_ERR_TIMER = 4)
 pub const ERR_TIMER: &str =
     "Unable to allocate a timer.  Please exit some of your applications and try again.";
 
 /// Out-of-memory error message.
-/// (ID_ERR_MEM = 5)
 pub const ERR_OUT_OF_MEMORY: &str = "Out of Memory";
 
 /// Default name for the best-times dialog.
-/// (ID_NAME_DEFAULT = 8)
 pub const DEFAULT_PLAYER_NAME: &str = "Anonymous";
 
 /// Time display formatting.
-/// (ID_MSG_SEC = 7)
 pub const TIME_FORMAT: &str = "%d seconds";
 
 /// Prompt for fastest beginner time.
-/// (ID_MSG_BEGIN = 9)
 pub const MSG_FASTEST_BEGINNER: &str =
     "You have the fastest time\rfor beginner level.\rPlease enter your name.";
 
 /// Prompt for fastest intermediate time.
-/// (ID_MSG_INTER = 10)
 pub const MSG_FASTEST_INTERMEDIATE: &str =
     "You have the fastest time\rfor intermediate level.\rPlease enter your name.";
 
 /// Prompt for fastest expert time.
-/// (ID_MSG_EXPERT = 11)
 pub const MSG_FASTEST_EXPERT: &str =
     "You have the fastest time\rfor expert level.\rPlease enter your name.";
 
 /// Version string used in the About box.
-/// (ID_MSG_VERSION = 12)
 pub const MSG_VERSION_NAME: &str = "Minesweeper";
 
 /// Credit string used in the About box.
-/// (ID_MSG_CREDIT = 13)
 pub const MSG_CREDIT: &str = "by Robert Donner and Curt Johnson";
 
 /// Flags defining the current game status.
@@ -84,6 +73,8 @@ pub enum StatusFlag {
 /// This is kept in sync with the main window DPI (via `HWND::GetDpiForWindow` and
 /// `WM_DPICHANGED`). All UI measurements that represent "logical" sizes from the
 /// classic WinMine assets are scaled from 96 DPI to this value.
+///
+/// TODO: Should this be a usize?
 pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 
 /// Update cached system metrics which vary with DPI.

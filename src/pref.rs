@@ -293,10 +293,10 @@ pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
     WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
     WriteInt(&key_guard, PrefKey::Mines, prefs.Mines)?;
-    WriteInt(&key_guard, PrefKey::Mark, prefs.fMark as i32)?;
+    WriteInt(&key_guard, PrefKey::Mark, i32::from(prefs.fMark))?;
     WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
-    WriteInt(&key_guard, PrefKey::Color, prefs.fColor as i32)?;
+    WriteInt(&key_guard, PrefKey::Color, i32::from(prefs.fColor))?;
     WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as i32)?;
     WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow)?;
     WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow)?;
@@ -436,11 +436,11 @@ fn wide_len(mut ptr: *const u16) -> usize {
     len
 }
 
-/// Convert a raw integer value into a MenuMode enum.
+/// Convert a raw integer value into a `MenuMode` enum.
 /// # Arguments
 /// * `value` - Raw integer value from preferences
 /// # Returns
-/// Corresponding MenuMode enum variant
+/// Corresponding `MenuMode` enum variant
 fn menu_mode_from_raw(value: i32) -> MenuMode {
     match value {
         0 => MenuMode::AlwaysOn,

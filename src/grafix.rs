@@ -164,7 +164,7 @@ static GRAFIX_STATE: OnceLock<Mutex<GrafixState>> = OnceLock::new();
 
 /// Accessor for the shared graphics state
 /// # Returns
-/// Reference to the Mutex protecting the GrafixState
+/// Reference to the Mutex protecting the `GrafixState`
 fn grafix_state() -> &'static Mutex<GrafixState> {
     GRAFIX_STATE.get_or_init(|| Mutex::new(GrafixState::default()))
 }
@@ -547,9 +547,9 @@ fn create_resampled_bitmap(
         }
         let idx = ((cy * src_w + cx) * 4) as usize;
         (
-            src_buf[idx + 2] as f32, // R
-            src_buf[idx + 1] as f32, // G
-            src_buf[idx] as f32,     // B
+            f32::from(src_buf[idx + 2]), // R
+            f32::from(src_buf[idx + 1]), // G
+            f32::from(src_buf[idx]),     // B
         )
     };
 
@@ -1113,6 +1113,8 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
 /// * `color_on` - Whether color mode is enabled.
 /// # Returns
 /// Optionally, a tuple containing the resource handle and a pointer to the bitmap data.
+///
+/// TODO: Could we return a BITMAPINFO reference instead of a raw pointer?
 fn load_bitmap_resource(
     hinst: HINSTANCE,
     id: BitmapId,
@@ -1158,7 +1160,7 @@ fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
 
 /// Retrieve the cached compatible DC for the block at the given board coordinates.
 /// # Arguments
-/// * `state` - Reference to the current GrafixState
+/// * `state` - Reference to the current `GrafixState`
 /// * `x` - X coordinate on the board (1-based)
 /// * `y` - Y coordinate on the board (1-based)
 /// # Returns

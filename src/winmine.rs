@@ -191,7 +191,7 @@ const HELP_FILE: &str = "winmine.chm\0";
 
 /// Help context ID mappings for dialogs
 ///
-/// Used by WinHelp to map control IDs to help context IDs.
+/// Used by `WinHelp` to map control IDs to help context IDs.
 /// # Notes
 /// - The arrays are in pairs of (control ID, help context ID).
 /// - The arrays end with two zeros to signal the end of the mapping.
@@ -214,7 +214,7 @@ const PREF_HELP_IDS: [u32; 14] = [
 
 /// Help context ID mappings for the best times dialog
 ///
-/// Used by WinHelp to map control IDs to help context IDs.
+/// Used by `WinHelp` to map control IDs to help context IDs.
 /// # Notes
 /// - The arrays are in pairs of (control ID, help context ID).
 /// - The arrays end with two zeros to signal the end of the mapping.
@@ -245,14 +245,14 @@ const BEST_HELP_IDS: [u32; 22] = [
 
 /// Determines whether the initial window state is minimized.
 /// # Arguments
-/// * `n_cmd_show`: The nCmdShow parameter from WinMain.
+/// * `n_cmd_show`: The nCmdShow parameter from `WinMain`.
 /// # Returns
 /// True if the initial window state is minimized, false otherwise.
 fn initial_minimized_state(n_cmd_show: i32) -> bool {
     n_cmd_show == co::SW::SHOWMINNOACTIVE.raw() || n_cmd_show == co::SW::SHOWMINIMIZED.raw()
 }
 
-/// Initializes common controls used by the application using InitCommonControlsEx.
+/// Initializes common controls used by the application using `InitCommonControlsEx`.
 fn init_common_controls() {
     let mut icc = INITCOMMONCONTROLSEX::default();
     icc.icc = ICC::ANIMATE_CLASS
@@ -398,7 +398,7 @@ impl WinMineMainWindow {
 
     /// Handles command messages from the menu and accelerators.
     /// # Arguments
-    /// * `w_param`: The wParam from the WM_COMMAND message.
+    /// * `w_param`: The wParam from the `WM_COMMAND` message.
     /// # Returns
     /// Some exit code if the command resulted in application exit, None otherwise.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
@@ -548,21 +548,15 @@ impl WinMineMainWindow {
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
-            Some(MenuCommand::Help) => DoHelp(
-                self.wnd.hwnd(),
-                HELPW::INDEX.raw() as u16,
-                HH_DISPLAY_TOPIC as u32,
-            ),
-            Some(MenuCommand::HowToPlay) => DoHelp(
-                self.wnd.hwnd(),
-                HELPW::CONTEXT.raw() as u16,
-                HH_DISPLAY_INDEX as u32,
-            ),
-            Some(MenuCommand::HelpHelp) => DoHelp(
-                self.wnd.hwnd(),
-                HELPW::HELPONHELP.raw() as u16,
-                HH_DISPLAY_TOPIC as u32,
-            ),
+            Some(MenuCommand::Help) => {
+                DoHelp(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32)
+            }
+            Some(MenuCommand::HowToPlay) => {
+                DoHelp(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32)
+            }
+            Some(MenuCommand::HelpHelp) => {
+                DoHelp(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32)
+            }
             Some(MenuCommand::HelpAbout) => {
                 DoAbout(self.wnd.hwnd());
                 return Some(0);
@@ -699,11 +693,10 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 // wParam: new DPI in LOWORD/HIWORD (X/Y). lParam: suggested new window rect.
-                let new_dpi = loword(msg.wparam as isize);
-                if new_dpi > 0 {
-                    let dpi = new_dpi as u32;
-                    UI_DPI.store(dpi, Ordering::Relaxed);
-                    update_ui_metrics_for_dpi(dpi);
+                let dpi = (msg.wparam) & 0xFFFF;
+                if dpi > 0 {
+                    UI_DPI.store(dpi as u32, Ordering::Relaxed);
+                    update_ui_metrics_for_dpi(dpi as u32);
                 }
 
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
@@ -1106,11 +1099,11 @@ fn current_face_sprite() -> ButtonSprite {
 
 /* Window Message Handlers */
 
-/// Maps a command ID to a MenuCommand enum variant.
+/// Maps a command ID to a `MenuCommand` enum variant.
 /// # Arguments
-/// * `w_param`: The WPARAM from the WM_COMMAND message.
+/// * `w_param`: The WPARAM from the `WM_COMMAND` message.
 /// # Returns
-/// An Option containing the corresponding MenuCommand, or None if not found.
+/// An Option containing the corresponding `MenuCommand`, or None if not found.
 fn menu_command(w_param: usize) -> Option<MenuCommand> {
     match command_id(w_param) {
         510 => Some(MenuCommand::New),
@@ -1131,7 +1124,7 @@ fn menu_command(w_param: usize) -> Option<MenuCommand> {
     }
 }
 
-/// Handles the WM_KEYDOWN message.
+/// Handles the `WM_KEYDOWN` message.
 /// # Arguments
 /// * `hwnd`: A reference to the window handle.
 /// * `key`: The virtual key code of the key that was pressed.
@@ -1206,9 +1199,9 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
     }
 }
 
-/// Handles the WM_WINDOWPOSCHANGED message to store the new window position in preferences.
+/// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
 /// # Arguments
-/// * `pos` - A reference to the WINDOWPOS structure containing the new window position.
+/// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
 fn handle_window_pos_changed(pos: &WINDOWPOS) {
     if status_icon() {
         return;
@@ -1224,7 +1217,7 @@ fn handle_window_pos_changed(pos: &WINDOWPOS) {
     }
 }
 
-/// Handles the WM_SYSCOMMAND message for minimize and restore events.
+/// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
 /// # Arguments
 /// * `command` - The system command identifier.
 fn handle_syscommand(command: SC) {
@@ -1919,15 +1912,6 @@ fn our_get_system_metrics(index: SM) -> i32 {
     }
 }
 
-/// Extracts the low-order word from a given isize value.
-/// # Arguments
-/// * `value` - The isize value to extract from.
-/// # Returns
-/// The low-order word as an i32.
-fn loword(value: isize) -> i32 {
-    ((value as u32) & 0xFFFF) as i16 as i32
-}
-
 /// Extracts the command identifier from a WPARAM value.
 /// # Arguments
 /// * `w_param` - The WPARAM value to extract from.
@@ -1990,7 +1974,7 @@ fn reset_best_dialog(
     );
 }
 
-/// Applies help context based on the HELPINFO structure pointed to by l_param.
+/// Applies help context based on the HELPINFO structure pointed to by `l_param`.
 /// # Arguments
 /// * `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
 /// * `ids` - The array of help context IDs.

@@ -318,9 +318,9 @@ fn f_in_range(x: i32, y: i32) -> bool {
 /// * `x` - The X coordinate.
 /// * `y` - The Y coordinate.
 /// * `block` - The raw block value to set.
-fn set_raw_block(x: i32, y: i32, block: i32) {
+fn set_raw_block(x: i32, y: i32, block: u8) {
     // Keep only the data bits plus the Visit bit (when present).
-    let masked = (block & (BlockMask::Data as i32 | BlockMask::Visit as i32)) as u8;
+    let masked = block & (BlockMask::Data as u8 | BlockMask::Visit as u8);
     set_block_value(x, y, masked);
 }
 
@@ -330,8 +330,8 @@ fn set_raw_block(x: i32, y: i32, block: i32) {
 /// * `y` - The Y coordinate.
 /// # Returns
 /// The data bits of the block.
-fn block_data(x: i32, y: i32) -> i32 {
-    (block_value(x, y) & BlockMask::Data as u8) as i32
+fn block_data(x: i32, y: i32) -> u8 {
+    block_value(x, y) & BlockMask::Data as u8
 }
 
 /// Check if the player has won the game.
@@ -373,10 +373,10 @@ fn show_bombs(hwnd: &HWND, cell: BlockCell) {
             if !is_visit(x, y) {
                 if is_bomb(x, y) {
                     if !guessed_bomb(x, y) {
-                        set_raw_block(x, y, cell as i32);
+                        set_raw_block(x, y, cell as u8);
                     }
                 } else if guessed_bomb(x, y) {
-                    set_raw_block(x, y, BlockCell::Wrong as i32);
+                    set_raw_block(x, y, BlockCell::Wrong as u8);
                 }
             }
         }
@@ -389,8 +389,8 @@ fn show_bombs(hwnd: &HWND, cell: BlockCell) {
 /// * `x_center` - The X coordinate of the center square.
 /// * `y_center` - The Y coordinate of the center square.
 /// # Returns
-/// The count of adjacent marked squares.
-fn count_marks(x_center: i32, y_center: i32) -> i32 {
+/// The count of adjacent marked squares (maximum 8).
+fn count_marks(x_center: i32, y_center: i32) -> u8 {
     let mut count = 0;
     for y in (y_center - 1)..=(y_center + 1) {
         for x in (x_center - 1)..=(x_center + 1) {
@@ -451,7 +451,7 @@ fn record_win_if_needed(hwnd: &HWND) {
 /// * `x` - The X coordinate.
 /// * `y` - The Y coordinate.
 /// * `block` - The new block value.
-fn change_blk(hwnd: &HWND, x: i32, y: i32, block: i32) {
+fn change_blk(hwnd: &HWND, x: i32, y: i32, block: u8) {
     set_raw_block(x, y, block);
     display_block(hwnd, x, y);
 }
@@ -591,7 +591,7 @@ fn step_square(hwnd: &HWND, x: i32, y: i32) {
                 hwnd,
                 x,
                 y,
-                (BlockMask::Visit as u8 | BlockCell::Explode as u8) as i32,
+                BlockMask::Visit as u8 | BlockCell::Explode as u8,
             );
             game_over(hwnd, false);
         }
@@ -629,7 +629,7 @@ fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
                     hwnd,
                     x,
                     y,
-                    (BlockMask::Visit as u8 | BlockCell::Explode as u8) as i32,
+                    BlockMask::Visit as u8 | BlockCell::Explode as u8,
                 );
             } else {
                 step_box(hwnd, x, y);
@@ -666,15 +666,15 @@ pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
     let block = if guessed_bomb(x, y) {
         update_bomb_count_internal(hwnd, 1);
         if allow_marks {
-            BlockCell::GuessUp as i32
+            BlockCell::GuessUp as u8
         } else {
-            BlockCell::BlankUp as i32
+            BlockCell::BlankUp as u8
         }
     } else if guessed_mark(x, y) {
-        BlockCell::BlankUp as i32
+        BlockCell::BlankUp as u8
     } else {
         update_bomb_count_internal(hwnd, -1);
-        BlockCell::BombUp as i32
+        BlockCell::BombUp as u8
     };
 
     change_blk(hwnd, x, y, block);
@@ -688,15 +688,15 @@ pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
 ///
 /// Boxes are pushed down while the left mouse button is pressed over them.
 ///
-/// TODO: Can push_box_down and pop_box_up be merged?
+/// TODO: Can `push_box_down` and `pop_box_up` be merged?
 /// # Arguments
 /// * `x` - The X coordinate of the box.
 /// * `y` - The Y coordinate of the box.
 fn push_box_down(x: i32, y: i32) {
     let mut blk = block_data(x, y);
     blk = match blk {
-        b if b == BlockCell::GuessUp as i32 => BlockCell::GuessDown as i32,
-        b if b == BlockCell::BlankUp as i32 => BlockCell::Blank as i32,
+        b if b == BlockCell::GuessUp as u8 => BlockCell::GuessDown as u8,
+        b if b == BlockCell::BlankUp as u8 => BlockCell::Blank as u8,
         _ => blk,
     };
     set_raw_block(x, y, blk);
@@ -711,8 +711,8 @@ fn push_box_down(x: i32, y: i32) {
 fn pop_box_up(x: i32, y: i32) {
     let mut blk = block_data(x, y);
     blk = match blk {
-        b if b == BlockCell::GuessDown as i32 => BlockCell::GuessUp as i32,
-        b if b == BlockCell::Blank as i32 => BlockCell::BlankUp as i32,
+        b if b == BlockCell::GuessDown as u8 => BlockCell::GuessUp as u8,
+        b if b == BlockCell::Blank as u8 => BlockCell::BlankUp as u8,
         _ => blk,
     };
     set_raw_block(x, y, blk);

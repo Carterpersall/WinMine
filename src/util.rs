@@ -66,11 +66,11 @@ fn next_rand() -> i32 {
     }
 }
 
-/// Return a pseudo-random number in the [0, rnd_max) range
+/// Return a pseudo-random number in the [0, `rnd_max`) range
 /// # Arguments
 /// * `rnd_max` - Upper bound (exclusive) for the random number
 /// # Returns
-/// A pseudo-random number in the [0, rnd_max) range
+/// A pseudo-random number in the [0, `rnd_max`) range
 pub fn Rnd(rnd_max: i32) -> i32 {
     if rnd_max <= 0 {
         0
@@ -319,11 +319,11 @@ pub fn DoAbout(hwnd: &HWND) {
 /// # Arguments
 /// * `w_command` - The help command (e.g., HELPONHELP).
 /// * `l_param` - Additional parameter for the help command.
-pub fn DoHelp(hwnd: &HWND, w_command: u16, l_param: u32) {
+pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
-    if (w_command as u32) != HELPW::HELPONHELP.raw() {
+    if w_command != HELPW::HELPONHELP {
         let exe_path = hwnd.hinstance().GetModuleFileName().unwrap_or_default();
         let mut bytes = exe_path.into_bytes();
         if bytes.len() + 1 > CCH_MAX_PATHNAME {
