@@ -849,18 +849,18 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
     state.h_res_led = h_led;
     state.h_res_button = h_button;
 
-    state.lp_dib_blks = lp_blks as *const BITMAPINFO;
-    state.lp_dib_led = lp_led as *const BITMAPINFO;
-    state.lp_dib_button = lp_button as *const BITMAPINFO;
+    state.lp_dib_blks = lp_blks;
+    state.lp_dib_led = lp_led;
+    state.lp_dib_button = lp_button;
 
-    state.h_gray_pen = if !color_on {
-        match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
-            Ok(pen) => pen,
+    state.h_gray_pen = if color_on {
+        match w::HPEN::CreatePen(PS::SOLID, 1, w::COLORREF::from_rgb(128, 128, 128)) {
+            Ok(mut pen) => pen.leak(),
             Err(_) => w::HPEN::NULL,
         }
     } else {
-        match w::HPEN::CreatePen(PS::SOLID, 1, w::COLORREF::from_rgb(128, 128, 128)) {
-            Ok(mut pen) => pen.leak(),
+        match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
+            Ok(pen) => pen,
             Err(_) => w::HPEN::NULL,
         }
     };
@@ -1122,7 +1122,7 @@ fn load_bitmap_resource(
     hinst: HINSTANCE,
     id: BitmapId,
     color_on: bool,
-) -> Option<(HRSRCMEM, *const u8)> {
+) -> Option<(HRSRCMEM, *const BITMAPINFO)> {
     let offset = if color_on { 0 } else { 1 };
     let resource_id = (id as u16) + offset;
     // Colorless devices load the grayscale resource IDs immediately following the color ones.
@@ -1131,7 +1131,9 @@ fn load_bitmap_resource(
         .ok()?;
     let res_loaded = hinst.LoadResource(&res_info).ok()?;
     let lp = hinst.LockResource(&res_info, &res_loaded).ok()?.as_ptr();
-    Some((res_loaded, lp))
+    // The cast to `BITMAPINFO` should be safe because `LockResource` returns a pointer to the first byte of the resource data,
+    // which is structured as a `BITMAPINFO` according to the resource format.
+    Some((res_loaded, lp as *const BITMAPINFO))
 }
 
 /// Calculate the size of the DIB header plus color palette

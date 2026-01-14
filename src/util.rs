@@ -325,7 +325,10 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
-    if w_command != HELPW::HELPONHELP {
+    if w_command == HELPW::HELPONHELP {
+        const HELP_FILE: &[u8] = b"NTHelp.chm\0";
+        buffer[..HELP_FILE.len()].copy_from_slice(HELP_FILE);
+    } else {
         let exe_path = hwnd.hinstance().GetModuleFileName().unwrap_or_default();
         let mut bytes = exe_path.into_bytes();
         if bytes.len() + 1 > CCH_MAX_PATHNAME {
@@ -352,9 +355,6 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
             buffer[pos + i] = EXT[i];
             i += 1;
         }
-    } else {
-        const HELP_FILE: &[u8] = b"NTHelp.chm\0";
-        buffer[..HELP_FILE.len()].copy_from_slice(HELP_FILE);
     }
 
     unsafe {
