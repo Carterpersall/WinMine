@@ -19,9 +19,10 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, GAME_STATUS, IGNORE_NEXT_CLICK,
-    INIT_MINIMIZED, LEFT_CLK_DOWN, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH, WND_Y_OFFSET,
-    global_state, update_ui_metrics_for_dpi,
+    BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_OUT_OF_MEMORY,
+    GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER,
+    MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, StatusFlag, TIME_FORMAT, UI_DPI, WINDOW_HEIGHT,
+    WINDOW_WIDTH, WND_Y_OFFSET, global_state, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
     ButtonSprite, CleanUp, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -38,10 +39,7 @@ use crate::rtns::{
     TrackMouse, board_mutex, make_guess, preferences_mutex,
 };
 use crate::sound::{FInitTunes, stop_all_sounds};
-use crate::util::{
-    CCH_MSG_MAX, CheckEm, DoAbout, DoHelp, GetDlgInt, IconId, InitConst, LoadSz, ReportErr,
-    SetMenuBar,
-};
+use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr, SetMenuBar};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -96,8 +94,6 @@ pub enum MenuCommand {
     /// Show the About dialog.
     HelpAbout = 593,
 }
-/// Resource identifier for the out-of-memory error.
-const ID_ERR_MEM: u16 = 5;
 
 /// Dialog template identifiers.
 #[repr(u16)]
@@ -172,8 +168,6 @@ enum HelpContextId {
     /// Static text for best times
     SText = 1004,
 }
-/// Start point of best times message identifiers.
-const ID_MSG_BEGIN: u16 = 9;
 
 /// Mines, height, and width tuples for the preset difficulty levels.
 const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
@@ -487,7 +481,7 @@ impl WinMineMainWindow {
                 FreeBitmaps();
                 if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
                     eprintln!("Failed to reload bitmaps: {}", e);
-                    ReportErr(ID_ERR_MEM);
+                    ReportErr(ERR_OUT_OF_MEMORY);
                     unsafe {
                         let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
                             co::WM::SYSCOMMAND,
@@ -632,7 +626,7 @@ impl WinMineMainWindow {
                 // Initialize local resources.
                 if let Err(e) = FInitLocal(self2.wnd.hwnd()) {
                     eprintln!("Failed to initialize local resources: {e}");
-                    ReportErr(ID_ERR_MEM);
+                    ReportErr(ERR_OUT_OF_MEMORY);
                     return Err(std::io::Error::other(e.to_string()).into());
                 }
 
@@ -972,15 +966,10 @@ pub fn run_winmine(h_instance: HINSTANCE, n_cmd_show: i32) -> i32 {
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
 
-    let class_name = match state.sz_class.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
     // WinSafe `gui::WindowMain` owns the application message loop.
     let wnd = gui::WindowMain::new(gui::WindowMainOpts {
-        class_name: &class_name,
-        title: &class_name,
+        class_name: GAME_NAME,
+        title: GAME_NAME,
         class_icon: gui::Icon::Id(IconId::Main as u16),
         class_cursor: gui::Cursor::Idc(IDC::ARROW),
         class_bg_brush: gui::Brush::Handle(
@@ -1043,9 +1032,9 @@ fn y_box_from_ypos(y: i32) -> i32 {
     (y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell
 }
 
-/// Returns whether the game is currently in pause status.
+/// Returns whether the game is currently in the 'icon' (minimized) status.
 /// # Returns
-/// True if the game is in pause status, false otherwise.
+/// True if the game is in icon status, false otherwise.
 fn status_icon() -> bool {
     GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Icon as i32) != 0
 }
@@ -1538,18 +1527,15 @@ impl BestDialog {
                         prefs.rgTime[GameType::Expert as usize] = 999;
 
                         // Get the default name from global state, and copy it into all three name fields
-                        match global_state().sz_default_name.lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        }
-                        .encode_utf16()
-                        .take(CCH_NAME_MAX - 1)
-                        .enumerate()
-                        .for_each(|(i, ch)| {
-                            prefs.szBegin[i] = ch;
-                            prefs.szInter[i] = ch;
-                            prefs.szExpert[i] = ch;
-                        });
+                        DEFAULT_PLAYER_NAME
+                            .encode_utf16()
+                            .take(CCH_NAME_MAX - 1)
+                            .enumerate()
+                            .for_each(|(i, ch)| {
+                                prefs.szBegin[i] = ch;
+                                prefs.szInter[i] = ch;
+                                prefs.szExpert[i] = ch;
+                            });
 
                         (
                             prefs.rgTime[GameType::Begin as usize],
@@ -1673,20 +1659,23 @@ impl EnterDialog {
                     (prefs.wGameType, name)
                 };
 
+                // TODO: Do this better
                 unsafe {
                     let hdlg_raw = dlg.hwnd().ptr() as _;
 
-                    let string_id = ID_MSG_BEGIN + game_type as u16;
-                    match LoadSz(string_id, CCH_MSG_MAX) {
-                        Ok(text) => {
-                            SetDlgItemTextW(
-                                hdlg_raw,
-                                ControlId::TextBest as i32,
-                                w::WString::from_str(&text).as_ptr(),
-                            );
-                        }
-                        Err(e) => eprintln!("Failed to load dialog string {string_id}: {e}"),
-                    }
+                    let string = match game_type {
+                        GameType::Begin => MSG_FASTEST_BEGINNER,
+                        GameType::Inter => MSG_FASTEST_INTERMEDIATE,
+                        GameType::Expert => MSG_FASTEST_EXPERT,
+                        // Unreachable
+                        GameType::Other => "",
+                    };
+
+                    SetDlgItemTextW(
+                        hdlg_raw,
+                        ControlId::TextBest as i32,
+                        w::WString::from_str(string).as_ptr(),
+                    );
 
                     if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
                         let _ = edit_hwnd.SendMessage(WndMsg::new(
@@ -1941,14 +1930,9 @@ fn command_id(w_param: usize) -> u16 {
 /// * `time` - The time value to display.
 /// * `name` - The name associated with the time.
 fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
-    let state = global_state();
-    let time_fmt = match state.sz_time.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
     let mut buffer = [0u16; CCH_NAME_MAX];
-    let text = time_fmt.replace("%d", &time.to_string());
+    // TODO: Make this better
+    let text = TIME_FORMAT.replace("%d", &time.to_string());
     for (i, code_unit) in text
         .encode_utf16()
         .chain(Some(0))

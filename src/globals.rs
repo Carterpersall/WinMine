@@ -5,8 +5,82 @@ use winsafe::guard::DestroyMenuGuard;
 use winsafe::prelude::Handle;
 use winsafe::{self as w, HINSTANCE};
 
+/* -------------------- */
+/* Constant Definitions */
+/* -------------------- */
+
 /// Base DPI used by Win32 when coordinates are expressed in 1:1 pixels.
 pub const BASE_DPI: u32 = 96;
+
+/* String Constants */
+
+/// The name of the game.
+/// (ID_GAMENAME = 1)
+///
+/// This is used in the window title and as the window class name.
+pub const GAME_NAME: &str = "Minesweeper";
+
+/// Dialog title for error message boxes.
+/// (ID_ERR_TITLE = 3)
+pub const ERR_TITLE: &str = "Minesweeper Error";
+
+/// Error message given when allocating a timer fails.
+/// (ID_ERR_TIMER = 4)
+pub const ERR_TIMER: &str =
+    "Unable to allocate a timer.  Please exit some of your applications and try again.";
+
+/// Out-of-memory error message.
+/// (ID_ERR_MEM = 5)
+pub const ERR_OUT_OF_MEMORY: &str = "Out of Memory";
+
+/// Default name for the best-times dialog.
+/// (ID_NAME_DEFAULT = 8)
+pub const DEFAULT_PLAYER_NAME: &str = "Anonymous";
+
+/// Time display formatting.
+/// (ID_MSG_SEC = 7)
+pub const TIME_FORMAT: &str = "%d seconds";
+
+/// Prompt for fastest beginner time.
+/// (ID_MSG_BEGIN = 9)
+pub const MSG_FASTEST_BEGINNER: &str =
+    "You have the fastest time\rfor beginner level.\rPlease enter your name.";
+
+/// Prompt for fastest intermediate time.
+/// (ID_MSG_INTER = 10)
+pub const MSG_FASTEST_INTERMEDIATE: &str =
+    "You have the fastest time\rfor intermediate level.\rPlease enter your name.";
+
+/// Prompt for fastest expert time.
+/// (ID_MSG_EXPERT = 11)
+pub const MSG_FASTEST_EXPERT: &str =
+    "You have the fastest time\rfor expert level.\rPlease enter your name.";
+
+/// Version string used in the About box.
+/// (ID_MSG_VERSION = 12)
+pub const MSG_VERSION_NAME: &str = "Minesweeper";
+
+/// Credit string used in the About box.
+/// (ID_MSG_CREDIT = 13)
+pub const MSG_CREDIT: &str = "by Robert Donner and Curt Johnson";
+
+/// Flags defining the current game status.
+#[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum StatusFlag {
+    /// Game is currently being played.
+    Play = 0x01,
+    /// Game is currently paused.
+    Pause = 0x02,
+    /// Game is minimized.
+    Icon = 0x08,
+    /// Demo mode is active.
+    Demo = 0x10,
+}
+
+/* ---------------- */
+/* Global Variables */
+/* ---------------- */
 
 /// Current DPI used for UI scaling.
 ///
@@ -36,16 +110,6 @@ pub fn update_ui_metrics_for_dpi(dpi: u32) {
     CYCAPTION.store(caption + 1, Ordering::Relaxed);
     CYMENU.store(menu + 1, Ordering::Relaxed);
     CXBORDER.store(border + 1, Ordering::Relaxed);
-}
-
-/// Aggregated status flags shared between modules.
-#[repr(i32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum StatusFlag {
-    Play = 0x01,
-    Pause = 0x02,
-    Icon = 0x08,
-    Demo = 0x10,
 }
 
 /// True while the process starts minimized.
@@ -88,14 +152,6 @@ pub struct GlobalState {
     pub h_inst: Mutex<HINSTANCE>,
     /// Handle to the main menu, wrapped in a guard for automatic cleanup.
     pub h_menu: Mutex<Option<DestroyMenuGuard>>,
-    /// The main window class name.
-    ///
-    /// TODO: Why does this need to exist? Specifically, why does it need to be mutable instead of just being a constant?
-    pub sz_class: Mutex<&'static str>,
-    /// Format string for the time display.
-    pub sz_time: Mutex<&'static str>,
-    /// Default name used for saving games.
-    pub sz_default_name: Mutex<&'static str>,
 }
 
 impl Default for GlobalState {
@@ -103,9 +159,6 @@ impl Default for GlobalState {
         Self {
             h_inst: Mutex::new(HINSTANCE::NULL),
             h_menu: Mutex::new(None),
-            sz_class: Mutex::new(""),
-            sz_time: Mutex::new(""),
-            sz_default_name: Mutex::new(""),
         }
     }
 }

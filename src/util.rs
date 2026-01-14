@@ -5,7 +5,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
 use winsafe::{self as w, HWND, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
 
-use crate::globals::{CXBORDER, CYCAPTION, CYMENU, global_state};
+use crate::globals::{
+    CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_TITLE, GAME_NAME, MSG_CREDIT,
+    MSG_VERSION_NAME, global_state,
+};
 use crate::pref::{
     CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, ReadInt,
     SZ_WINMINE_REG_STR, SoundState, WritePreferences, pref_key_literal,
@@ -23,26 +26,6 @@ const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
 /// Shared state of the linear congruential generator.
 static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
 
-/// Localized string resources.
-#[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum StringId {
-    /// Window class name string.
-    GameName = 1,
-    /// "%d seconds" string used by the timer dialog.
-    MsgSeconds = 7,
-    /// Default high-score name.
-    NameDefault = 8,
-    /// Version string shown in About.
-    MsgVersion = 12,
-    /// Credit string shown in About.
-    MsgCredit = 13,
-    /// Generic error dialog title.
-    ErrTitle = 3,
-    /// Fallback "unknown error" template.
-    ErrUnknown = 6,
-}
-
 /// Icon resources embedded in the executable.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -51,11 +34,6 @@ pub enum IconId {
     Main = 100,
 }
 
-/// Maximum resource ID treated as an error string; higher values use the unknown template.
-pub const ID_ERR_MAX: u16 = 999;
-
-/// Maximum length (UTF-16 code units) of dialog strings.
-pub const CCH_MSG_MAX: usize = 128;
 /// Maximum path buffer used when resolving help files.
 const CCH_MAX_PATHNAME: usize = 250;
 
@@ -103,55 +81,15 @@ pub fn Rnd(rnd_max: i32) -> i32 {
 
 /// Display an error message box for the specified error ID.
 /// # Arguments
-/// * `id_err` - The error string resource ID.
-pub fn ReportErr(id_err: u16) {
-    // Format either a catalog string or the "unknown error" template before showing the dialog.
-    let state = global_state();
-    let inst_guard = match state.h_inst.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+/// * `id_err` - The error ID used for selecting the error message.
+pub fn ReportErr(err: &str) {
+    /* let msg = match id_err {
+        4 => ERR_TIMER,
+        5 => ERR_OUT_OF_MEMORY,
+        _ => &ERR_UNKNOWN_FMT.replace("%d", &id_err.to_string()),
+    }; */
 
-    let msg = if id_err < ID_ERR_MAX {
-        inst_guard.LoadString(id_err).unwrap_or_default()
-    } else {
-        let template = inst_guard
-            .LoadString(StringId::ErrUnknown as u16)
-            .unwrap_or_default();
-        template.replace("%d", &id_err.to_string())
-    };
-
-    let title = inst_guard
-        .LoadString(StringId::ErrTitle as u16)
-        .unwrap_or_default();
-    let _ = w::HWND::NULL.MessageBox(&msg, &title, co::MB::ICONHAND);
-}
-
-/// Load a localized string resource into the provided buffer.
-/// # Arguments
-/// * `id` - The string resource ID to load.
-/// * `cch` - Size of the buffer in UTF-16 code units.
-/// # Returns
-/// A `Result` containing the loaded string on success, or an error message on failure.
-pub fn LoadSz(id: u16, max: usize) -> Result<String, Box<dyn std::error::Error>> {
-    // 1. Acquire a lock on the global instance handle
-    let inst_guard = match global_state().h_inst.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    // 2. Load the string resource
-    let text = inst_guard
-        .LoadString(id)
-        .map_err(|e| format!("Failed to load string resource {}: {}", id, e))?;
-
-    // 3. Validate that the string is not empty
-    if text.is_empty() {
-        return Err(format!("Empty string resource {}", id).into());
-    }
-
-    // 4. Truncate the string if it exceeds the specified maximum length and return it
-    Ok(text[..max.min(text.len())].to_string())
+    let _ = w::HWND::NULL.MessageBox(err, ERR_TITLE, co::MB::ICONHAND);
 }
 
 /// Read an integer preference from the legacy .ini file, clamping it within the specified bounds.
@@ -168,14 +106,10 @@ pub fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -
         None => return val_default,
     };
 
-    let class_str = match global_state().sz_class.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
     let ini_path = WString::from_str(SZ_INI_FILE);
     let value = unsafe {
         GetPrivateProfileIntW(
-            class_str.encode_utf16().collect::<Vec<u16>>().as_ptr(),
+            GAME_NAME.encode_utf16().collect::<Vec<u16>>().as_ptr(),
             key.as_ptr(),
             val_default,
             ini_path.as_ptr(),
@@ -199,24 +133,9 @@ pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
         None => return,
     };
 
-    let state = global_state();
-    let section = {
-        let guard = match state.sz_class.lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        *guard
-    };
-    let default_name = match state.sz_default_name.lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    let key_text = key.to_string();
-
-    let value = match w::GetPrivateProfileString(section, &key_text, SZ_INI_FILE) {
+    let value = match w::GetPrivateProfileString(GAME_NAME, &key.to_string(), SZ_INI_FILE) {
         Ok(Some(text)) => text,
-        _ => default_name.to_string(),
+        _ => DEFAULT_PLAYER_NAME.to_string(),
     };
 
     let slice = unsafe { core::slice::from_raw_parts_mut(sz_ret, CCH_NAME_MAX) };
@@ -234,40 +153,6 @@ pub fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
 pub fn InitConst() {
     let ticks = (w::GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
-
-    let state = global_state();
-    match LoadSz(StringId::GameName as u16, CCH_NAME_MAX) {
-        Ok(text) => {
-            if let Ok(mut class_buf) = state.sz_class.lock() {
-                // Leak the string to obtain a &'static str reference.
-                // This is safe because sz_class is only read after this initialization.
-                *class_buf = Box::leak(text.into_boxed_str());
-            }
-        }
-        Err(e) => eprintln!("Failed to load game name string: {}", e),
-    }
-
-    match LoadSz(StringId::MsgSeconds as u16, CCH_NAME_MAX) {
-        Ok(text) => {
-            if let Ok(mut time_buf) = state.sz_time.lock() {
-                // Leak the string to obtain a &'static str reference.
-                // This is safe because sz_time is only read after this initialization.
-                *time_buf = Box::leak(text.into_boxed_str());
-            }
-        }
-        Err(e) => eprintln!("Failed to load time format string: {}", e),
-    }
-
-    match LoadSz(StringId::NameDefault as u16, CCH_NAME_MAX) {
-        Ok(text) => {
-            if let Ok(mut default_buf) = state.sz_default_name.lock() {
-                // Leak the string to obtain a &'static str reference.
-                // This is safe because sz_default_name is only read after this initialization.
-                *default_buf = Box::leak(text.into_boxed_str());
-            }
-        }
-        Err(e) => eprintln!("Failed to load default name string: {}", e),
-    }
 
     CYCAPTION.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
     CYMENU.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
@@ -434,20 +319,6 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 pub fn DoAbout(hwnd: &HWND) {
-    let title = match LoadSz(StringId::MsgVersion as u16, CCH_MSG_MAX) {
-        Ok(text) => text,
-        Err(e) => {
-            eprintln!("Failed to load version string: {}", e);
-            return;
-        }
-    };
-    let credit = match LoadSz(StringId::MsgCredit as u16, CCH_MSG_MAX) {
-        Ok(text) => text,
-        Err(e) => {
-            eprintln!("Failed to load credit string: {}", e);
-            return;
-        }
-    };
     let inst_guard = match global_state().h_inst.lock() {
         Ok(g) => g,
         Err(poisoned) => poisoned.into_inner(),
@@ -457,7 +328,7 @@ pub fn DoAbout(hwnd: &HWND) {
         .ok();
     let icon = icon_guard.as_deref();
 
-    let _ = hwnd.ShellAbout(&title, None, Some(&credit), icon);
+    let _ = hwnd.ShellAbout(MSG_VERSION_NAME, None, Some(MSG_CREDIT), icon);
 }
 
 /// Display the Help dialog for the given command.

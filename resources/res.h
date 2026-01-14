@@ -72,21 +72,6 @@
 #define IDM_HELP_HELP   592
 #define IDM_HELP_ABOUT  593
 
-#define ID_GAMENAME       1
-#define ID_ERR_TITLE      3
-#define ID_ERR_TIMER      4
-#define ID_ERR_MEM        5
-#define ID_ERR_UNKNOWN    6
-#define ID_NAME_DEFAULT   8
-#define ID_MSG_SEC        7
-#define ID_MSG_BEGIN      9
-#define ID_MSG_INTER     10
-#define ID_MSG_EXPERT    11
-#define ID_MSG_VERSION   12
-#define ID_MSG_CREDIT    13
-
-#define ID_ERR_MAX      999
-
 // for context sensitive help
 #define IDH_PREF_EDIT_HEIGHT 1000
 #define IDH_PREF_EDIT_WIDTH  1001

@@ -5,7 +5,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::{HWND, prelude::*};
 
-use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag};
+use crate::globals::{BLK_BTN_INPUT, ERR_TIMER, GAME_STATUS, StatusFlag};
 use crate::grafix::{
     ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
 };
@@ -52,8 +52,6 @@ const I_STEP_MAX: usize = 100;
 
 /// Timer identifier used for the per-second gameplay timer.
 pub const ID_TIMER: usize = 1;
-/// Identifier for reporting timer-related errors through ReportErr.
-const ID_ERR_TIMER: u16 = 4;
 
 /// Window-adjustment flags mirrored from the Win16 sources.
 #[repr(i32)]
@@ -926,7 +924,7 @@ pub fn DoButton1Up(hwnd: &HWND) {
             if let Some(hwnd) = hwnd.as_opt()
                 && hwnd.SetTimer(ID_TIMER, 1000, None).is_err()
             {
-                ReportErr(ID_ERR_TIMER);
+                ReportErr(ERR_TIMER);
             }
         }
 

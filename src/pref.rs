@@ -2,7 +2,7 @@ use core::sync::atomic::Ordering;
 
 use winsafe::{self as w, RegistryValue, co};
 
-use crate::globals::global_state;
+use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
 use crate::sound::FInitTunes;
 
@@ -159,25 +159,16 @@ pub fn ReadInt(
 /// The retrieved string, or the default name on failure
 pub fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
     if handle.ptr().is_null() {
-        return match global_state().sz_default_name.lock() {
-            Ok(g) => g.to_string(),
-            Err(poisoned) => poisoned.into_inner().to_string(),
-        };
+        return DEFAULT_PLAYER_NAME.to_string();
     }
 
     let Some(key_name) = pref_key_literal(key) else {
-        return match global_state().sz_default_name.lock() {
-            Ok(g) => g.to_string(),
-            Err(poisoned) => poisoned.into_inner().to_string(),
-        };
+        return DEFAULT_PLAYER_NAME.to_string();
     };
 
     match handle.RegQueryValueEx(Some(key_name)) {
         Ok(RegistryValue::Sz(value)) | Ok(RegistryValue::ExpandSz(value)) => value,
-        _ => match global_state().sz_default_name.lock() {
-            Ok(g) => g.to_string(),
-            Err(poisoned) => poisoned.into_inner().to_string(),
-        },
+        _ => DEFAULT_PLAYER_NAME.to_string(),
     }
 }
 
