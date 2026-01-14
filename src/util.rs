@@ -291,7 +291,7 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
     }
 
     FixMenus(
-        hwnd.GetMenu().unwrap_or(w::HMENU::NULL),
+        &hwnd.GetMenu().unwrap_or(w::HMENU::NULL),
         menu_checks.0,
         menu_checks.1,
         menu_checks.2,

@@ -146,40 +146,6 @@ static F_TIMER: AtomicBool = AtomicBool::new(false);
 /// Previous timer running state used to detect changes
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 
-/// Check if the game is currently in play mode.
-/// # Returns
-/// `true` if the game is in play mode, `false` otherwise.
-fn status_play() -> bool {
-    (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0
-}
-
-/// Check if the game is currently in pause mode.
-/// # Returns
-/// `true` if the game is paused, `false` otherwise.
-fn status_pause() -> bool {
-    (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) != 0
-}
-
-/// Set the game status to play mode.
-fn set_status_play() {
-    GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed)
-}
-
-/// Set the game status to demo mode.
-fn set_status_demo() {
-    GAME_STATUS.store(StatusFlag::Demo as i32, Ordering::Relaxed)
-}
-
-/// Set the game status to pause mode.
-fn set_status_pause() {
-    GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
-}
-
-/// Clear the pause status flag.
-fn clr_status_pause() {
-    GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
-}
-
 /// Calculate the board index for the given coordinates.
 ///
 /// TODO: Return Result instead of Option
@@ -349,7 +315,7 @@ fn check_win() -> bool {
 /// Play a logical tune if sound effects are enabled in preferences.
 /// # Arguments
 /// * `tune` - The tune to play.
-fn play_tune(hinst: HINSTANCE, tune: Tune) {
+fn play_tune(hinst: &HINSTANCE, tune: Tune) {
     let sound_on = {
         let prefs = match preferences_mutex().lock() {
             Ok(guard) => guard,
@@ -560,10 +526,10 @@ fn game_over(hwnd: &HWND, win: bool) {
         }
     }
     play_tune(
-        hwnd.hinstance(),
+        &hwnd.hinstance(),
         if win { Tune::WinGame } else { Tune::LoseGame },
     );
-    set_status_demo();
+    GAME_STATUS.store(StatusFlag::Demo as i32, Ordering::Relaxed);
 
     if win {
         record_win_if_needed(hwnd);
@@ -770,7 +736,7 @@ pub fn DoTimer(hwnd: &HWND) {
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
         display_time(hwnd);
-        play_tune(hwnd.hinstance(), Tune::Tick);
+        play_tune(&hwnd.hinstance(), Tune::Tick);
     }
 }
 
@@ -828,7 +794,7 @@ pub fn StartGame(hwnd: &HWND) {
     BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
     C_BOX_VISIT.store(0, Ordering::Relaxed);
     CBOX_VISIT_MAC.store((width * height) - total_bombs, Ordering::Relaxed);
-    set_status_play();
+    GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
 
     display_bomb_count(hwnd);
 
@@ -925,7 +891,7 @@ pub fn DoButton1Up(hwnd: &HWND) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         let secs = SECS_ELAPSED.load(Ordering::Relaxed);
         if visits == 0 && secs == 0 {
-            play_tune(hwnd.hinstance(), Tune::Tick);
+            play_tune(&hwnd.hinstance(), Tune::Tick);
             SECS_ELAPSED.store(1, Ordering::Relaxed);
             display_time(hwnd);
             F_TIMER.store(true, Ordering::Relaxed);
@@ -936,7 +902,7 @@ pub fn DoButton1Up(hwnd: &HWND) {
             }
         }
 
-        if !status_play() {
+        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) == 0 {
             CURSOR_X_POS.store(-2, Ordering::Relaxed);
             CURSOR_Y_POS.store(-2, Ordering::Relaxed);
         }
@@ -962,23 +928,23 @@ pub fn DoButton1Up(hwnd: &HWND) {
 pub fn PauseGame() {
     stop_all_sounds();
 
-    if !status_pause() {
+    if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) == 0 {
         F_OLD_TIMER_STATUS.store(F_TIMER.load(Ordering::Relaxed), Ordering::Relaxed);
     }
-    if status_play() {
+    if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
         F_TIMER.store(false, Ordering::Relaxed);
     }
 
-    set_status_pause();
+    GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
 }
 
 /// Resume the game by restoring the timer state and clearing the pause flag.
 pub fn ResumeGame() {
-    if status_play() {
+    if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
         F_TIMER.store(
             F_OLD_TIMER_STATUS.load(Ordering::Relaxed),
             Ordering::Relaxed,
         );
     }
-    clr_status_pause();
+    GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
 }

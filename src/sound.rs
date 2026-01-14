@@ -41,7 +41,7 @@ pub fn stop_all_sounds() -> bool {
 /// Play a specific UI tune using the sounds in the resource file
 /// # Arguments
 /// * `tune` - The tune to play
-pub fn PlayTune(hinst: HINSTANCE, tune: Tune) {
+pub fn PlayTune(hinst: &HINSTANCE, tune: Tune) {
     let resource_ptr = tune as usize as *const u16;
     // Playback uses the async flag so the UI thread is never blocked.
     unsafe {

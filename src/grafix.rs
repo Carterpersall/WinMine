@@ -833,16 +833,16 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let Some((h_blks, lp_blks)) =
-        load_bitmap_resource(hwnd.hinstance(), BitmapId::Blocks, color_on)
+        load_bitmap_resource(&hwnd.hinstance(), BitmapId::Blocks, color_on)
     else {
         return Err("Failed to load block bitmap resource".into());
     };
-    let Some((h_led, lp_led)) = load_bitmap_resource(hwnd.hinstance(), BitmapId::Led, color_on)
+    let Some((h_led, lp_led)) = load_bitmap_resource(&hwnd.hinstance(), BitmapId::Led, color_on)
     else {
         return Err("Failed to load LED bitmap resource".into());
     };
     let Some((h_button, lp_button)) =
-        load_bitmap_resource(hwnd.hinstance(), BitmapId::Button, color_on)
+        load_bitmap_resource(&hwnd.hinstance(), BitmapId::Button, color_on)
     else {
         return Err("Failed to load button bitmap resource".into());
     };
@@ -1108,7 +1108,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// TODO: Could we return a BITMAPINFO reference instead of a raw pointer?
 fn load_bitmap_resource(
-    hinst: HINSTANCE,
+    hinst: &HINSTANCE,
     id: BitmapId,
     color_on: bool,
 ) -> Option<(HRSRCMEM, *const BITMAPINFO)> {

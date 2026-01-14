@@ -386,7 +386,7 @@ impl WinMineMainWindow {
             (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
         };
         FixMenus(
-            self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+            &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
             game,
             f_color,
             f_mark,
@@ -439,7 +439,7 @@ impl WinMineMainWindow {
                 StartGame(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(
-                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
                     preset,
                     f_color,
                     f_mark,
@@ -473,7 +473,7 @@ impl WinMineMainWindow {
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(
-                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
                     game,
                     f_color,
                     f_mark,
@@ -514,7 +514,7 @@ impl WinMineMainWindow {
                 DisplayScreen(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(
-                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
                     game,
                     color_enabled,
                     f_mark,
@@ -539,7 +539,7 @@ impl WinMineMainWindow {
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(
-                    self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
+                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
                     game,
                     color_enabled,
                     mark_enabled,
@@ -549,13 +549,13 @@ impl WinMineMainWindow {
             }
             Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
             Some(MenuCommand::Help) => {
-                DoHelp(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32)
+                DoHelp(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
             }
             Some(MenuCommand::HowToPlay) => {
-                DoHelp(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32)
+                DoHelp(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
             }
             Some(MenuCommand::HelpHelp) => {
-                DoHelp(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32)
+                DoHelp(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
             }
             Some(MenuCommand::HelpAbout) => {
                 DoAbout(self.wnd.hwnd());
@@ -952,7 +952,7 @@ impl WinMineMainWindow {
 /// * `n_cmd_show`: The initial window show command.
 /// # Returns
 /// The application exit code.
-pub fn run_winmine(hinst: HINSTANCE, n_cmd_show: i32) -> i32 {
+pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
     InitConst();
 
     // Initialize DPI to 96 (default) before creating the window
@@ -1159,7 +1159,7 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
 
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 FixMenus(
-                    hwnd.GetMenu().unwrap_or(HMENU::NULL),
+                    &hwnd.GetMenu().unwrap_or(HMENU::NULL),
                     game,
                     color_enabled,
                     mark_enabled,
@@ -1368,15 +1368,15 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
 /// * `f_color` - Whether color mode is enabled.
 /// * `f_mark` - Whether mark mode is enabled.
 /// * `f_sound` - The current sound state.
-pub fn FixMenus(hmenu: HMENU, game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
-    CheckEm(&hmenu, MenuCommand::Begin, game == GameType::Begin);
-    CheckEm(&hmenu, MenuCommand::Inter, game == GameType::Inter);
-    CheckEm(&hmenu, MenuCommand::Expert, game == GameType::Expert);
-    CheckEm(&hmenu, MenuCommand::Custom, game == GameType::Other);
+pub fn FixMenus(hmenu: &HMENU, game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
+    CheckEm(hmenu, MenuCommand::Begin, game == GameType::Begin);
+    CheckEm(hmenu, MenuCommand::Inter, game == GameType::Inter);
+    CheckEm(hmenu, MenuCommand::Expert, game == GameType::Expert);
+    CheckEm(hmenu, MenuCommand::Custom, game == GameType::Other);
 
-    CheckEm(&hmenu, MenuCommand::Color, f_color);
-    CheckEm(&hmenu, MenuCommand::Mark, f_mark);
-    CheckEm(&hmenu, MenuCommand::Sound, f_sound == SoundState::On);
+    CheckEm(hmenu, MenuCommand::Color, f_color);
+    CheckEm(hmenu, MenuCommand::Mark, f_mark);
+    CheckEm(hmenu, MenuCommand::Sound, f_sound == SoundState::On);
 }
 
 /// Struct containing the state shared by the Preferences dialog
@@ -1477,7 +1477,7 @@ impl PrefDialog {
         self.dlg.on().wm(co::WM::CONTEXTMENU, {
             move |msg: WndMsg| -> w::AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as _) };
-                apply_help_to_control(target, &PREF_HELP_IDS);
+                apply_help_to_control(&target, &PREF_HELP_IDS);
                 Ok(1)
             }
         });
@@ -1610,7 +1610,7 @@ impl BestDialog {
         self.dlg.on().wm(co::WM::CONTEXTMENU, {
             move |msg: WndMsg| -> w::AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as _) };
-                apply_help_to_control(target, &BEST_HELP_IDS);
+                apply_help_to_control(&target, &BEST_HELP_IDS);
                 Ok(1)
             }
         });
@@ -1995,7 +1995,7 @@ fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
 /// # Arguments
 /// * `hwnd` - The handle to the control.
 /// * `ids` - The array of help context IDs.
-fn apply_help_to_control(hwnd: HWND, ids: &[u32]) {
+fn apply_help_to_control(hwnd: &HWND, ids: &[u32]) {
     if let Some(control) = hwnd.as_opt() {
         unsafe {
             HtmlHelpA(
