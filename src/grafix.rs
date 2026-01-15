@@ -94,11 +94,11 @@ enum BitmapId {
 }
 
 /// Debug string emitted when a compatible DC cannot be created.
-/// TODO: Why is this a byte string instead of a regular string?
-const DEBUG_CREATE_DC: &[u8] = b"FLoad failed to create compatible dc\n";
+///
+/// TODO: Error handling is currently a mess, refactor to a more centralized system.
+const DEBUG_CREATE_DC: &str = "load_bitmaps failed to create compatible dc\n";
 /// Debug string emitted when a compatible bitmap cannot be created.
-/// TODO: Why is this a byte string instead of a regular string?
-const DEBUG_CREATE_BITMAP: &[u8] = b"Failed to create Bitmap\n";
+const DEBUG_CREATE_BITMAP: &str = "Failed to create Bitmap\n";
 
 /// Internal state tracking loaded graphics resources and cached DCs
 struct GrafixState {
@@ -891,18 +891,14 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     let dst_blk_h = scale_dpi(DY_BLK_96);
     for i in 0..I_BLK_MAX {
         let Ok(dc_guard) = hdc.CreateCompatibleDC() else {
-            if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
-                w::OutputDebugString(msg);
-            }
+            w::OutputDebugString(DEBUG_CREATE_DC);
             state.mem_blk_dc[i] = None;
             state.mem_blk_bitmap[i] = None;
             continue;
         };
 
         let Ok(base_bmp) = hdc.CreateCompatibleBitmap(DX_BLK_96, DY_BLK_96) else {
-            if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
-                w::OutputDebugString(msg);
-            }
+            w::OutputDebugString(DEBUG_CREATE_BITMAP);
             state.mem_blk_dc[i] = None;
             state.mem_blk_bitmap[i] = None;
             continue;
@@ -957,18 +953,14 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
         state.mem_led_dc[i] = hdc
             .CreateCompatibleDC()
             .map_err(|_| {
-                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
-                    w::OutputDebugString(msg);
-                }
+                w::OutputDebugString(DEBUG_CREATE_DC);
             })
             .ok();
 
         state.mem_led_bitmap[i] = hdc
             .CreateCompatibleBitmap(DX_LED_96, DY_LED_96)
             .map_err(|_| {
-                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
-                    w::OutputDebugString(msg);
-                }
+                w::OutputDebugString(DEBUG_CREATE_BITMAP);
             })
             .ok();
 
@@ -1010,18 +1002,14 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     let dst_btn_h = scale_dpi(DY_BUTTON_96);
     for i in 0..BUTTON_SPRITE_COUNT {
         let Ok(dc_guard) = hdc.CreateCompatibleDC() else {
-            if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
-                w::OutputDebugString(msg);
-            }
+            w::OutputDebugString(DEBUG_CREATE_DC);
             state.mem_button_dc[i] = None;
             state.mem_button_bitmap[i] = None;
             continue;
         };
 
         let Ok(base_bmp) = hdc.CreateCompatibleBitmap(DX_BUTTON_96, DY_BUTTON_96) else {
-            if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
-                w::OutputDebugString(msg);
-            }
+            w::OutputDebugString(DEBUG_CREATE_BITMAP);
             state.mem_button_dc[i] = None;
             state.mem_button_bitmap[i] = None;
             continue;
