@@ -599,7 +599,6 @@ impl WinMineMainWindow {
             return false;
         }
 
-        let mut capture_guard = self.wnd.hwnd().as_opt().map(|hwnd| hwnd.SetCapture());
         display_button(self.wnd.hwnd(), ButtonSprite::Down);
         let _ = self
             .wnd
@@ -622,7 +621,6 @@ impl WinMineMainWindow {
                             display_button(self.wnd.hwnd(), ButtonSprite::Happy);
                             StartGame(self.wnd.hwnd());
                         }
-                        capture_guard.take();
                         return true;
                     }
                     WM::MOUSEMOVE => {
