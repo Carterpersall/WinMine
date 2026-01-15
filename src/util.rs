@@ -1,4 +1,5 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
@@ -247,17 +248,10 @@ pub fn InitConst() {
         }
         Err(_) => 0,
     };
-    {
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+    prefs.fColor = ReadIniInt(PrefKey::Color, default_color, 0, 1) != 0;
 
-        prefs.fColor = ReadIniInt(PrefKey::Color, default_color, 0, 1) != 0;
-
-        if prefs.fSound == SoundState::On {
-            prefs.fSound = FInitTunes();
-        }
+    if prefs.fSound == SoundState::On {
+        prefs.fSound = FInitTunes();
     }
 
     if let Err(e) = WritePreferences() {
@@ -378,7 +372,6 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 /// The clamped integer value from the dialog item.
 pub fn GetDlgInt(h_dlg: &HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     let mut success = 0i32;
-    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) };
-    let value = value as i32;
+    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) } as i32;
     value.clamp(num_lo, num_hi)
 }

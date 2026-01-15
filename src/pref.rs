@@ -101,20 +101,35 @@ const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
 
 /// Structure containing all user preferences.
 pub struct Pref {
+    /// Current game difficulty (Beginner, Intermediate, Expert, Custom).
     pub wGameType: GameType,
+    /// Number of mines on the board.
     pub Mines: i32,
+    /// Board height in cells.
     pub Height: i32,
+    /// Board width in cells.
     pub Width: i32,
+    /// X position of the main window.
     pub xWindow: i32,
+    /// Y position of the main window.
     pub yWindow: i32,
+    /// Whether sound effects are enabled.
     pub fSound: SoundState,
+    /// Whether right-click marking is enabled.
     pub fMark: bool,
+    /// Whether the game timer is enabled.
     pub fTick: bool,
+    /// Menu visibility mode.
     pub fMenu: MenuMode,
+    /// Whether to use color assets.
     pub fColor: bool,
+    /// Best times for each difficulty level.
     pub rgTime: [i32; 3],
+    /// Player name for Beginner level.
     pub szBegin: [u16; CCH_NAME_MAX],
+    /// Player name for Intermediate level.
     pub szInter: [u16; CCH_NAME_MAX],
+    /// Player name for Expert level.
     pub szExpert: [u16; CCH_NAME_MAX],
 }
 
@@ -271,7 +286,7 @@ pub fn ReadPreferences() {
 /// Write all user preferences from the shared PREF struct into the registry.
 /// # Returns
 /// Result indicating success or failure
-pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
+pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
     let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -333,7 +348,7 @@ pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
 /// * `val` - Integer value to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std::error::Error>> {
+fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn core::error::Error>> {
     // Simple DWORD setter used by both the registry migration and the dialog code.
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());
@@ -353,7 +368,7 @@ fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std::er
 /// * `sz` - Pointer to zero-terminated UTF-16 string to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteSz(handle: &HKEY, key: PrefKey, sz: *const u16) -> Result<(), Box<dyn std::error::Error>> {
+fn WriteSz(handle: &HKEY, key: PrefKey, sz: *const u16) -> Result<(), Box<dyn core::error::Error>> {
     // Stores zero-terminated UTF-16 values such as player names.
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());
@@ -409,7 +424,7 @@ fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
     }
 
     let len = wide_len(ptr);
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
     Some(String::from_utf16_lossy(slice))
 }
 

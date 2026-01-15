@@ -1,6 +1,5 @@
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::atomic::AtomicU8;
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::co::WM;

@@ -1,6 +1,6 @@
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicI32, Ordering};
-use std::sync::atomic::AtomicBool;
+use core::ffi::c_void;
+use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
@@ -705,6 +705,7 @@ impl WinMineMainWindow {
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
                 if let Some(rc) = suggested {
                     // Persist the suggested top-left so AdjustWindow keeps us on the same monitor.
+                    // TODO: Don't double lock here
                     if let Ok(mut prefs) = preferences_mutex().lock() {
                         prefs.xWindow = rc.left;
                         prefs.yWindow = rc.top;
@@ -1204,6 +1205,7 @@ fn handle_window_pos_changed(pos: &WINDOWPOS) {
         return;
     }
 
+    // TODO: Don't double lock here
     if let Ok(mut prefs) = preferences_mutex().lock() {
         prefs.xWindow = pos.x;
         prefs.yWindow = pos.y;
@@ -1469,7 +1471,7 @@ impl PrefDialog {
 
         self.dlg.on().wm(WM::CONTEXTMENU, {
             move |msg: WndMsg| -> AnyResult<isize> {
-                let target = unsafe { HWND::from_ptr(msg.wparam as _) };
+                let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };
                 apply_help_to_control(&target, &PREF_HELP_IDS);
                 Ok(1)
             }
@@ -1598,7 +1600,7 @@ impl BestDialog {
 
         self.dlg.on().wm(WM::CONTEXTMENU, {
             move |msg: WndMsg| -> AnyResult<isize> {
-                let target = unsafe { HWND::from_ptr(msg.wparam as _) };
+                let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };
                 apply_help_to_control(&target, &BEST_HELP_IDS);
                 Ok(1)
             }
@@ -1864,6 +1866,7 @@ pub fn AdjustWindow(hwnd: &HWND, mut f_adjust: i32) {
         }
     }
 
+    // TODO: Don't double lock here
     if let Ok(mut prefs) = preferences_mutex().lock() {
         prefs.xWindow = x_window;
         prefs.yWindow = y_window;
@@ -1970,7 +1973,7 @@ fn reset_best_dialog(
 fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
     unsafe {
         HtmlHelpA(
-            help.hItemHandle().as_isize() as _,
+            help.hItemHandle().as_isize() as *mut c_void,
             HELP_FILE.as_ptr(),
             HH_TP_HELP_WM_HELP as u32,
             ids.as_ptr() as usize,
@@ -1988,7 +1991,7 @@ fn apply_help_to_control(hwnd: &HWND, ids: &[u32]) {
             HtmlHelpA(
                 control.ptr(),
                 HELP_FILE.as_ptr(),
-                HH_TP_HELP_CONTEXTMENU as _,
+                HH_TP_HELP_CONTEXTMENU as u32,
                 ids.as_ptr() as usize,
             );
         }

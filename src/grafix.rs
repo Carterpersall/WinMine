@@ -188,7 +188,7 @@ fn current_color_flag() -> bool {
 /// * `hwnd` - Handle to the main window.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-pub fn FInitLocal(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
+pub fn FInitLocal(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     load_bitmaps(hwnd)?;
     ClearField();
     Ok(())
@@ -819,7 +819,7 @@ pub fn DisplayScreen(hwnd: &HWND) {
 /// * `hwnd` - Handle to the main window.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
+pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     let color_on = current_color_flag();
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
