@@ -1,6 +1,7 @@
 use core::sync::atomic::Ordering;
 
-use winsafe::{self as w, RegistryValue, co};
+use winsafe::co::{GDC, KEY, REG_OPTION};
+use winsafe::{HKEY, HWND, RegistryValue};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
@@ -128,13 +129,7 @@ pub struct Pref {
 /// * `val_max` - Maximum allowed value
 /// # Returns
 /// The retrieved integer value, clamped within the specified range
-pub fn ReadInt(
-    handle: &w::HKEY,
-    key: PrefKey,
-    val_default: i32,
-    val_min: i32,
-    val_max: i32,
-) -> i32 {
+pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
     // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
     if handle.ptr().is_null() {
         return val_default;
@@ -158,7 +153,7 @@ pub fn ReadInt(
 /// * `key` - Preference key to read
 /// # Returns
 /// The retrieved string, or the default name on failure
-fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
+fn ReadSz(handle: &HKEY, key: PrefKey) -> String {
     if handle.ptr().is_null() {
         return DEFAULT_PLAYER_NAME.to_string();
     }
@@ -176,11 +171,11 @@ fn ReadSz(handle: &w::HKEY, key: PrefKey) -> String {
 /// Read all user preferences from the registry into the shared PREF struct.
 pub fn ReadPreferences() {
     // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
-    let Ok((key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
-        co::REG_OPTION::default(),
-        co::KEY::READ,
+        REG_OPTION::default(),
+        KEY::READ,
         None,
     ) else {
         return;
@@ -254,10 +249,10 @@ pub fn ReadPreferences() {
     prefs.szExpert = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name3));
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
-    let desktop = w::HWND::GetDesktopWindow();
+    let desktop = HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
         Ok(hdc) => {
-            if hdc.GetDeviceCaps(co::GDC::NUMCOLORS) != 2 {
+            if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 {
                 1
             } else {
                 0
@@ -278,11 +273,11 @@ pub fn ReadPreferences() {
 /// Result indicating success or failure
 pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
     // Persist the current PREF struct back to the registry, mirroring the Win32 version.
-    let (key_guard, _) = match w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
-        co::REG_OPTION::default(),
-        co::KEY::WRITE,
+        REG_OPTION::default(),
+        KEY::WRITE,
         None,
     ) {
         Ok(result) => result,
@@ -338,7 +333,7 @@ pub fn WritePreferences() -> Result<(), Box<dyn std::error::Error>> {
 /// * `val` - Integer value to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteInt(handle: &w::HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std::error::Error>> {
+fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std::error::Error>> {
     // Simple DWORD setter used by both the registry migration and the dialog code.
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());
@@ -358,11 +353,7 @@ fn WriteInt(handle: &w::HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn std:
 /// * `sz` - Pointer to zero-terminated UTF-16 string to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteSz(
-    handle: &w::HKEY,
-    key: PrefKey,
-    sz: *const u16,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn WriteSz(handle: &HKEY, key: PrefKey, sz: *const u16) -> Result<(), Box<dyn std::error::Error>> {
     // Stores zero-terminated UTF-16 values such as player names.
     if handle.ptr().is_null() {
         return Err("Invalid registry handle".into());

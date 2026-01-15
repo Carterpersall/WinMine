@@ -7,8 +7,9 @@ use windows_sys::Win32::Graphics::Gdi::{
     GDI_ERROR, GetLayout, R2_COPYPEN, R2_WHITE, SetDIBitsToDevice, SetLayout, SetROP2,
 };
 use winsafe::{
-    self as w, BITMAPINFO, BITMAPINFOHEADER, HINSTANCE, HRSRCMEM, HWND, IdStr, RtStr,
-    co::{DIB, LAYOUT, PS, ROP, RT, STOCK_PEN},
+    self as w, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
+    HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, SysResult,
+    co::{BI, DIB, LAYOUT, PS, ROP, RT, STOCK_PEN, STRETCH_MODE},
     guard::{DeleteDCGuard, DeleteObjectGuard},
     prelude::*,
 };
@@ -120,19 +121,19 @@ struct GrafixState {
     /// Pointer to the loaded button sprites DIB
     lp_dib_button: *const BITMAPINFO,
     /// Cached gray pen used for monochrome rendering
-    h_gray_pen: w::HPEN,
+    h_gray_pen: HPEN,
     /// Cached compatible DCs for each block sprite
     mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
     /// Cached compatible bitmaps for each block sprite
-    mem_blk_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; I_BLK_MAX],
+    mem_blk_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; I_BLK_MAX],
     /// Cached compatible DCs for each LED digit
     mem_led_dc: [Option<DeleteDCGuard>; I_LED_MAX],
     /// Cached compatible bitmaps for each LED digit
-    mem_led_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; I_LED_MAX],
+    mem_led_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; I_LED_MAX],
     /// Cached compatible DCs for each face button sprite
     mem_button_dc: [Option<DeleteDCGuard>; BUTTON_SPRITE_COUNT],
     /// Cached compatible bitmaps for each face button sprite
-    mem_button_bitmap: [Option<DeleteObjectGuard<w::HBITMAP>>; BUTTON_SPRITE_COUNT],
+    mem_button_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; BUTTON_SPRITE_COUNT],
 }
 
 unsafe impl Send for GrafixState {}
@@ -150,7 +151,7 @@ impl Default for GrafixState {
             lp_dib_blks: null(),
             lp_dib_led: null(),
             lp_dib_button: null(),
-            h_gray_pen: w::HPEN::NULL,
+            h_gray_pen: HPEN::NULL,
             mem_blk_dc: [const { None }; I_BLK_MAX],
             mem_blk_bitmap: [const { None }; I_BLK_MAX],
             mem_led_dc: [const { None }; I_LED_MAX],
@@ -202,12 +203,12 @@ pub fn FreeBitmaps() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    if state.h_gray_pen != w::HPEN::NULL {
+    if state.h_gray_pen != HPEN::NULL {
         unsafe {
-            let pen = w::HPEN::from_ptr(state.h_gray_pen.ptr());
+            let pen = HPEN::from_ptr(state.h_gray_pen.ptr());
             let _ = DeleteObjectGuard::new(pen);
         }
-        state.h_gray_pen = w::HPEN::NULL;
+        state.h_gray_pen = HPEN::NULL;
     }
 
     state.h_res_blks = HRSRCMEM::NULL;
@@ -257,7 +258,7 @@ pub fn CleanUp() {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
+fn DrawBlk(hdc: &HDC, x: i32, y: i32) {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -273,10 +274,10 @@ fn DrawBlk(hdc: &w::HDC, x: i32, y: i32) {
 
     // Blocks are cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let _ = hdc.BitBlt(
-        w::POINT::with(dst_x, dst_y),
-        w::SIZE::with(dst_w, dst_h),
+        POINT::with(dst_x, dst_y),
+        SIZE::with(dst_w, dst_h),
         src,
-        w::POINT::new(),
+        POINT::new(),
         ROP::SRCCOPY,
     );
 }
@@ -294,7 +295,7 @@ pub fn display_block(hwnd: &HWND, x: i32, y: i32) {
 /// Draw the entire minefield grid onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawGrid(hdc: &w::HDC) {
+fn DrawGrid(hdc: &HDC) {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -310,10 +311,10 @@ fn DrawGrid(hdc: &w::HDC) {
         for x in 1..=x_max {
             if let Some(src) = block_dc(&state, x, y) {
                 let _ = hdc.BitBlt(
-                    w::POINT::with(dx, dy),
-                    w::SIZE::with(dst_w, dst_h),
+                    POINT::with(dx, dy),
+                    SIZE::with(dst_w, dst_h),
                     src,
-                    w::POINT::new(),
+                    POINT::new(),
                     ROP::SRCCOPY,
                 );
             }
@@ -337,7 +338,7 @@ pub fn display_grid(hwnd: &HWND) {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate to draw the LED digit.
 /// * `i_led` - The index of the LED digit to draw.
-fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
+fn DrawLed(hdc: &HDC, x: i32, i_led: i32) {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -351,13 +352,13 @@ fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
         return;
     };
 
-    let _ = hdc.SetStretchBltMode(w::co::STRETCH_MODE::COLORONCOLOR);
+    let _ = hdc.SetStretchBltMode(STRETCH_MODE::COLORONCOLOR);
     let _ = hdc.StretchBlt(
-        w::POINT::with(x, scale_dpi(DY_TOP_LED_96)),
-        w::SIZE::with(scale_dpi(DX_LED_96), scale_dpi(DY_LED_96)),
+        POINT::with(x, scale_dpi(DY_TOP_LED_96)),
+        SIZE::with(scale_dpi(DX_LED_96), scale_dpi(DY_LED_96)),
         src,
-        w::POINT::new(),
-        w::SIZE::with(DX_LED_96, DY_LED_96),
+        POINT::new(),
+        SIZE::with(DX_LED_96, DY_LED_96),
         ROP::SRCCOPY,
     );
 }
@@ -365,7 +366,7 @@ fn DrawLed(hdc: &w::HDC, x: i32, i_led: i32) {
 /// Draw the bomb counter onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawBombCount(hdc: &w::HDC) {
+fn DrawBombCount(hdc: &HDC) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     // TODO: What in the world is this nonsense?
@@ -411,7 +412,7 @@ pub fn display_bomb_count(hwnd: &HWND) {
 /// Draw the timer onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawTime(hdc: &w::HDC) {
+fn DrawTime(hdc: &HDC) {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -462,7 +463,7 @@ pub fn display_time(hwnd: &HWND) {
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `sprite` - The button sprite to draw.
-fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
+fn DrawButton(hdc: &HDC, sprite: ButtonSprite) {
     // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dst_w = scale_dpi(DX_BUTTON_96);
@@ -483,10 +484,10 @@ fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
     };
 
     let _ = hdc.BitBlt(
-        w::POINT::with(x, scale_dpi(DY_TOP_LED_96)),
-        w::SIZE::with(dst_w, dst_h),
+        POINT::with(x, scale_dpi(DY_TOP_LED_96)),
+        SIZE::with(dst_w, dst_h),
         src,
-        w::POINT::new(),
+        POINT::new(),
         ROP::SRCCOPY,
     );
 }
@@ -505,23 +506,23 @@ fn DrawButton(hdc: &w::HDC, sprite: ButtonSprite) {
 /// # Returns
 /// A `SysResult` containing a guard for the newly created resampled bitmap.
 fn create_resampled_bitmap(
-    hdc: &w::HDC,
-    src_bmp: &w::HBITMAP,
+    hdc: &HDC,
+    src_bmp: &HBITMAP,
     src_w: i32,
     src_h: i32,
     dst_w: i32,
     dst_h: i32,
-) -> w::SysResult<w::guard::DeleteObjectGuard<w::HBITMAP>> {
+) -> SysResult<DeleteObjectGuard<HBITMAP>> {
     // 1. Prepare BITMAPINFO
-    let mut bmi_header = w::BITMAPINFOHEADER::default();
+    let mut bmi_header = BITMAPINFOHEADER::default();
     bmi_header.biWidth = src_w;
     bmi_header.biHeight = -src_h;
     bmi_header.biPlanes = 1;
     bmi_header.biBitCount = 32;
-    bmi_header.biCompression = w::co::BI::RGB;
-    let mut bmi = w::BITMAPINFO {
+    bmi_header.biCompression = BI::RGB;
+    let mut bmi = BITMAPINFO {
         bmiHeader: bmi_header,
-        bmiColors: [w::RGBQUAD::default(); 1],
+        bmiColors: [RGBQUAD::default(); 1],
     };
 
     // 2. Read Source Bits
@@ -533,7 +534,7 @@ fn create_resampled_bitmap(
             src_h as u32,
             Some(&mut src_buf),
             &mut bmi,
-            w::co::DIB::RGB_COLORS,
+            DIB::RGB_COLORS,
         )
     }?;
 
@@ -619,14 +620,7 @@ fn create_resampled_bitmap(
     bmi.bmiHeader.biWidth = dst_w;
     bmi.bmiHeader.biHeight = -dst_h;
 
-    hdc.SetDIBits(
-        &dst_bmp,
-        0,
-        dst_h as u32,
-        &dst_buf,
-        &bmi,
-        w::co::DIB::RGB_COLORS,
-    )?;
+    hdc.SetDIBits(&dst_bmp, 0, dst_h as u32, &dst_buf, &bmi, DIB::RGB_COLORS)?;
 
     Ok(dst_bmp)
 }
@@ -645,7 +639,7 @@ pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) {
 /// # Arguments
 /// * `hdc` - The device context to set the pen on.
 /// * `f_normal` - The normal flag determining the pen style.
-fn SetThePen(hdc: &w::HDC, f_normal: i32) {
+fn SetThePen(hdc: &HDC, f_normal: i32) {
     // Reproduce the old pen combos: even values use the gray pen, odd values use white.
     if (f_normal & 1) != 0 {
         unsafe {
@@ -658,8 +652,8 @@ fn SetThePen(hdc: &w::HDC, f_normal: i32) {
         };
         unsafe {
             SetROP2(hdc.ptr(), R2_COPYPEN);
-            if state.h_gray_pen != w::HPEN::NULL {
-                let pen = w::HPEN::from_ptr(state.h_gray_pen.ptr());
+            if state.h_gray_pen != HPEN::NULL {
+                let pen = HPEN::from_ptr(state.h_gray_pen.ptr());
                 let _ = hdc.SelectObject(&pen).map(|mut guard| guard.leak());
             }
         }
@@ -676,7 +670,7 @@ fn SetThePen(hdc: &w::HDC, f_normal: i32) {
 /// * `width` - The width of the border in pixels.
 /// * `f_normal` - The normal flag determining the border style.
 fn DrawBorder(
-    hdc: &w::HDC,
+    hdc: &HDC,
     mut x1: i32,
     mut y1: i32,
     mut x2: i32,
@@ -718,7 +712,7 @@ fn DrawBorder(
 /// Draw the entire window background and chrome elements onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawBackground(hdc: &w::HDC) {
+fn DrawBackground(hdc: &HDC) {
     // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Relaxed);
@@ -795,7 +789,7 @@ fn DrawBackground(hdc: &w::HDC) {
 /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-pub fn DrawScreen(hdc: &w::HDC) {
+pub fn DrawScreen(hdc: &HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     DrawBackground(hdc);
     DrawBombCount(hdc);
@@ -856,18 +850,18 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
     state.lp_dib_button = lp_button;
 
     state.h_gray_pen = if color_on {
-        match w::HPEN::CreatePen(PS::SOLID, 1, w::COLORREF::from_rgb(128, 128, 128)) {
+        match HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128)) {
             Ok(mut pen) => pen.leak(),
-            Err(_) => w::HPEN::NULL,
+            Err(_) => HPEN::NULL,
         }
     } else {
-        match w::HPEN::GetStockObject(STOCK_PEN::BLACK) {
+        match HPEN::GetStockObject(STOCK_PEN::BLACK) {
             Ok(pen) => pen,
-            Err(_) => w::HPEN::NULL,
+            Err(_) => HPEN::NULL,
         }
     };
 
-    if state.h_gray_pen == w::HPEN::NULL {
+    if state.h_gray_pen == HPEN::NULL {
         return Err("Failed to create gray pen".into());
     }
 
@@ -921,7 +915,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
 
         // Paint the sprite into the 96-DPI bitmap.
         {
-            let bmp_h = unsafe { w::HBITMAP::from_ptr(base_bmp.ptr()) };
+            let bmp_h = unsafe { HBITMAP::from_ptr(base_bmp.ptr()) };
             if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
                 let _ = sel_guard.leak();
             }
@@ -958,7 +952,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Ensure the DC holds the final bitmap.
-        let bmp_h = unsafe { w::HBITMAP::from_ptr(final_bmp.ptr()) };
+        let bmp_h = unsafe { HBITMAP::from_ptr(final_bmp.ptr()) };
         if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
             let _ = sel_guard.leak();
         }
@@ -993,7 +987,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
             && let Some(dc_guard) = state.mem_led_dc[i].as_ref()
             && let Some(bmp_guard) = state.mem_led_bitmap[i].as_ref()
         {
-            let bmp_h = unsafe { w::HBITMAP::from_ptr(bmp_guard.ptr()) };
+            let bmp_h = unsafe { HBITMAP::from_ptr(bmp_guard.ptr()) };
             if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
                 let _ = sel_guard.leak();
             }
@@ -1045,7 +1039,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
 
         // Paint the sprite into the 96-DPI bitmap.
         {
-            let bmp_h = unsafe { w::HBITMAP::from_ptr(base_bmp.ptr()) };
+            let bmp_h = unsafe { HBITMAP::from_ptr(base_bmp.ptr()) };
             if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
                 let _ = sel_guard.leak();
             }
@@ -1087,7 +1081,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn std::error::Error>> {
         };
 
         // Ensure the DC holds the final bitmap.
-        let bmp_h = unsafe { w::HBITMAP::from_ptr(final_bmp.ptr()) };
+        let bmp_h = unsafe { HBITMAP::from_ptr(final_bmp.ptr()) };
         if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
             let _ = sel_guard.leak();
         }

@@ -3,7 +3,11 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
-use winsafe::{self as w, HMENU, HWND, IdPos, WString, co, co::HELPW, co::SM, prelude::*};
+use winsafe::co::{GDC, HELPW, KEY, MB, REG_OPTION, SM};
+use winsafe::{
+    self as w, GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, WString,
+    prelude::*,
+};
 
 use crate::globals::{
     CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_TITLE, GAME_NAME, MSG_CREDIT,
@@ -91,7 +95,7 @@ pub fn ReportErr(err: &str) {
         _ => &ERR_UNKNOWN_FMT.replace("%d", &id_err.to_string()),
     }; */
 
-    let _ = w::HWND::NULL.MessageBox(err, ERR_TITLE, co::MB::ICONHAND);
+    let _ = HWND::NULL.MessageBox(err, ERR_TITLE, MB::ICONHAND);
 }
 
 /// Read an integer preference from the legacy .ini file, clamping it within the specified bounds.
@@ -153,20 +157,20 @@ fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
 
 /// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
 pub fn InitConst() {
-    let ticks = (w::GetTickCount64() as u32) & 0xFFFF;
+    let ticks = (GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
 
-    CYCAPTION.store(w::GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
-    CYMENU.store(w::GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
-    CXBORDER.store(w::GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
+    CYCAPTION.store(GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
+    CYMENU.store(GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
+    CXBORDER.store(GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
     let mut already_played = false;
 
-    if let Ok((key_guard, _)) = w::HKEY::CURRENT_USER.RegCreateKeyEx(
+    if let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
-        co::REG_OPTION::default(),
-        co::KEY::READ,
+        REG_OPTION::default(),
+        KEY::READ,
         None,
     ) {
         already_played = ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
@@ -232,10 +236,10 @@ pub fn InitConst() {
     ReadIniSz(PrefKey::Name2, prefs.szInter.as_mut_ptr());
     ReadIniSz(PrefKey::Name3, prefs.szExpert.as_mut_ptr());
 
-    let desktop = w::HWND::GetDesktopWindow();
+    let desktop = HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
         Ok(hdc) => {
-            if hdc.GetDeviceCaps(co::GDC::NUMCOLORS) != 2 {
+            if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 {
                 1
             } else {
                 0
@@ -291,15 +295,15 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
     }
 
     FixMenus(
-        &hwnd.GetMenu().unwrap_or(w::HMENU::NULL),
+        &hwnd.GetMenu().unwrap_or(HMENU::NULL),
         menu_checks.0,
         menu_checks.1,
         menu_checks.2,
         menu_checks.3,
     );
 
-    let menu = hwnd.GetMenu().unwrap_or(w::HMENU::NULL);
-    let menu_arg = if menu_on { &menu } else { &w::HMENU::NULL };
+    let menu = hwnd.GetMenu().unwrap_or(HMENU::NULL);
+    let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
     let _ = hwnd.SetMenu(menu_arg);
     AdjustWindow(hwnd, AdjustFlag::Resize as i32);
 }
@@ -310,7 +314,7 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
 pub fn DoAbout(hwnd: &HWND) {
     let icon_guard = hwnd
         .hinstance()
-        .LoadIcon(w::IdIdiStr::Id(IconId::Main as u16))
+        .LoadIcon(IdIdiStr::Id(IconId::Main as u16))
         .ok();
     let icon = icon_guard.as_deref();
 
@@ -372,7 +376,7 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 /// * `num_hi` - Maximum allowed value.
 /// # Returns
 /// The clamped integer value from the dialog item.
-pub fn GetDlgInt(h_dlg: &w::HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
+pub fn GetDlgInt(h_dlg: &HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
     let mut success = 0i32;
     let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) };
     let value = value as i32;

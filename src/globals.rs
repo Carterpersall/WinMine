@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
-use winsafe::{self as w};
+use winsafe::{self as w, GetSystemMetrics, GetSystemMetricsForDpi};
 
 /* -------------------- */
 /* Constant Definitions */
@@ -86,15 +86,15 @@ pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 pub fn update_ui_metrics_for_dpi(dpi: u32) {
     let dpi = if dpi == 0 { BASE_DPI } else { dpi };
 
-    let caption = w::GetSystemMetricsForDpi(w::co::SM::CYCAPTION, dpi)
-        .unwrap_or_else(|_| w::GetSystemMetrics(w::co::SM::CYCAPTION));
-    let menu = w::GetSystemMetricsForDpi(w::co::SM::CYMENU, dpi)
-        .unwrap_or_else(|_| w::GetSystemMetrics(w::co::SM::CYMENU));
-    let border = w::GetSystemMetricsForDpi(w::co::SM::CXBORDER, dpi)
-        .unwrap_or_else(|_| w::GetSystemMetrics(w::co::SM::CXBORDER));
-
+    let caption = GetSystemMetricsForDpi(w::co::SM::CYCAPTION, dpi)
+        .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CYCAPTION));
+    let menu = GetSystemMetricsForDpi(w::co::SM::CYMENU, dpi)
+        .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CYMENU));
+    let border = GetSystemMetricsForDpi(w::co::SM::CXBORDER, dpi)
+        .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CXBORDER));
     // Preserve the historical +1 fudge used throughout the codebase.
     // TODO: Why is this done?
+    // TODO: Rename these so that they don't conflict with the `SM_` constants.
     CYCAPTION.store(caption + 1, Ordering::Relaxed);
     CYMENU.store(menu + 1, Ordering::Relaxed);
     CXBORDER.store(border + 1, Ordering::Relaxed);

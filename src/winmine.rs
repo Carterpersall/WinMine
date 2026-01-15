@@ -9,13 +9,16 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
 };
 
-use winsafe::co::{self, GWLP, HELPW, ICC, IDC, MK, SC, SM, STOCK_BRUSH, VK, WS, WS_EX};
+use winsafe::co::{
+    BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MB, MK, PM, PS, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
+    WS_EX,
+};
 use winsafe::msg::WndMsg;
-use winsafe::prelude::*;
+use winsafe::msg::wm::Destroy;
 use winsafe::{
-    self as w, AdjustWindowRectExForDpi, COLORREF, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE,
+    AdjustWindowRectExForDpi, AnyResult, COLORREF, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE,
     HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage,
-    PtsRc, RECT, SIZE, WINDOWPOS, gui,
+    PtsRc, RECT, SIZE, WINDOWPOS, WString, gui, prelude::*,
 };
 
 use crate::globals::{
@@ -249,7 +252,7 @@ const BEST_HELP_IDS: [u32; 22] = [
 /// # Returns
 /// True if the initial window state is minimized, false otherwise.
 fn initial_minimized_state(n_cmd_show: i32) -> bool {
-    n_cmd_show == co::SW::SHOWMINNOACTIVE.raw() || n_cmd_show == co::SW::SHOWMINIMIZED.raw()
+    n_cmd_show == SW::SHOWMINNOACTIVE.raw() || n_cmd_show == SW::SHOWMINIMIZED.raw()
 }
 
 /// Initializes common controls used by the application using `InitCommonControlsEx`.
@@ -350,7 +353,7 @@ impl WinMineMainWindow {
             unsafe {
                 // TODO: Change this
                 let _ = self.wnd.hwnd().PostMessage(WndMsg::new(
-                    co::WM::MOUSEMOVE,
+                    WM::MOUSEMOVE,
                     btn.raw() as usize,
                     point.x as isize | ((point.y as isize) << 16),
                 ));
@@ -358,7 +361,7 @@ impl WinMineMainWindow {
             return;
         }
 
-        if btn == co::MK::LBUTTON {
+        if btn == MK::LBUTTON {
             self.begin_primary_button_drag();
             self.handle_mouse_move(btn, point);
             return;
@@ -405,11 +408,11 @@ impl WinMineMainWindow {
         match menu_command(w_param) {
             Some(MenuCommand::New) => StartGame(self.wnd.hwnd()),
             Some(MenuCommand::Exit) => {
-                self.wnd.hwnd().ShowWindow(co::SW::HIDE);
+                self.wnd.hwnd().ShowWindow(SW::HIDE);
                 unsafe {
                     let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
-                        co::WM::SYSCOMMAND,
-                        co::SC::CLOSE.raw() as usize,
+                        WM::SYSCOMMAND,
+                        SC::CLOSE.raw() as usize,
                         0,
                     ));
                 }
@@ -502,8 +505,8 @@ impl WinMineMainWindow {
                     ReportErr(ERR_OUT_OF_MEMORY);
                     unsafe {
                         let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
-                            co::WM::SYSCOMMAND,
-                            co::SC::CLOSE.raw() as usize,
+                            WM::SYSCOMMAND,
+                            SC::CLOSE.raw() as usize,
                             0,
                         ));
                     }
@@ -608,12 +611,12 @@ impl WinMineMainWindow {
             if PeekMessage(
                 &mut msg,
                 self.wnd.hwnd().as_opt(),
-                co::WM::MOUSEFIRST.raw(),
-                co::WM::MOUSELAST.raw(),
-                co::PM::REMOVE,
+                WM::MOUSEFIRST.raw(),
+                WM::MOUSELAST.raw(),
+                PM::REMOVE,
             ) {
                 match msg.message {
-                    co::WM::LBUTTONUP => {
+                    WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
                             display_button(self.wnd.hwnd(), ButtonSprite::Happy);
@@ -622,7 +625,7 @@ impl WinMineMainWindow {
                         capture_guard.take();
                         return true;
                     }
-                    co::WM::MOUSEMOVE => {
+                    WM::MOUSEMOVE => {
                         if winsafe::PtInRect(rc, msg.pt) {
                             if !pressed {
                                 pressed = true;
@@ -689,7 +692,7 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm(co::WM::DPICHANGED, {
+        self.wnd.on().wm(WM::DPICHANGED, {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 // wParam: new DPI in LOWORD/HIWORD (X/Y). lParam: suggested new window rect.
@@ -759,7 +762,7 @@ impl WinMineMainWindow {
         });
 
         // TODO: Move the handle_command logic into separate wm_command closures
-        self.wnd.on().wm(co::WM::COMMAND, {
+        self.wnd.on().wm(WM::COMMAND, {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 if let Some(result) = self2.handle_command(msg.wparam) {
@@ -771,7 +774,7 @@ impl WinMineMainWindow {
         });
 
         // Handle `WM_APP` requests posted from non-UI modules.
-        self.wnd.on().wm(co::WM::APP, {
+        self.wnd.on().wm(WM::APP, {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
@@ -810,7 +813,7 @@ impl WinMineMainWindow {
                     eprintln!("Failed to write preferences: {e}");
                 }
 
-                unsafe { self2.wnd.hwnd().DefWindowProc(w::msg::wm::Destroy {}) };
+                unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };
                 Ok(())
             }
         });
@@ -893,9 +896,7 @@ impl WinMineMainWindow {
                 }
                 if status_play() {
                     // Mask SHIFT and RBUTTON to indicate a "chord" operation.
-                    set_block_flag(
-                        l_btn.vkey_code == co::MK::SHIFT || l_btn.vkey_code == co::MK::RBUTTON,
-                    );
+                    set_block_flag(l_btn.vkey_code == MK::SHIFT || l_btn.vkey_code == MK::RBUTTON);
                     self2.begin_primary_button_drag();
                     self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords);
                 }
@@ -918,7 +919,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_activate({
             let self2 = self.clone();
             move |activate| {
-                if activate.event == co::WA::CLICKACTIVE {
+                if activate.event == WA::CLICKACTIVE {
                     IGNORE_NEXT_CLICK.store(true, Ordering::Relaxed);
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(activate) };
@@ -987,7 +988,7 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
             HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY).unwrap_or(HBRUSH::NULL),
         ),
         size: (dx_window, dy_window),
-        style: co::WS::OVERLAPPED | co::WS::MINIMIZEBOX | co::WS::CAPTION | co::WS::SYSMENU,
+        style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
         menu: menu.leak(),
         accel_table: h_accel,
         ..Default::default()
@@ -996,9 +997,9 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
     let app = WinMineMainWindow::new(wnd);
 
     let cmd_show = if initial_minimized_state(n_cmd_show) {
-        Some(co::SW::SHOWMINIMIZED)
+        Some(SW::SHOWMINIMIZED)
     } else {
-        Some(co::SW::SHOWNORMAL)
+        Some(SW::SHOWNORMAL)
     };
 
     match app.wnd.run_main(cmd_show) {
@@ -1006,11 +1007,7 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
         Err(e) => {
             eprintln!("Unhandled error running main window: {e}");
             let _ = HWND::NULL
-                .MessageBox(
-                    &e.to_string(),
-                    "Unhandled error",
-                    co::MB::OK | co::MB::ICONERROR,
-                )
+                .MessageBox(&e.to_string(), "Unhandled error", MB::OK | MB::ICONERROR)
                 .ok();
             0
         }
@@ -1130,7 +1127,7 @@ fn menu_command(w_param: usize) -> Option<MenuCommand> {
 /// * `key`: The virtual key code of the key that was pressed.
 fn handle_keydown(hwnd: &HWND, key: VK) {
     match key {
-        code if code == co::VK::F4 => {
+        code if code == VK::F4 => {
             let current_sound = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -1168,7 +1165,7 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
                 SetMenuBar(hwnd, f_menu);
             }
         }
-        code if code == co::VK::F5 => {
+        code if code == VK::F5 => {
             let menu_value = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -1181,7 +1178,7 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
                 SetMenuBar(hwnd, MenuMode::Hidden);
             }
         }
-        code if code == co::VK::F6 => {
+        code if code == VK::F6 => {
             let menu_value = {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
@@ -1194,7 +1191,7 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
                 SetMenuBar(hwnd, MenuMode::On);
             }
         }
-        code if code == co::VK::SHIFT => handle_xyzzys_shift(),
+        code if code == VK::SHIFT => handle_xyzzys_shift(),
         _ => handle_xyzzys_default_key(key),
     }
 }
@@ -1223,11 +1220,11 @@ fn handle_window_pos_changed(pos: &WINDOWPOS) {
 fn handle_syscommand(command: SC) {
     // Isolate the system command identifier by masking out the lower 4 bits.
     //let command = (sys_cmd & 0xFFF0) as u32;
-    if command == co::SC::MINIMIZE {
+    if command == SC::MINIMIZE {
         PauseGame();
         set_status_pause();
         set_status_icon();
-    } else if command == co::SC::RESTORE {
+    } else if command == SC::RESTORE {
         clr_status_pause();
         clr_status_icon();
         ResumeGame();
@@ -1328,7 +1325,7 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
     }
 
     // Check if the Control key is held down.
-    let control_down = key == co::MK::CONTROL;
+    let control_down = key == MK::CONTROL;
     if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
         let x_pos = x_box_from_xpos(point.x);
         let y_pos = y_box_from_ypos(point.y);
@@ -1344,7 +1341,7 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
             };
 
             // Set the pixel at (0,0) to indicate bomb status.
-            HPEN::CreatePen(co::PS::SOLID, 0, color)
+            HPEN::CreatePen(PS::SOLID, 0, color)
                 .and_then(|mut pen| {
                     let mut old_pen = hdc.SelectObject(&pen.leak())?;
                     hdc.MoveToEx(0, 0, None)?;
@@ -1408,7 +1405,7 @@ impl PrefDialog {
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
-            move |_| -> w::AnyResult<bool> {
+            move |_| -> AnyResult<bool> {
                 // Get current board settings from preferences
                 let (height, width, mines) = {
                     let prefs = match preferences_mutex().lock() {
@@ -1430,42 +1427,38 @@ impl PrefDialog {
             }
         });
 
-        self.dlg
-            .on()
-            .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    // Retrieve and validate user input from the dialog controls
-                    let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
-                    let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
-                    let max_mines = min(999, (height - 1) * (width - 1));
-                    let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
+        self.dlg.on().wm_command(DLGID::OK.raw(), BN::CLICKED, {
+            let dlg = self.dlg.clone();
+            move || -> AnyResult<()> {
+                // Retrieve and validate user input from the dialog controls
+                let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
+                let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
+                let max_mines = min(999, (height - 1) * (width - 1));
+                let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
 
-                    // Update preferences with the new settings
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.Height = height;
-                    prefs.Width = width;
-                    prefs.Mines = mines;
+                // Update preferences with the new settings
+                let mut prefs = match preferences_mutex().lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                prefs.Height = height;
+                prefs.Width = width;
+                prefs.Mines = mines;
 
-                    // Close the dialog
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
+                // Close the dialog
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        });
 
-        self.dlg
-            .on()
-            .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    // Close the dialog without saving changes
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
+        self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
+            let dlg = self.dlg.clone();
+            move || -> AnyResult<()> {
+                // Close the dialog without saving changes
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        });
 
         self.dlg.on().wm_help({
             move |help| {
@@ -1474,8 +1467,8 @@ impl PrefDialog {
             }
         });
 
-        self.dlg.on().wm(co::WM::CONTEXTMENU, {
-            move |msg: WndMsg| -> w::AnyResult<isize> {
+        self.dlg.on().wm(WM::CONTEXTMENU, {
+            move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as _) };
                 apply_help_to_control(&target, &PREF_HELP_IDS);
                 Ok(1)
@@ -1507,7 +1500,7 @@ impl BestDialog {
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
-            move |_| -> w::AnyResult<bool> {
+            move |_| -> AnyResult<bool> {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
@@ -1528,9 +1521,9 @@ impl BestDialog {
 
         self.dlg
             .on()
-            .wm_command(ControlId::BtnReset as u16, co::BN::CLICKED, {
+            .wm_command(ControlId::BtnReset as u16, BN::CLICKED, {
                 let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
+                move || -> AnyResult<()> {
                     // Generate a snapshot of the default preferences to reset the best times
                     let snapshot = {
                         let mut prefs = match preferences_mutex().lock() {
@@ -1580,25 +1573,21 @@ impl BestDialog {
                 }
             });
 
-        self.dlg
-            .on()
-            .wm_command(co::DLGID::OK.raw(), co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
+        self.dlg.on().wm_command(DLGID::OK.raw(), BN::CLICKED, {
+            let dlg = self.dlg.clone();
+            move || -> AnyResult<()> {
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        });
 
-        self.dlg
-            .on()
-            .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
-                let dlg = self.dlg.clone();
-                move || -> w::AnyResult<()> {
-                    let _ = dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
+        self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
+            let dlg = self.dlg.clone();
+            move || -> AnyResult<()> {
+                let _ = dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        });
 
         self.dlg.on().wm_help({
             move |help| {
@@ -1607,8 +1596,8 @@ impl BestDialog {
             }
         });
 
-        self.dlg.on().wm(co::WM::CONTEXTMENU, {
-            move |msg: WndMsg| -> w::AnyResult<isize> {
+        self.dlg.on().wm(WM::CONTEXTMENU, {
+            move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as _) };
                 apply_help_to_control(&target, &BEST_HELP_IDS);
                 Ok(1)
@@ -1662,7 +1651,7 @@ impl EnterDialog {
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
-            move |_| -> w::AnyResult<bool> {
+            move |_| -> AnyResult<bool> {
                 let (game_type, current_name) = {
                     let prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
@@ -1691,12 +1680,12 @@ impl EnterDialog {
                     SetDlgItemTextW(
                         hdlg_raw,
                         ControlId::TextBest as i32,
-                        w::WString::from_str(string).as_ptr(),
+                        WString::from_str(string).as_ptr(),
                     );
 
                     if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
                         let _ = edit_hwnd.SendMessage(WndMsg::new(
-                            co::WM::from_raw(co::EM::SETLIMITTEXT.raw()),
+                            WM::from_raw(EM::SETLIMITTEXT.raw()),
                             CCH_NAME_MAX,
                             0,
                         ));
@@ -1711,25 +1700,23 @@ impl EnterDialog {
 
         self.dlg
             .on()
-            .wm_command(ControlId::BtnOk as u16, co::BN::CLICKED, {
+            .wm_command(ControlId::BtnOk as u16, BN::CLICKED, {
                 let self2 = self.clone();
-                move || -> w::AnyResult<()> {
+                move || -> AnyResult<()> {
                     self2.save_high_score_name();
                     let _ = self2.dlg.hwnd().EndDialog(1);
                     Ok(())
                 }
             });
 
-        self.dlg
-            .on()
-            .wm_command(co::DLGID::CANCEL.raw(), co::BN::CLICKED, {
-                let self2 = self.clone();
-                move || -> w::AnyResult<()> {
-                    self2.save_high_score_name();
-                    let _ = self2.dlg.hwnd().EndDialog(1);
-                    Ok(())
-                }
-            });
+        self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
+            let self2 = self.clone();
+            move || -> AnyResult<()> {
+                self2.save_high_score_name();
+                let _ = self2.dlg.hwnd().EndDialog(1);
+                Ok(())
+            }
+        });
     }
 }
 

@@ -3,6 +3,8 @@ use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::atomic::AtomicU8;
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
+use winsafe::co::WM;
+use winsafe::msg::WndMsg;
 use winsafe::{HINSTANCE, HWND, prelude::*};
 
 use crate::globals::{BLK_BTN_INPUT, ERR_TIMER, GAME_STATUS, StatusFlag};
@@ -405,11 +407,7 @@ fn record_win_if_needed(hwnd: &HWND) {
 
             if hwnd.as_opt().is_some() {
                 unsafe {
-                    let _ = hwnd.PostMessage(winsafe::msg::WndMsg::new(
-                        winsafe::co::WM::APP,
-                        NEW_RECORD_DLG,
-                        0,
-                    ));
+                    let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
                 }
             }
         }
