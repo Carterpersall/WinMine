@@ -393,7 +393,7 @@ fn WriteSz(handle: &HKEY, key: PrefKey, sz: *const u16) -> Result<(), Box<dyn co
 /// * `key` - Preference key to look up
 /// # Returns
 /// Option containing the string literal, or None if the key is invalid
-pub(crate) fn pref_key_literal(key: PrefKey) -> Option<&'static str> {
+pub fn pref_key_literal(key: PrefKey) -> Option<&'static str> {
     PREF_STRINGS.get(key as usize).copied()
 }
 
@@ -433,7 +433,7 @@ fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
 /// * `ptr` - Pointer to the UTF-16 string
 /// # Returns
 /// Length of the string in UTF-16 code units
-fn wide_len(mut ptr: *const u16) -> usize {
+const fn wide_len(mut ptr: *const u16) -> usize {
     if ptr.is_null() {
         return 0;
     }

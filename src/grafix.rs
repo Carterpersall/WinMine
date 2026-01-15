@@ -850,15 +850,10 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     state.lp_dib_button = lp_button;
 
     state.h_gray_pen = if color_on {
-        match HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128)) {
-            Ok(mut pen) => pen.leak(),
-            Err(_) => HPEN::NULL,
-        }
+        HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128))
+            .map_or(HPEN::NULL, |mut pen| pen.leak())
     } else {
-        match HPEN::GetStockObject(STOCK_PEN::BLACK) {
-            Ok(pen) => pen,
-            Err(_) => HPEN::NULL,
-        }
+        HPEN::GetStockObject(STOCK_PEN::BLACK).unwrap_or(HPEN::NULL)
     };
 
     if state.h_gray_pen == HPEN::NULL {
@@ -941,12 +936,8 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
         }
 
         let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
-            match create_resampled_bitmap(
-                &hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h,
-            ) {
-                Ok(resampled) => resampled,
-                Err(_) => base_bmp,
-            }
+            create_resampled_bitmap(&hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h)
+                .unwrap_or(base_bmp)
         } else {
             base_bmp
         };
@@ -963,24 +954,23 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
 
     // Cache LED digits in compatible bitmaps.
     for i in 0..I_LED_MAX {
-        state.mem_led_dc[i] = if let Ok(dc_guard) = hdc.CreateCompatibleDC() {
-            Some(dc_guard)
-        } else {
-            if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
-                w::OutputDebugString(msg);
-            }
-            None
-        };
+        state.mem_led_dc[i] = hdc
+            .CreateCompatibleDC()
+            .map_err(|_| {
+                if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_DC) {
+                    w::OutputDebugString(msg);
+                }
+            })
+            .ok();
 
-        state.mem_led_bitmap[i] =
-            if let Ok(bmp_guard) = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96) {
-                Some(bmp_guard)
-            } else {
+        state.mem_led_bitmap[i] = hdc
+            .CreateCompatibleBitmap(DX_LED_96, DY_LED_96)
+            .map_err(|_| {
                 if let Ok(msg) = core::str::from_utf8(DEBUG_CREATE_BITMAP) {
                     w::OutputDebugString(msg);
                 }
-                None
-            };
+            })
+            .ok();
 
         if state.mem_led_dc[i].is_some()
             && state.mem_led_bitmap[i].is_some()
@@ -1065,17 +1055,15 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
         }
 
         let final_bmp = if dst_btn_w != DX_BUTTON_96 || dst_btn_h != DY_BUTTON_96 {
-            match create_resampled_bitmap(
+            create_resampled_bitmap(
                 &hdc,
                 &base_bmp,
                 DX_BUTTON_96,
                 DY_BUTTON_96,
                 dst_btn_w,
                 dst_btn_h,
-            ) {
-                Ok(resampled) => resampled,
-                Err(_) => base_bmp,
-            }
+            )
+            .unwrap_or(base_bmp)
         } else {
             base_bmp
         };
@@ -1124,7 +1112,7 @@ fn load_bitmap_resource(
 /// * `color_on` - Whether color mode is enabled
 /// # Returns
 /// Size in bytes of the DIB header and palette
-fn dib_header_size(color_on: bool) -> usize {
+const fn dib_header_size(color_on: bool) -> usize {
     let palette_entries = if color_on { 16 } else { 2 };
     size_of::<BITMAPINFOHEADER>() + palette_entries * 4
 }
@@ -1138,7 +1126,7 @@ fn dib_header_size(color_on: bool) -> usize {
 /// * `y` - Height of the bitmap in pixels
 /// # Returns
 /// Size in bytes of the bitmap data
-fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
+const fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
     // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
     let mut bits = x;
     if color_on {

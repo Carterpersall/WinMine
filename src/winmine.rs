@@ -180,7 +180,7 @@ const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99,
 /// * `game`: The game type to get preset data for.
 /// # Returns
 /// The preset data as (mines, height, width), or None for a custom game.
-fn preset_data(game: GameType) -> Option<[i32; 3]> {
+const fn preset_data(game: GameType) -> Option<[i32; 3]> {
     match game {
         GameType::Begin => Some(LEVEL_DATA[0]),
         GameType::Inter => Some(LEVEL_DATA[1]),
@@ -251,7 +251,7 @@ const BEST_HELP_IDS: [u32; 22] = [
 /// * `n_cmd_show`: The nCmdShow parameter from `WinMain`.
 /// # Returns
 /// True if the initial window state is minimized, false otherwise.
-fn initial_minimized_state(n_cmd_show: i32) -> bool {
+const fn initial_minimized_state(n_cmd_show: i32) -> bool {
     n_cmd_show == SW::SHOWMINNOACTIVE.raw() || n_cmd_show == SW::SHOWMINIMIZED.raw()
 }
 
@@ -1102,7 +1102,7 @@ fn current_face_sprite() -> ButtonSprite {
 /// * `w_param`: The WPARAM from the `WM_COMMAND` message.
 /// # Returns
 /// An Option containing the corresponding `MenuCommand`, or None if not found.
-fn menu_command(w_param: usize) -> Option<MenuCommand> {
+const fn menu_command(w_param: usize) -> Option<MenuCommand> {
     match command_id(w_param) {
         510 => Some(MenuCommand::New),
         512 => Some(MenuCommand::Exit),
@@ -1907,7 +1907,7 @@ fn our_get_system_metrics(index: SM) -> i32 {
 /// * `w_param` - The WPARAM value to extract from.
 /// # Returns
 /// The command identifier as a u16.
-fn command_id(w_param: usize) -> u16 {
+const fn command_id(w_param: usize) -> u16 {
     (w_param & 0xFFFF) as u16
 }
 

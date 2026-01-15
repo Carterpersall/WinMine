@@ -165,17 +165,17 @@ pub fn InitConst() {
     CYMENU.store(GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
     CXBORDER.store(GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
-    let mut already_played = false;
-
-    if let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
+    let already_played = if let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         REG_OPTION::default(),
         KEY::READ,
         None,
     ) {
-        already_played = ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0;
-    }
+        ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0
+    } else {
+        false
+    };
 
     if already_played {
         return;

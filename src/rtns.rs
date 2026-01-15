@@ -156,7 +156,7 @@ static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 /// * `y` - The Y coordinate.
 /// # Returns
 /// An option containing the board index if valid, or None if out of range.
-fn board_index(x: i32, y: i32) -> Option<usize> {
+const fn board_index(x: i32, y: i32) -> Option<usize> {
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
         return None;
