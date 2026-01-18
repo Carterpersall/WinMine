@@ -377,20 +377,13 @@ fn DrawBombCount(hdc: &HDC) {
         }
     }
 
-    let bombs = BOMBS_LEFT.load(Relaxed);
-    // Determine the third digit of the bomb count
-    let (i_led, c_bombs): (u32, u32) = if bombs < 0 {
-        (11, ((-bombs) % 100) as u32)
-    } else {
-        ((bombs / 100) as u32, (bombs % 100) as u32)
-    };
-
     // Draw each of the three digits in sequence.
+    let bombs = BOMBS_LEFT.load(Relaxed);
     let x0 = scale_dpi(DX_LEFT_BOMB_96);
     let dx = scale_dpi(DX_LED_96);
-    DrawLed(hdc, x0, i_led);
-    DrawLed(hdc, x0 + dx, c_bombs / 10);
-    DrawLed(hdc, x0 + dx * 2, c_bombs % 10);
+    DrawLed(hdc, x0, bombs / 100);
+    DrawLed(hdc, x0 + dx, (bombs % 100) / 10);
+    DrawLed(hdc, x0 + dx * 2, bombs % 10);
 
     // Restore the original layout if it was mirrored
     if mirrored {

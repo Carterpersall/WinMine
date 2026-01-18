@@ -131,7 +131,7 @@ pub struct Pref {
     /// Current game difficulty (Beginner, Intermediate, Expert, Custom).
     pub wGameType: GameType,
     /// Number of mines on the board.
-    pub Mines: i32,
+    pub Mines: u32,
     /// Board height in cells.
     pub Height: i32,
     /// Board width in cells.
@@ -253,7 +253,7 @@ pub fn ReadPreferences() {
         _ => GameType::Other,
     };
     // Get the number of mines on the board and the window position
-    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999) as i32;
+    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
     // TODO: These values are either not saved properly or are ignored when the window is created
     prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
     prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;

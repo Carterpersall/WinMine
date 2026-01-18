@@ -214,7 +214,7 @@ pub fn InitConst() {
         2 => GameType::Expert,
         _ => GameType::Other,
     };
-    prefs.Mines = ReadIniInt(PrefKey::Mines, 10, 10, 999);
+    prefs.Mines = ReadIniInt(PrefKey::Mines, 10, 10, 999) as u32;
     prefs.xWindow = ReadIniInt(PrefKey::Xpos, 80, 0, 1024);
     prefs.yWindow = ReadIniInt(PrefKey::Ypos, 80, 0, 1024);
 

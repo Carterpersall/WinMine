@@ -431,7 +431,7 @@ impl WinMineMainWindow {
                     };
                     if let Some(data) = preset_data(game) {
                         prefs.wGameType = game;
-                        prefs.Mines = data[0] as i32;
+                        prefs.Mines = data[0];
                         prefs.Height = data[1] as i32;
                         prefs.Width = data[2] as i32;
                     }
@@ -1354,7 +1354,7 @@ impl PrefDialog {
                     let hdlg_raw = dlg.hwnd().ptr();
                     SetDlgItemInt(hdlg_raw, ControlId::EditHeight as i32, height as u32, 0);
                     SetDlgItemInt(hdlg_raw, ControlId::EditWidth as i32, width as u32, 0);
-                    SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines as u32, 0);
+                    SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines, 0);
                 }
 
                 Ok(true)
@@ -1377,7 +1377,7 @@ impl PrefDialog {
                 };
                 prefs.Height = height as i32;
                 prefs.Width = width as i32;
-                prefs.Mines = mines as i32;
+                prefs.Mines = mines;
 
                 // Close the dialog
                 let _ = dlg.hwnd().EndDialog(1);

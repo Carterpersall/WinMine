@@ -118,13 +118,13 @@ pub static BOARD_HEIGHT: AtomicI32 = AtomicI32::new(0);
 pub static BTN_FACE_STATE: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
 
 /// Current number of bombs left to mark
-pub static BOMBS_LEFT: AtomicI32 = AtomicI32::new(0);
+pub static BOMBS_LEFT: AtomicU32 = AtomicU32::new(0);
 
 /// Current elapsed time in seconds
 pub static SECS_ELAPSED: AtomicU32 = AtomicU32::new(0);
 
 /// Number of visited boxes (revealed non-bomb cells)
-pub static C_BOX_VISIT: AtomicI32 = AtomicI32::new(0);
+pub static C_BOX_VISIT: AtomicU32 = AtomicU32::new(0);
 
 /// Current cursor X position in board coordinates
 pub static CURSOR_X_POS: AtomicI32 = AtomicI32::new(-1);
@@ -151,10 +151,10 @@ pub fn board_mutex() -> MutexGuard<'static, [i8; C_BLK_MAX]> {
 }
 
 /// Initial number of bombs at the start of the game
-static CBOMB_START: AtomicI32 = AtomicI32::new(0);
+static CBOMB_START: AtomicU32 = AtomicU32::new(0);
 
 /// Total number of visited boxes needed to win
-static CBOX_VISIT_MAC: AtomicI32 = AtomicI32::new(0);
+static CBOX_VISIT_MAC: AtomicU32 = AtomicU32::new(0);
 
 /// Indicates whether the game timer is running
 static F_TIMER: AtomicBool = AtomicBool::new(false);
@@ -534,10 +534,7 @@ fn game_over(hwnd: &HWND, win: bool) {
         },
     );
     if win {
-        let bombs_left = BOMBS_LEFT.load(Ordering::Relaxed);
-        if bombs_left != 0 {
-            update_bomb_count_internal(hwnd, -bombs_left);
-        }
+        BOMBS_LEFT.store(0, Ordering::Relaxed);
     }
     play_tune(
         &hwnd.hinstance(),
@@ -710,7 +707,11 @@ fn pop_box_up(x: i32, y: i32) {
 /// * `hwnd` - Handle to the main window.
 /// * `delta` - The change in bomb count (positive or negative).
 fn update_bomb_count_internal(hwnd: &HWND, delta: i32) {
-    BOMBS_LEFT.fetch_add(delta, Ordering::Relaxed);
+    if delta < 0 {
+        BOMBS_LEFT.fetch_sub((-delta) as u32, Ordering::Relaxed);
+    } else {
+        BOMBS_LEFT.fetch_add(delta as u32, Ordering::Relaxed);
+    }
     display_bomb_count(hwnd);
 }
 
@@ -809,7 +810,7 @@ pub fn StartGame(hwnd: &HWND) {
     SECS_ELAPSED.store(0, Ordering::Relaxed);
     BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
     C_BOX_VISIT.store(0, Ordering::Relaxed);
-    CBOX_VISIT_MAC.store((width * height) - total_bombs, Ordering::Relaxed);
+    CBOX_VISIT_MAC.store((width * height) as u32 - total_bombs, Ordering::Relaxed);
     GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
 
     display_bomb_count(hwnd);
