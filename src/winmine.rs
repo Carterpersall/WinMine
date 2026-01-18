@@ -42,7 +42,7 @@ use crate::rtns::{
     TrackMouse, board_mutex, make_guess, preferences_mutex,
 };
 use crate::sound::{FInitTunes, stop_all_sounds};
-use crate::util::{CheckEm, DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr, SetMenuBar};
+use crate::util::{DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr, SetMenuBar};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -377,25 +377,23 @@ impl WinMineMainWindow {
 
     /// Handles the "Custom" menu command by displaying the preferences dialog,
     /// updating the game settings, and starting a new game.
+    ///
+    /// TODO: The way that the preferences dialog is handled causes a custom game to always
+    /// be started when the dialog is closed, even if the user clicked "Cancel". Fix this.
     fn DoPref(&self) {
+        // Show the preferences dialog
         PrefDialog::new().show_modal(&self.wnd);
 
-        let (game, f_color, f_mark, f_sound) = {
+        let fmenu = {
             let mut prefs = match preferences_mutex().lock() {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),
             };
             prefs.wGameType = GameType::Other;
-            (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound)
+            prefs.fMenu
         };
-        FixMenus(
-            &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
-            game,
-            f_color,
-            f_mark,
-            f_sound,
-        );
         UPDATE_INI.store(true, Ordering::Relaxed);
+        SetMenuBar(self.wnd.hwnd(), fmenu);
         StartGame(self.wnd.hwnd());
     }
 
@@ -426,7 +424,7 @@ impl WinMineMainWindow {
                     _ => GameType::Other,
                 };
 
-                let (preset, f_color, f_mark, f_sound, f_menu) = {
+                let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
@@ -437,17 +435,10 @@ impl WinMineMainWindow {
                         prefs.Height = data[1];
                         prefs.Width = data[2];
                     }
-                    (game, prefs.fColor, prefs.fMark, prefs.fSound, prefs.fMenu)
+                    prefs.fMenu
                 };
                 StartGame(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(
-                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
-                    preset,
-                    f_color,
-                    f_mark,
-                    f_sound,
-                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Custom) => self.DoPref(),
@@ -466,38 +457,25 @@ impl WinMineMainWindow {
                     }
                     SoundState::Off => FInitTunes(),
                 };
-                let (game, f_color, f_mark, f_menu) = {
+                let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     prefs.fSound = new_sound;
-                    (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fMenu)
+                    prefs.fMenu
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(
-                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
-                    game,
-                    f_color,
-                    f_mark,
-                    new_sound,
-                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Color) => {
-                let (color_enabled, game, f_mark, f_sound, f_menu) = {
+                let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(g) => g,
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     prefs.fColor = !prefs.fColor;
-                    (
-                        prefs.fColor,
-                        prefs.wGameType,
-                        prefs.fMark,
-                        prefs.fSound,
-                        prefs.fMenu,
-                    )
+                    prefs.fMenu
                 };
                 FreeBitmaps();
                 if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
@@ -516,38 +494,18 @@ impl WinMineMainWindow {
                 // Repaint immediately so toggling color off updates without restarting.
                 DisplayScreen(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(
-                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
-                    game,
-                    color_enabled,
-                    f_mark,
-                    f_sound,
-                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Mark) => {
-                let (game, color_enabled, mark_enabled, f_sound, f_menu) = {
+                let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(g) => g,
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     prefs.fMark = !prefs.fMark;
-                    (
-                        prefs.wGameType,
-                        prefs.fColor,
-                        prefs.fMark,
-                        prefs.fSound,
-                        prefs.fMenu,
-                    )
+                    prefs.fMenu
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(
-                    &self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL),
-                    game,
-                    color_enabled,
-                    mark_enabled,
-                    f_sound,
-                );
                 SetMenuBar(self.wnd.hwnd(), f_menu);
             }
             Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
@@ -952,6 +910,8 @@ impl WinMineMainWindow {
 /// * `n_cmd_show`: The initial window show command.
 /// # Returns
 /// The application exit code.
+///
+/// TODO: Return a result value
 pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
     InitConst();
 
@@ -1144,23 +1104,16 @@ fn handle_keydown(hwnd: &HWND, key: VK) {
                     SoundState::Off => FInitTunes(),
                 };
 
-                let (game, color_enabled, mark_enabled, f_menu) = {
+                let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(g) => g,
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     prefs.fSound = new_sound;
-                    (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fMenu)
+                    prefs.fMenu
                 };
 
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                FixMenus(
-                    &hwnd.GetMenu().unwrap_or(HMENU::NULL),
-                    game,
-                    color_enabled,
-                    mark_enabled,
-                    new_sound,
-                );
                 SetMenuBar(hwnd, f_menu);
             }
         }
@@ -1355,25 +1308,6 @@ fn handle_xyzzys_mouse(key: MK, point: POINT) {
                 });
         }
     }
-}
-
-/// Synchronizes the menu checkmarks with the current game settings.
-///
-/// TODO: This function is called a lot, and seems to be a band-aid fix for something.
-/// # Arguments
-/// * `game` - The current game type.
-/// * `f_color` - Whether color mode is enabled.
-/// * `f_mark` - Whether mark mode is enabled.
-/// * `f_sound` - The current sound state.
-pub fn FixMenus(hmenu: &HMENU, game: GameType, f_color: bool, f_mark: bool, f_sound: SoundState) {
-    CheckEm(hmenu, MenuCommand::Begin, game == GameType::Begin);
-    CheckEm(hmenu, MenuCommand::Inter, game == GameType::Inter);
-    CheckEm(hmenu, MenuCommand::Expert, game == GameType::Expert);
-    CheckEm(hmenu, MenuCommand::Custom, game == GameType::Other);
-
-    CheckEm(hmenu, MenuCommand::Color, f_color);
-    CheckEm(hmenu, MenuCommand::Mark, f_mark);
-    CheckEm(hmenu, MenuCommand::Sound, f_sound == SoundState::On);
 }
 
 /// Struct containing the state shared by the Preferences dialog

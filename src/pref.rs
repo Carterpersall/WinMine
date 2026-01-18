@@ -16,40 +16,63 @@ pub const PREF_KEY_COUNT: usize = 18;
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum PrefKey {
+    /// Game difficulty preference.
     Difficulty = 0,
+    /// Number of mines on the board.
     Mines = 1,
+    /// Board height in cells.
     Height = 2,
+    /// Board width in cells.
     Width = 3,
+    /// X position of the main window.
     Xpos = 4,
+    /// Y position of the main window.
     Ypos = 5,
+    /// Whether sound effects are enabled.
     Sound = 6,
+    /// Whether right-click marking is enabled.
     Mark = 7,
+    /// Whether the menu bar is shown.
     Menu = 8,
+    /// Whether the game timer is enabled.
     Tick = 9,
+    /// Whether to use color assets.
     Color = 10,
+    /// Best time for Beginner level.
     Time1 = 11,
+    /// Player name for Beginner level.
     Name1 = 12,
+    /// Best time for Intermediate level.
     Time2 = 13,
+    /// Player name for Intermediate level.
     Name2 = 14,
+    /// Best time for Expert level.
     Time3 = 15,
+    /// Player name for Expert level.
     Name3 = 16,
+    /// Flag indicating if the user has played the game before.
     AlreadyPlayed = 17,
 }
 
-/// Sound effect preferences stored in the registry.
+/// Sound effect preferences.
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SoundState {
+    /// Sound effects are disabled.
     Off = 2,
+    /// Sound effects are enabled.
     On = 3,
 }
 
-/// Menu visibility preferences stored in the registry.
+/// Menu visibility preferences.
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum MenuMode {
+    /// Menu is always shown.
     AlwaysOn = 0,
+    /// Menu is always hidden.
     Hidden = 1,
+    /// TODO: Is this mode used anywhere? And if it is, what does it do?
     On = 2,
 }
 
@@ -69,9 +92,13 @@ pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum GameType {
+    /// Beginner level.
     Begin = 0,
+    /// Intermediate level.
     Inter = 1,
+    /// Expert level.
     Expert = 2,
+    /// Custom level.
     Other = 3,
 }
 
@@ -145,21 +172,19 @@ pub struct Pref {
 /// # Returns
 /// The retrieved integer value, clamped within the specified range
 pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
-    // Registry integer fetch with clamping equivalent to the legacy ReadInt helper.
-    if handle.ptr().is_null() {
-        return val_default;
-    }
-
+    // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return val_default;
     };
 
+    // Attempt to read the DWORD value from the registry, returning the default if it fails
     let value = match handle.RegQueryValueEx(Some(key_name)) {
         Ok(RegistryValue::Dword(val)) => val as i32,
         _ => return val_default,
     };
 
-    value.max(val_min).min(val_max)
+    // Clamp the value within the specified range and return it
+    value.clamp(val_min, val_max)
 }
 
 /// Read a string preference from the registry.
@@ -169,14 +194,12 @@ pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: i32, val_min: i32, val_
 /// # Returns
 /// The retrieved string, or the default name on failure
 fn ReadSz(handle: &HKEY, key: PrefKey) -> String {
-    if handle.ptr().is_null() {
-        return DEFAULT_PLAYER_NAME.to_string();
-    }
-
+    // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return DEFAULT_PLAYER_NAME.to_string();
     };
 
+    // Attempt to read the string value from the registry, returning the default if it fails
     match handle.RegQueryValueEx(Some(key_name)) {
         Ok(RegistryValue::Sz(value) | RegistryValue::ExpandSz(value)) => value,
         _ => DEFAULT_PLAYER_NAME.to_string(),
@@ -184,8 +207,11 @@ fn ReadSz(handle: &HKEY, key: PrefKey) -> String {
 }
 
 /// Read all user preferences from the registry into the shared PREF struct.
+///
+/// TODO: Should this return a Result to indicate failure? It currently just uses defaults on failure,
+/// which would cause the current settings to be overwritten on the next save.
 pub fn ReadPreferences() {
-    // Fetch persisted dimensions, timers, and feature flags from the WinMine registry hive.
+    // Create or open the preferences registry key with read access
     let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
@@ -201,14 +227,17 @@ pub fn ReadPreferences() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
+    // Get the height of the board
     let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
     BOARD_HEIGHT.store(height, Ordering::Relaxed);
     prefs.Height = height;
 
+    // Get the width of the board
     let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
     BOARD_WIDTH.store(width, Ordering::Relaxed);
     prefs.Width = width;
 
+    // Get the game difficulty
     let game_raw = ReadInt(
         &key_guard,
         PrefKey::Difficulty,
@@ -216,16 +245,20 @@ pub fn ReadPreferences() {
         GameType::Begin as i32,
         GameType::Expert as i32 + 1,
     );
+    // Convert the raw integer into the corresponding GameType enum variant
     prefs.wGameType = match game_raw {
         0 => GameType::Begin,
         1 => GameType::Inter,
         2 => GameType::Expert,
         _ => GameType::Other,
     };
+    // Get the number of mines on the board and the window position
     prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
+    // TODO: These values are either not saved properly or are ignored when the window is created
     prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024);
     prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024);
 
+    // Get sound, marking, ticking, and menu preferences
     let sound_raw = ReadInt(
         &key_guard,
         PrefKey::Sound,
@@ -255,6 +288,7 @@ pub fn ReadPreferences() {
         _ => MenuMode::AlwaysOn,
     };
 
+    // Get best times and player names for each difficulty level
     prefs.rgTime[GameType::Begin as usize] = ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999);
     prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
     prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
@@ -277,7 +311,7 @@ pub fn ReadPreferences() {
     };
     prefs.fColor = ReadInt(&key_guard, PrefKey::Color, default_color, 0, 1) != 0;
 
-    // If sound is enabled, verify that the system can actually play the resources.
+    // If sound is enabled, initialize the sound system
     if prefs.fSound == SoundState::On {
         prefs.fSound = FInitTunes();
     }
@@ -287,7 +321,7 @@ pub fn ReadPreferences() {
 /// # Returns
 /// Result indicating success or failure
 pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
-    // Persist the current PREF struct back to the registry, mirroring the Win32 version.
+    // Create or open the preferences registry key with write access
     let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
@@ -304,7 +338,7 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    // Persist the difficulty, board dimensions, and flags exactly as the original did.
+    // Save all preferences to the registry
     WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as i32)?;
     WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
     WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
@@ -349,14 +383,12 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
 /// # Returns
 /// Result indicating success or failure
 fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn core::error::Error>> {
-    // Simple DWORD setter used by both the registry migration and the dialog code.
-    if handle.ptr().is_null() {
-        return Err("Invalid registry handle".into());
-    }
+    // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return Err("Invalid preference key".into());
     };
 
+    // Store the DWORD value in the registry
     handle.RegSetValueEx(Some(key_name), RegistryValue::Dword(val as u32))?;
     Ok(())
 }
@@ -366,29 +398,33 @@ fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn core::e
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to write
 /// * `sz` - Pointer to zero-terminated UTF-16 string to store
+///
+/// TODO: Change the sz argument to be a &str or String instead of a pointer to a UTF-16 string.
 /// # Returns
 /// Result indicating success or failure
 fn WriteSz(handle: &HKEY, key: PrefKey, sz: *const u16) -> Result<(), Box<dyn core::error::Error>> {
-    // Stores zero-terminated UTF-16 values such as player names.
-    if handle.ptr().is_null() {
-        return Err("Invalid registry handle".into());
-    }
     if sz.is_null() {
         return Err("Invalid string pointer".into());
     }
+
+    // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return Err("Invalid preference key".into());
     };
 
+    // Convert the UTF-16 pointer to a Rust String
     let Some(value) = wide_ptr_to_string(sz) else {
         return Err("Invalid string data".into());
     };
 
+    // Store the string value in the registry
     handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(value))?;
     Ok(())
 }
 
 /// Retrieve the string literal for a given preference key.
+///
+/// TODO: Remove this function.
 /// # Arguments
 /// * `key` - Preference key to look up
 /// # Returns

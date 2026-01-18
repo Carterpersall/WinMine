@@ -20,9 +20,9 @@ use crate::pref::{
 };
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::sound::FInitTunes;
-use crate::winmine::{AdjustWindow, FixMenus, MenuCommand};
+use crate::winmine::{AdjustWindow, MenuCommand};
 
-/// Multiplier used by the linear congruential generator that replicates WinMine's RNG.
+/// Multiplier used by the linear congruential generator that produces the app's RNG values.
 const RNG_MULTIPLIER: u32 = 1_103_515_245;
 /// Increment used by the linear congruential generator.
 const RNG_INCREMENT: u32 = 12_345;
@@ -51,18 +51,36 @@ const SZ_INI_FILE: &str = "entpack.ini";
 /// # Arguments
 /// * `seed` - The seed value to initialize the RNG with. If zero, a default seed is used.
 fn seed_rng(seed: u32) {
+    // Ensure the RNG seed is never zero
     let value = if seed == 0 { RNG_DEFAULT_SEED } else { seed };
+    // Initialize the shared RNG state to the given seed value
     RNG_STATE.store(value, Ordering::Relaxed);
 }
 
 /// Generate the next pseudo-random number using a linear congruential generator.
 /// # Returns
 /// The next pseudo-random number.
+/// # Notes
+/// A linear congruential generator (LCG) is a simple algorithm for generating a sequence of pseudo-random numbers.
+///
+/// The formula used is:
+///
+/// X<sub>{n+1}</sub> = (a * X<sub>n</sub> + c) mod m
+///
+/// Where:
+/// - X is the sequence of pseudo-random values
+/// - a is the multiplier (`RNG_MULTIPLIER`)
+/// - c is the increment (`RNG_INCREMENT`)
+/// - m is the modulus (2<sup>32</sup> for `u32` arithmetic)
+///
+/// This formula is the same used in Windows' `rand()` function.
 ///
 /// TODO: Change return type to u32 since the current RNG value is stored as a u32
+/// TODO: Consider using using Rust's built-in RNG facilities
 fn next_rand() -> i32 {
     let mut current = RNG_STATE.load(Ordering::Relaxed);
     loop {
+        // Compute the next RNG state using LCG formula
         let next = current
             .wrapping_mul(RNG_MULTIPLIER)
             .wrapping_add(RNG_INCREMENT);
@@ -87,15 +105,11 @@ pub fn Rnd(rnd_max: i32) -> i32 {
 }
 
 /// Display an error message box for the specified error ID.
+///
+/// TODO: Centralize error handling
 /// # Arguments
 /// * `id_err` - The error ID used for selecting the error message.
 pub fn ReportErr(err: &str) {
-    /* let msg = match id_err {
-        4 => ERR_TIMER,
-        5 => ERR_OUT_OF_MEMORY,
-        _ => &ERR_UNKNOWN_FMT.replace("%d", &id_err.to_string()),
-    }; */
-
     let _ = HWND::NULL.MessageBox(err, ERR_TITLE, MB::ICONHAND);
 }
 
@@ -108,79 +122,79 @@ pub fn ReportErr(err: &str) {
 /// # Returns
 /// The clamped integer preference value.
 fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
+    // Retrieve the key name for the preference
     let key = match pref_key_literal(pref) {
         Some(name) => WString::from_str(name),
         None => return val_default,
     };
 
     let ini_path = WString::from_str(SZ_INI_FILE);
+    // Read the integer value from the preference storage location
+    // On any modern system, this will read from the registry instead of a .ini file
     let value = unsafe {
         GetPrivateProfileIntW(
             GAME_NAME.encode_utf16().collect::<Vec<u16>>().as_ptr(),
             key.as_ptr(),
             val_default,
             ini_path.as_ptr(),
-        ) as i32
+        )
     };
     value.clamp(val_min, val_max)
 }
 
-/// Read a string preference from the legacy .ini file into the provided buffer.
+/// Read a string preference from the registry into the provided buffer.
 /// # Arguments
 /// * `pref` - The preference key to read.
 /// * `sz_ret` - Pointer to the buffer that receives the string (UTF-16).
-fn ReadIniSz(pref: PrefKey, sz_ret: *mut u16) {
-    // Grab the string from entpack.ini or fall back to the default Hall of Fame name.
-    if sz_ret.is_null() {
+fn ReadIniSz(pref: PrefKey, sz_ret: &mut [u16; CCH_NAME_MAX]) {
+    // Retrieve the key name for the preference
+    let Some(key) = pref_key_literal(pref) else {
         return;
-    }
-
-    let key = match pref_key_literal(pref) {
-        Some(name) => WString::from_str(name),
-        None => return,
     };
 
-    let value = match w::GetPrivateProfileString(GAME_NAME, &key.to_string(), SZ_INI_FILE) {
+    // Read the string value from the registry
+    let value = match w::GetPrivateProfileString(GAME_NAME, key, SZ_INI_FILE) {
         Ok(Some(text)) => text,
         _ => DEFAULT_PLAYER_NAME.to_string(),
     };
 
-    let slice = unsafe { core::slice::from_raw_parts_mut(sz_ret, CCH_NAME_MAX) };
+    // Copy the string into the provided buffer, ensuring null-termination
+    // TODO: Is null-termination necessary here?
     for (i, code_unit) in value
         .encode_utf16()
         .chain(Some(0))
         .take(CCH_NAME_MAX)
         .enumerate()
     {
-        slice[i] = code_unit;
+        sz_ret[i] = code_unit;
     }
 }
 
 /// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
 pub fn InitConst() {
+    // Seed the RNG using the low 16 bits of the current tick count
     let ticks = (GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
 
+    // Get the system metrics for caption height, menu height, and border width
     CYCAPTION.store(GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
     CYMENU.store(GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
     CXBORDER.store(GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
-    let already_played = if let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
+    // Check if the user has already played the game to avoid overwriting existing preferences
+    if let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         REG_OPTION::default(),
         KEY::READ,
         None,
-    ) {
-        ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0
-    } else {
-        false
+    ) && ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0
+    {
+        return;
     };
 
-    if already_played {
-        return;
-    }
-
+    // If the user has not played before, migrate preferences from the .ini file to the registry
+    // TODO: Any non 16-bit Windows program should use the registry, so remove .ini support entirely
     let mut prefs = match preferences_mutex().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -233,9 +247,9 @@ pub fn InitConst() {
     prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999);
     prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999);
 
-    ReadIniSz(PrefKey::Name1, prefs.szBegin.as_mut_ptr());
-    ReadIniSz(PrefKey::Name2, prefs.szInter.as_mut_ptr());
-    ReadIniSz(PrefKey::Name3, prefs.szExpert.as_mut_ptr());
+    ReadIniSz(PrefKey::Name1, &mut prefs.szBegin);
+    ReadIniSz(PrefKey::Name2, &mut prefs.szInter);
+    ReadIniSz(PrefKey::Name3, &mut prefs.szExpert);
 
     let desktop = HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
@@ -277,25 +291,33 @@ pub fn CheckEm(hmenu: &HMENU, idm: MenuCommand, f_check: bool) {
 /// * `f_active` - The desired menu mode.
 pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
     // Persist the menu visibility preference, refresh accelerator state, and resize the window.
-    let (menu_on, menu_checks);
-    {
+    let (menu_on, game_type, color, mark, sound) = {
         let mut prefs = match preferences_mutex().lock() {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
         prefs.fMenu = f_active;
-        menu_on = !matches!(prefs.fMenu, MenuMode::Hidden);
-        menu_checks = (prefs.wGameType, prefs.fColor, prefs.fMark, prefs.fSound);
-    }
+        (
+            !matches!(prefs.fMenu, MenuMode::Hidden),
+            prefs.wGameType,
+            prefs.fColor,
+            prefs.fMark,
+            prefs.fSound,
+        )
+    };
 
-    FixMenus(
-        &hwnd.GetMenu().unwrap_or(HMENU::NULL),
-        menu_checks.0,
-        menu_checks.1,
-        menu_checks.2,
-        menu_checks.3,
-    );
+    // Update the menu checkmarks to reflect the current preferences
+    let hmenu = hwnd.GetMenu().unwrap_or(HMENU::NULL);
+    CheckEm(&hmenu, MenuCommand::Begin, game_type == GameType::Begin);
+    CheckEm(&hmenu, MenuCommand::Inter, game_type == GameType::Inter);
+    CheckEm(&hmenu, MenuCommand::Expert, game_type == GameType::Expert);
+    CheckEm(&hmenu, MenuCommand::Custom, game_type == GameType::Other);
 
+    CheckEm(&hmenu, MenuCommand::Color, color);
+    CheckEm(&hmenu, MenuCommand::Mark, mark);
+    CheckEm(&hmenu, MenuCommand::Sound, sound == SoundState::On);
+
+    // Show or hide the menu bar as set in preferences
     let menu = hwnd.GetMenu().unwrap_or(HMENU::NULL);
     let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
     let _ = hwnd.SetMenu(menu_arg);
@@ -303,6 +325,8 @@ pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
 }
 
 /// Display the About dialog box with version and credit information.
+///
+/// TODO: Remove this function
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 pub fn DoAbout(hwnd: &HWND) {
@@ -316,6 +340,8 @@ pub fn DoAbout(hwnd: &HWND) {
 }
 
 /// Display the Help dialog for the given command.
+///
+/// TODO: Refactor this function to only use the help dialog built into the resource file
 /// # Arguments
 /// * `w_command` - The help command (e.g., HELPONHELP).
 /// * `l_param` - Additional parameter for the help command.

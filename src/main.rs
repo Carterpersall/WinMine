@@ -33,7 +33,9 @@ use crate::winmine::run_winmine;
 use winsafe::{HINSTANCE, co::SW, prelude::Handle as _};
 
 fn main() {
+    // Get the module handle for the current process
     let h_instance_handle = HINSTANCE::GetModuleHandle(None).unwrap_or(HINSTANCE::NULL);
-    let exit_code = run_winmine(&h_instance_handle, SW::SHOWNORMAL.raw());
-    std::process::exit(exit_code);
+    // Run the main WinMine application logic
+    // TODO: Handle the return value appropriately
+    let _ = run_winmine(&h_instance_handle, SW::SHOWNORMAL.raw());
 }

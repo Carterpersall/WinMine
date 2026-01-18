@@ -16,17 +16,30 @@ use crate::util::{ReportErr, Rnd};
 use crate::winmine::{AdjustWindow, NEW_RECORD_DLG};
 
 /// Encoded board values used to track each tile state.
+///
+/// These values are used to get the visual representation of each cell, in reverse order.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum BlockCell {
+    /// A blank cell with no adjacent bombs.
     Blank = 0,
+    /// The depressed version of the guess (?) mark.
     GuessDown = 9,
+    /// A cell containing a bomb that has been revealed.
     BombDown = 10,
+    /// An incorrectly marked cell.
     Wrong = 11,
+    /// A detonated bomb cell.
     Explode = 12,
+    /// The raised version of the guess (?) mark.
     GuessUp = 13,
+    /// A flagged cell.
     BombUp = 14,
+    /// A blank cell in the raised state.
     BlankUp = 15,
+    /// A border cell surrounding the playable area.
+    ///
+    /// TODO: I don't see this in the blocks.bmp file; is it actually used?
     Border = 16,
 }
 
@@ -54,7 +67,9 @@ const I_STEP_MAX: usize = 100;
 /// Timer identifier used for the per-second gameplay timer.
 pub const ID_TIMER: usize = 1;
 
-/// Window-adjustment flags mirrored from the Win16 sources.
+/// Window-adjustment flags.
+///
+/// TODO: Are these flags needed?
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum AdjustFlag {
@@ -157,6 +172,7 @@ static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 /// # Returns
 /// An option containing the board index if valid, or None if out of range.
 const fn board_index(x: i32, y: i32) -> Option<usize> {
+    // Calculate the offset in the packed board array.
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
         return None;
@@ -168,6 +184,7 @@ const fn board_index(x: i32, y: i32) -> Option<usize> {
 /// Retrieve the value of a block at the specified coordinates.
 ///
 /// TODO: Return an enum instead of an u8
+/// TODO: Does this function need to exist?
 /// # Arguments
 /// * `x` - The X coordinate.
 /// * `y` - The Y coordinate.
@@ -619,6 +636,8 @@ fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
 /// * `y` - The Y coordinate of the square.
 pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
     // Cycle through blank -> flag -> question mark states depending on preferences.
+
+    // Return if the square is out of range or already visited.
     if !f_in_range(x, y) || is_visit(x, y) {
         return;
     }
