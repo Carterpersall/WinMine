@@ -173,14 +173,14 @@ enum HelpContextId {
 }
 
 /// Mines, height, and width tuples for the preset difficulty levels.
-const LEVEL_DATA: [[i32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
+const LEVEL_DATA: [[u32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
 
 /// Returns the preset data for a given game type, or None for custom games.
 /// # Arguments
 /// * `game`: The game type to get preset data for.
 /// # Returns
 /// The preset data as (mines, height, width), or None for a custom game.
-const fn preset_data(game: GameType) -> Option<[i32; 3]> {
+const fn preset_data(game: GameType) -> Option<[u32; 3]> {
     match game {
         GameType::Begin => Some(LEVEL_DATA[0]),
         GameType::Inter => Some(LEVEL_DATA[1]),
@@ -431,9 +431,9 @@ impl WinMineMainWindow {
                     };
                     if let Some(data) = preset_data(game) {
                         prefs.wGameType = game;
-                        prefs.Mines = data[0];
-                        prefs.Height = data[1];
-                        prefs.Width = data[2];
+                        prefs.Mines = data[0] as i32;
+                        prefs.Height = data[1] as i32;
+                        prefs.Width = data[2] as i32;
                     }
                     prefs.fMenu
                 };
@@ -1375,9 +1375,9 @@ impl PrefDialog {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                prefs.Height = height;
-                prefs.Width = width;
-                prefs.Mines = mines;
+                prefs.Height = height as i32;
+                prefs.Width = width as i32;
+                prefs.Mines = mines as i32;
 
                 // Close the dialog
                 let _ = dlg.hwnd().EndDialog(1);
@@ -1849,7 +1849,7 @@ const fn command_id(w_param: usize) -> u16 {
 /// * `id` - The control ID for the time text.
 /// * `time` - The time value to display.
 /// * `name` - The name associated with the time.
-fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
+fn set_dtext(h_dlg: &HWND, id: i32, time: u32, name: &[u16; CCH_NAME_MAX]) {
     let mut buffer = [0u16; CCH_NAME_MAX];
     // TODO: Make this better
     let text = TIME_FORMAT.replace("%d", &time.to_string());
@@ -1879,9 +1879,9 @@ fn set_dtext(h_dlg: &HWND, id: i32, time: i32, name: &[u16; CCH_NAME_MAX]) {
 /// * `name_expert` - The name associated with the expert level best time.
 fn reset_best_dialog(
     h_dlg: &HWND,
-    time_begin: i32,
-    time_inter: i32,
-    time_expert: i32,
+    time_begin: u32,
+    time_inter: u32,
+    time_expert: u32,
     name_begin: [u16; CCH_NAME_MAX],
     name_inter: [u16; CCH_NAME_MAX],
     name_expert: [u16; CCH_NAME_MAX],

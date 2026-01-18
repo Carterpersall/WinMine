@@ -338,7 +338,7 @@ pub fn display_grid(hwnd: &HWND) {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate to draw the LED digit.
 /// * `i_led` - The index of the LED digit to draw.
-fn DrawLed(hdc: &HDC, x: i32, i_led: i32) {
+fn DrawLed(hdc: &HDC, x: i32, i_led: u32) {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -377,12 +377,12 @@ fn DrawBombCount(hdc: &HDC) {
         }
     }
 
-    // Calculate the three LED digits to display for the bomb counter.
     let bombs = BOMBS_LEFT.load(Relaxed);
-    let (i_led, c_bombs) = if bombs < 0 {
-        (11, (-bombs) % 100)
+    // Determine the third digit of the bomb count
+    let (i_led, c_bombs): (u32, u32) = if bombs < 0 {
+        (11, ((-bombs) % 100) as u32)
     } else {
-        (bombs / 100, bombs % 100)
+        ((bombs / 100) as u32, (bombs % 100) as u32)
     };
 
     // Draw each of the three digits in sequence.
@@ -1127,8 +1127,8 @@ const fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
 /// Retrieve the cached compatible DC for the block at the given board coordinates.
 /// # Arguments
 /// * `state` - Reference to the current `GrafixState`
-/// * `x` - X coordinate on the board (1-based)
-/// * `y` - Y coordinate on the board (1-based)
+/// * `x` - X coordinate on the board
+/// * `y` - Y coordinate on the board
 /// # Returns
 /// Optionally, a reference to the compatible DC for the block sprite
 fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
@@ -1141,13 +1141,13 @@ fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
 }
 
 /// Determine the sprite index for the block at the given board coordinates.
-///
-/// TODO: Why are the x and y parameters i32 instead of u32?
 /// # Arguments
-/// * `x` - X coordinate on the board (1-based)
-/// * `y` - Y coordinate on the board (1-based)
+/// * `x` - X coordinate on the board
+/// * `y` - Y coordinate on the board
 /// # Returns
 /// The sprite index for the block at the specified coordinates
+/// # Notes
+/// The x and y values are stored as `i32` due to much of the Win32 API using `i32` for coordinates. (`POINT`, `SIZE`, `RECT`, etc.)
 fn block_sprite_index(x: i32, y: i32) -> usize {
     // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;

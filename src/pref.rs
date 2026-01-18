@@ -77,13 +77,13 @@ pub enum MenuMode {
 }
 
 /// Minimum board height allowed by the game.
-pub const MINHEIGHT: i32 = 9;
+pub const MINHEIGHT: u32 = 9;
 /// Default board height used on first run.
-pub const DEFHEIGHT: i32 = 9;
+pub const DEFHEIGHT: u32 = 9;
 /// Minimum board width allowed by the game.
-pub const MINWIDTH: i32 = 9;
+pub const MINWIDTH: u32 = 9;
 /// Default board width used on first run.
-pub const DEFWIDTH: i32 = 9;
+pub const DEFWIDTH: u32 = 9;
 
 /// Registry key path used to persist preferences.
 pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
@@ -151,7 +151,7 @@ pub struct Pref {
     /// Whether to use color assets.
     pub fColor: bool,
     /// Best times for each difficulty level.
-    pub rgTime: [i32; 3],
+    pub rgTime: [u32; 3],
     /// Player name for Beginner level.
     pub szBegin: [u16; CCH_NAME_MAX],
     /// Player name for Intermediate level.
@@ -161,8 +161,6 @@ pub struct Pref {
 }
 
 /// Read an integer preference from the registry with clamping.
-///
-/// TODO: Change values to use u32, as that is the value of registry DWORDs.
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to read
@@ -171,7 +169,9 @@ pub struct Pref {
 /// * `val_max` - Maximum allowed value
 /// # Returns
 /// The retrieved integer value, clamped within the specified range
-pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
+///
+/// TODO: Change return type to option or result so this function does not need to handle defaults.
+pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val_max: u32) -> u32 {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return val_default;
@@ -179,7 +179,7 @@ pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: i32, val_min: i32, val_
 
     // Attempt to read the DWORD value from the registry, returning the default if it fails
     let value = match handle.RegQueryValueEx(Some(key_name)) {
-        Ok(RegistryValue::Dword(val)) => val as i32,
+        Ok(RegistryValue::Dword(val)) => val,
         _ => return val_default,
     };
 
@@ -228,12 +228,12 @@ pub fn ReadPreferences() {
     };
 
     // Get the height of the board
-    let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
+    let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25) as i32;
     BOARD_HEIGHT.store(height, Ordering::Relaxed);
     prefs.Height = height;
 
     // Get the width of the board
-    let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
+    let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30) as i32;
     BOARD_WIDTH.store(width, Ordering::Relaxed);
     prefs.Width = width;
 
@@ -241,9 +241,9 @@ pub fn ReadPreferences() {
     let game_raw = ReadInt(
         &key_guard,
         PrefKey::Difficulty,
-        GameType::Begin as i32,
-        GameType::Begin as i32,
-        GameType::Expert as i32 + 1,
+        GameType::Begin as u32,
+        GameType::Begin as u32,
+        GameType::Other as u32,
     );
     // Convert the raw integer into the corresponding GameType enum variant
     prefs.wGameType = match game_raw {
@@ -253,20 +253,20 @@ pub fn ReadPreferences() {
         _ => GameType::Other,
     };
     // Get the number of mines on the board and the window position
-    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
+    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999) as i32;
     // TODO: These values are either not saved properly or are ignored when the window is created
-    prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024);
-    prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024);
+    prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
+    prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;
 
     // Get sound, marking, ticking, and menu preferences
     let sound_raw = ReadInt(
         &key_guard,
         PrefKey::Sound,
-        SoundState::Off as i32,
-        SoundState::Off as i32,
-        SoundState::On as i32,
+        SoundState::Off as u32,
+        SoundState::Off as u32,
+        SoundState::On as u32,
     );
-    prefs.fSound = if sound_raw == SoundState::On as i32 {
+    prefs.fSound = if sound_raw == SoundState::On as u32 {
         SoundState::On
     } else {
         SoundState::Off
@@ -276,9 +276,9 @@ pub fn ReadPreferences() {
     let menu_raw = ReadInt(
         &key_guard,
         PrefKey::Menu,
-        MenuMode::AlwaysOn as i32,
-        MenuMode::AlwaysOn as i32,
-        MenuMode::On as i32,
+        MenuMode::AlwaysOn as u32,
+        MenuMode::AlwaysOn as u32,
+        MenuMode::On as u32,
     );
     prefs.fMenu = match menu_raw {
         0 => MenuMode::AlwaysOn,
@@ -339,17 +339,17 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
     };
 
     // Save all preferences to the registry
-    WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as i32)?;
-    WriteInt(&key_guard, PrefKey::Height, prefs.Height)?;
-    WriteInt(&key_guard, PrefKey::Width, prefs.Width)?;
-    WriteInt(&key_guard, PrefKey::Mines, prefs.Mines)?;
-    WriteInt(&key_guard, PrefKey::Mark, i32::from(prefs.fMark))?;
+    WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as u32)?;
+    WriteInt(&key_guard, PrefKey::Height, prefs.Height as u32)?;
+    WriteInt(&key_guard, PrefKey::Width, prefs.Width as u32)?;
+    WriteInt(&key_guard, PrefKey::Mines, prefs.Mines as u32)?;
+    WriteInt(&key_guard, PrefKey::Mark, u32::from(prefs.fMark))?;
     WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
-    WriteInt(&key_guard, PrefKey::Color, i32::from(prefs.fColor))?;
-    WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as i32)?;
-    WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow)?;
-    WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow)?;
+    WriteInt(&key_guard, PrefKey::Color, u32::from(prefs.fColor))?;
+    WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as u32)?;
+    WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow as u32)?;
+    WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow as u32)?;
 
     WriteInt(
         &key_guard,
@@ -374,22 +374,20 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
 }
 
 /// Write an integer preference to the registry.
-///
-/// TODO: Change val to u32 to match registry DWORDs.
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to write
 /// * `val` - Integer value to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteInt(handle: &HKEY, key: PrefKey, val: i32) -> Result<(), Box<dyn core::error::Error>> {
+fn WriteInt(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::error::Error>> {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return Err("Invalid preference key".into());
     };
 
     // Store the DWORD value in the registry
-    handle.RegSetValueEx(Some(key_name), RegistryValue::Dword(val as u32))?;
+    handle.RegSetValueEx(Some(key_name), RegistryValue::Dword(val))?;
     Ok(())
 }
 

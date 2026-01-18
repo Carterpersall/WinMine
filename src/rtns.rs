@@ -1,5 +1,5 @@
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::co::WM;
@@ -121,7 +121,7 @@ pub static BTN_FACE_STATE: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
 pub static BOMBS_LEFT: AtomicI32 = AtomicI32::new(0);
 
 /// Current elapsed time in seconds
-pub static SECS_ELAPSED: AtomicI32 = AtomicI32::new(0);
+pub static SECS_ELAPSED: AtomicU32 = AtomicU32::new(0);
 
 /// Number of visited boxes (revealed non-bomb cells)
 pub static C_BOX_VISIT: AtomicI32 = AtomicI32::new(0);

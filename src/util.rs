@@ -200,8 +200,8 @@ pub fn InitConst() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    prefs.Height = ReadIniInt(PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25);
-    prefs.Width = ReadIniInt(PrefKey::Width, MINWIDTH, DEFWIDTH, 30);
+    prefs.Height = ReadIniInt(PrefKey::Height, MINHEIGHT as i32, DEFHEIGHT as i32, 25);
+    prefs.Width = ReadIniInt(PrefKey::Width, MINWIDTH as i32, DEFWIDTH as i32, 30);
     let game_raw = ReadIniInt(
         PrefKey::Difficulty,
         GameType::Begin as i32,
@@ -243,9 +243,9 @@ pub fn InitConst() {
         _ => MenuMode::AlwaysOn,
     };
 
-    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(PrefKey::Time1, 999, 0, 999);
-    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999);
-    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999);
+    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(PrefKey::Time1, 999, 0, 999) as u32;
+    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999) as u32;
+    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999) as u32;
 
     ReadIniSz(PrefKey::Name1, &mut prefs.szBegin);
     ReadIniSz(PrefKey::Name2, &mut prefs.szInter);
@@ -387,8 +387,6 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 }
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
-///
-/// TODO: Change types to u32 since `GetDlgItemInt` returns u32
 /// # Arguments
 /// * `h_dlg` - Handle to the dialog window.
 /// * `dlg_id` - The dialog item ID.
@@ -396,8 +394,8 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 /// * `num_hi` - Maximum allowed value.
 /// # Returns
 /// The clamped integer value from the dialog item.
-pub fn GetDlgInt(h_dlg: &HWND, dlg_id: i32, num_lo: i32, num_hi: i32) -> i32 {
+pub fn GetDlgInt(h_dlg: &HWND, dlg_id: i32, num_lo: u32, num_hi: u32) -> u32 {
     let mut success = 0i32;
-    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) } as i32;
+    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) };
     value.clamp(num_lo, num_hi)
 }
