@@ -131,7 +131,11 @@ pub struct Pref {
     /// Current game difficulty (Beginner, Intermediate, Expert, Custom).
     pub wGameType: GameType,
     /// Number of mines on the board.
-    pub Mines: u32,
+    ///
+    /// The maximum number of bombs is `min(999, (height - 1) * (width - 1))`.
+    ///
+    /// Note: The actual maximum number of bombs is `(max_height - 1) * (max_width - 1) = 667`.
+    pub Mines: i16,
     /// Board height in cells.
     pub Height: i32,
     /// Board width in cells.
@@ -151,7 +155,7 @@ pub struct Pref {
     /// Whether to use color assets.
     pub fColor: bool,
     /// Best times for each difficulty level.
-    pub rgTime: [u32; 3],
+    pub rgTime: [u16; 3],
     /// Player name for Beginner level.
     pub szBegin: String,
     /// Player name for Intermediate level.
@@ -253,7 +257,7 @@ pub fn ReadPreferences() {
         _ => GameType::Other,
     };
     // Get the number of mines on the board and the window position
-    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999);
+    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999) as i16;
     // TODO: These values are either not saved properly or are ignored when the window is created
     prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
     prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;
@@ -289,9 +293,12 @@ pub fn ReadPreferences() {
     };
 
     // Get best times and player names for each difficulty level
-    prefs.rgTime[GameType::Begin as usize] = ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999);
-    prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
-    prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
+    prefs.rgTime[GameType::Begin as usize] =
+        ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999) as u16;
+    prefs.rgTime[GameType::Inter as usize] =
+        ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999) as u16;
+    prefs.rgTime[GameType::Expert as usize] =
+        ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999) as u16;
 
     prefs.szBegin = ReadSz(&key_guard, PrefKey::Name1);
     prefs.szInter = ReadSz(&key_guard, PrefKey::Name2);
@@ -354,17 +361,17 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
     WriteInt(
         &key_guard,
         PrefKey::Time1,
-        prefs.rgTime[GameType::Begin as usize],
+        prefs.rgTime[GameType::Begin as usize] as u32,
     )?;
     WriteInt(
         &key_guard,
         PrefKey::Time2,
-        prefs.rgTime[GameType::Inter as usize],
+        prefs.rgTime[GameType::Inter as usize] as u32,
     )?;
     WriteInt(
         &key_guard,
         PrefKey::Time3,
-        prefs.rgTime[GameType::Expert as usize],
+        prefs.rgTime[GameType::Expert as usize] as u32,
     )?;
 
     WriteSz(&key_guard, PrefKey::Name1, &prefs.szBegin)?;

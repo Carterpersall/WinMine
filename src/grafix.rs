@@ -337,18 +337,19 @@ pub fn display_grid(hwnd: &HWND) {
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate to draw the LED digit.
-/// * `i_led` - The index of the LED digit to draw.
-fn DrawLed(hdc: &HDC, x: i32, i_led: u32) {
+/// * `led_index` - The index of the LED digit to draw.
+///
+/// TODO: Could `led_index` be an enum?
+fn DrawLed(hdc: &HDC, x: i32, led_index: u16) {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let idx = i_led as usize;
-    if idx >= I_LED_MAX {
+    if led_index >= I_LED_MAX as u16 {
         return;
     }
-    let Some(src) = state.mem_led_dc[idx].as_ref() else {
+    let Some(src) = state.mem_led_dc[led_index as usize].as_ref() else {
         return;
     };
 
@@ -377,13 +378,13 @@ fn DrawBombCount(hdc: &HDC) {
         }
     }
 
-    // Draw each of the three digits in sequence.
+    // Draw each of the three digits in sequence
     let bombs = BOMBS_LEFT.load(Relaxed);
     let x0 = scale_dpi(DX_LEFT_BOMB_96);
     let dx = scale_dpi(DX_LED_96);
-    DrawLed(hdc, x0, bombs / 100);
-    DrawLed(hdc, x0 + dx, (bombs % 100) / 10);
-    DrawLed(hdc, x0 + dx * 2, bombs % 10);
+    DrawLed(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100));
+    DrawLed(hdc, x0 + dx, (bombs.unsigned_abs() % 100) / 10);
+    DrawLed(hdc, x0 + dx * 2, bombs.unsigned_abs() % 10);
 
     // Restore the original layout if it was mirrored
     if mirrored {

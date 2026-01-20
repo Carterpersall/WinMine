@@ -1,5 +1,5 @@
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU32, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI16, AtomicI32, AtomicU8, AtomicU16, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::co::WM;
@@ -108,6 +108,8 @@ pub fn preferences_mutex() -> &'static Mutex<Pref> {
     })
 }
 
+// TODO: Migrate these globals into a GameState struct
+
 /// Current board width in cells (excluding border)
 pub static BOARD_WIDTH: AtomicI32 = AtomicI32::new(0);
 
@@ -118,13 +120,19 @@ pub static BOARD_HEIGHT: AtomicI32 = AtomicI32::new(0);
 pub static BTN_FACE_STATE: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
 
 /// Current number of bombs left to mark
-pub static BOMBS_LEFT: AtomicU32 = AtomicU32::new(0);
+///
+/// Note: The bomb count can go negative if the user marks more squares than there are bombs.
+pub static BOMBS_LEFT: AtomicI16 = AtomicI16::new(0);
 
-/// Current elapsed time in seconds
-pub static SECS_ELAPSED: AtomicU32 = AtomicU32::new(0);
+/// Current elapsed time in seconds.
+///
+/// The timer should never exceed 999 seconds, so u16 is sufficient.
+pub static SECS_ELAPSED: AtomicU16 = AtomicU16::new(0);
 
-/// Number of visited boxes (revealed non-bomb cells)
-pub static C_BOX_VISIT: AtomicU32 = AtomicU32::new(0);
+/// Number of visited boxes (revealed non-bomb cells).
+///
+/// Note: Maximum value is 2<sup>16</sup>, or a 256 x 256 board with no bombs.
+pub static C_BOX_VISIT: AtomicU16 = AtomicU16::new(0);
 
 /// Current cursor X position in board coordinates
 pub static CURSOR_X_POS: AtomicI32 = AtomicI32::new(-1);
@@ -151,10 +159,12 @@ pub fn board_mutex() -> MutexGuard<'static, [i8; C_BLK_MAX]> {
 }
 
 /// Initial number of bombs at the start of the game
-static CBOMB_START: AtomicU32 = AtomicU32::new(0);
+///
+/// TODO: Migrate these globals into a GameState struct
+static CBOMB_START: AtomicI16 = AtomicI16::new(0);
 
 /// Total number of visited boxes needed to win
-static CBOX_VISIT_MAC: AtomicU32 = AtomicU32::new(0);
+static CBOX_VISIT_MAC: AtomicU16 = AtomicU16::new(0);
 
 /// Indicates whether the game timer is running
 static F_TIMER: AtomicBool = AtomicBool::new(false);
@@ -706,12 +716,8 @@ fn pop_box_up(x: i32, y: i32) {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `delta` - The change in bomb count (positive or negative).
-fn update_bomb_count_internal(hwnd: &HWND, delta: i32) {
-    if delta < 0 {
-        BOMBS_LEFT.fetch_sub((-delta) as u32, Ordering::Relaxed);
-    } else {
-        BOMBS_LEFT.fetch_add(delta as u32, Ordering::Relaxed);
-    }
+fn update_bomb_count_internal(hwnd: &HWND, delta: i16) {
+    BOMBS_LEFT.fetch_add(delta, Ordering::Relaxed);
     display_bomb_count(hwnd);
 }
 
@@ -810,7 +816,10 @@ pub fn StartGame(hwnd: &HWND) {
     SECS_ELAPSED.store(0, Ordering::Relaxed);
     BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
     C_BOX_VISIT.store(0, Ordering::Relaxed);
-    CBOX_VISIT_MAC.store((width * height) as u32 - total_bombs, Ordering::Relaxed);
+    CBOX_VISIT_MAC.store(
+        (width * height) as u16 - total_bombs as u16,
+        Ordering::Relaxed,
+    );
     GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
 
     display_bomb_count(hwnd);

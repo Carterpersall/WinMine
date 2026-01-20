@@ -204,7 +204,7 @@ pub fn InitConst() {
         2 => GameType::Expert,
         _ => GameType::Other,
     };
-    prefs.Mines = ReadIniInt(PrefKey::Mines, 10, 10, 999) as u32;
+    prefs.Mines = ReadIniInt(PrefKey::Mines, 10, 10, 999) as i16;
     prefs.xWindow = ReadIniInt(PrefKey::Xpos, 80, 0, 1024);
     prefs.yWindow = ReadIniInt(PrefKey::Ypos, 80, 0, 1024);
 
@@ -233,9 +233,9 @@ pub fn InitConst() {
         _ => MenuMode::AlwaysOn,
     };
 
-    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(PrefKey::Time1, 999, 0, 999) as u32;
-    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999) as u32;
-    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999) as u32;
+    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(PrefKey::Time1, 999, 0, 999) as u16;
+    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999) as u16;
+    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999) as u16;
 
     prefs.szBegin = ReadIniSz(PrefKey::Name1);
     prefs.szInter = ReadIniSz(PrefKey::Name2);

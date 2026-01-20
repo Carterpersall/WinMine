@@ -173,14 +173,14 @@ enum HelpContextId {
 }
 
 /// Mines, height, and width tuples for the preset difficulty levels.
-const LEVEL_DATA: [[u32; 3]; 3] = [[10, MINHEIGHT, MINWIDTH], [40, 16, 16], [99, 16, 30]];
+const LEVEL_DATA: [(i16, u32, u32); 3] = [(10, MINHEIGHT, MINWIDTH), (40, 16, 16), (99, 16, 30)];
 
 /// Returns the preset data for a given game type, or None for custom games.
 /// # Arguments
 /// * `game`: The game type to get preset data for.
 /// # Returns
 /// The preset data as (mines, height, width), or None for a custom game.
-const fn preset_data(game: GameType) -> Option<[u32; 3]> {
+const fn preset_data(game: GameType) -> Option<(i16, u32, u32)> {
     match game {
         GameType::Begin => Some(LEVEL_DATA[0]),
         GameType::Inter => Some(LEVEL_DATA[1]),
@@ -431,9 +431,9 @@ impl WinMineMainWindow {
                     };
                     if let Some(data) = preset_data(game) {
                         prefs.wGameType = game;
-                        prefs.Mines = data[0];
-                        prefs.Height = data[1] as i32;
-                        prefs.Width = data[2] as i32;
+                        prefs.Mines = data.0;
+                        prefs.Height = data.1 as i32;
+                        prefs.Width = data.2 as i32;
                     }
                     prefs.fMenu
                 };
@@ -1354,7 +1354,7 @@ impl PrefDialog {
                     let hdlg_raw = dlg.hwnd().ptr();
                     SetDlgItemInt(hdlg_raw, ControlId::EditHeight as i32, height as u32, 0);
                     SetDlgItemInt(hdlg_raw, ControlId::EditWidth as i32, width as u32, 0);
-                    SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines, 0);
+                    SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines as u32, 0);
                 }
 
                 Ok(true)
@@ -1377,7 +1377,7 @@ impl PrefDialog {
                 };
                 prefs.Height = height as i32;
                 prefs.Width = width as i32;
-                prefs.Mines = mines;
+                prefs.Mines = mines as i16;
 
                 // Close the dialog
                 let _ = dlg.hwnd().EndDialog(1);
@@ -1839,7 +1839,7 @@ const fn command_id(w_param: usize) -> u16 {
 /// * `id` - The control ID for the time text.
 /// * `time` - The time value to display.
 /// * `name` - The name associated with the time.
-fn set_dtext(h_dlg: &HWND, id: i32, time: u32, name: &str) {
+fn set_dtext(h_dlg: &HWND, id: i32, time: u16, name: &str) {
     // TODO: Make this better
     let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
 
@@ -1860,9 +1860,9 @@ fn set_dtext(h_dlg: &HWND, id: i32, time: u32, name: &str) {
 /// * `name_expert` - The name associated with the expert level best time.
 fn reset_best_dialog(
     h_dlg: &HWND,
-    time_begin: u32,
-    time_inter: u32,
-    time_expert: u32,
+    time_begin: u16,
+    time_inter: u16,
+    time_expert: u16,
     name_begin: &str,
     name_inter: &str,
     name_expert: &str,
