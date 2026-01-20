@@ -15,7 +15,6 @@ codegen-units = 1
 windows-sys = { version = "0.61.2", features = [
 	"Win32_Media_Audio",
 	"Win32_Graphics_Gdi",
-	"Win32_UI_WindowsAndMessaging",
 	"Win32_System_WindowsProgramming",
 	"Win32_Data_HtmlHelp",
 ] }

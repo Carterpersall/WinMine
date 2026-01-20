@@ -5,9 +5,6 @@ use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{
-    GetDlgItemTextW, SetDlgItemInt, SetDlgItemTextW,
-};
 
 use winsafe::co::{
     BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MB, MK, PM, PS, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
@@ -18,7 +15,7 @@ use winsafe::msg::wm::Destroy;
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, COLORREF, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE,
     HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage,
-    PtsRc, RECT, SIZE, WINDOWPOS, WString, gui, prelude::*,
+    PtsRc, RECT, SIZE, WINDOWPOS, gui, prelude::*,
 };
 
 use crate::globals::{
@@ -1350,12 +1347,19 @@ impl PrefDialog {
                 };
 
                 // Populate the dialog controls with the current settings
-                unsafe {
-                    let hdlg_raw = dlg.hwnd().ptr();
-                    SetDlgItemInt(hdlg_raw, ControlId::EditHeight as i32, height as u32, 0);
-                    SetDlgItemInt(hdlg_raw, ControlId::EditWidth as i32, width as u32, 0);
-                    SetDlgItemInt(hdlg_raw, ControlId::EditMines as i32, mines as u32, 0);
-                }
+                // TODO: Handle errors
+                let _ = dlg
+                    .hwnd()
+                    .GetDlgItem(ControlId::EditHeight as u16)
+                    .and_then(|edit| edit.SetWindowText(&height.to_string()));
+                let _ = dlg
+                    .hwnd()
+                    .GetDlgItem(ControlId::EditWidth as u16)
+                    .and_then(|edit| edit.SetWindowText(&width.to_string()));
+                let _ = dlg
+                    .hwnd()
+                    .GetDlgItem(ControlId::EditMines as u16)
+                    .and_then(|edit| edit.SetWindowText(&mines.to_string()));
 
                 Ok(true)
             }
@@ -1365,10 +1369,14 @@ impl PrefDialog {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
                 // Retrieve and validate user input from the dialog controls
-                let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24);
-                let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30);
+                // TODO: Handle errors properly
+                let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)
+                    .unwrap_or(MINHEIGHT);
+                let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30)
+                    .unwrap_or(MINWIDTH);
                 let max_mines = min(999, (height - 1) * (width - 1));
-                let mines = GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines);
+                let mines =
+                    GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines).unwrap_or(10);
 
                 // Update preferences with the new settings
                 let mut prefs = match preferences_mutex().lock() {
@@ -1530,6 +1538,9 @@ struct EnterDialog {
 }
 
 impl EnterDialog {
+    /// Creates a new EnterDialog instance and sets up event handlers.
+    /// # Returns
+    /// A new EnterDialog instance.
     fn new() -> Self {
         let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Enter as u16);
         let new_self = Self { dlg };
@@ -1537,32 +1548,36 @@ impl EnterDialog {
         new_self
     }
 
+    /// Displays the name entry dialog as a modal window.
+    /// # Arguments
+    /// * `parent`: The parent GUI element for the modal dialog.
     fn show_modal(&self, parent: &impl GuiParent) {
         if let Err(e) = self.dlg.show_modal(parent) {
             eprintln!("Failed to show name-entry dialog: {e}");
         }
     }
 
+    /// Saves the entered high-score name to preferences.
     fn save_high_score_name(&self) {
-        let mut buffer = [0u16; CCH_NAME_MAX];
-        unsafe {
-            GetDlgItemTextW(
-                self.dlg.hwnd().ptr(),
-                ControlId::EditName as i32,
-                buffer.as_mut_ptr(),
-                CCH_NAME_MAX as i32,
-            );
-        }
+        // Retrieve the entered name from the dialog's edit control
+        // TODO: Handle errors properly
+        let new_name = self
+            .dlg
+            .hwnd()
+            .GetDlgItem(ControlId::EditName as u16)
+            .and_then(|edit_hwnd| edit_hwnd.GetWindowText())
+            .unwrap_or(DEFAULT_PLAYER_NAME.to_string());
 
         let mut prefs = match preferences_mutex().lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        let new_name = String::from_utf16_lossy(&buffer);
         match prefs.wGameType {
             GameType::Begin => prefs.szBegin = new_name,
             GameType::Inter => prefs.szInter = new_name,
-            _ => prefs.szExpert = new_name,
+            GameType::Expert => prefs.szExpert = new_name,
+            // Unreachable
+            GameType::Other => {}
         }
     }
 
@@ -1578,15 +1593,15 @@ impl EnterDialog {
                     let name = match prefs.wGameType {
                         GameType::Begin => prefs.szBegin.clone(),
                         GameType::Inter => prefs.szInter.clone(),
-                        _ => prefs.szExpert.clone(),
+                        GameType::Expert => prefs.szExpert.clone(),
+                        // Unreachable
+                        GameType::Other => "".to_string(),
                     };
                     (prefs.wGameType, name)
                 };
 
-                // TODO: Do this better
-                unsafe {
-                    let hdlg_raw = dlg.hwnd().ptr();
-
+                // TODO: Handle errors
+                if let Ok(best_hwnd) = dlg.hwnd().GetDlgItem(ControlId::TextBest as u16) {
                     let string = match game_type {
                         GameType::Begin => MSG_FASTEST_BEGINNER,
                         GameType::Inter => MSG_FASTEST_INTERMEDIATE,
@@ -1595,25 +1610,19 @@ impl EnterDialog {
                         GameType::Other => "",
                     };
 
-                    SetDlgItemTextW(
-                        hdlg_raw,
-                        ControlId::TextBest as i32,
-                        WString::from_str(string).as_ptr(),
-                    );
+                    let _ = best_hwnd.SetWindowText(string);
+                }
 
-                    if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
-                        let _ = edit_hwnd.SendMessage(WndMsg::new(
+                if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
+                    let _ = unsafe {
+                        edit_hwnd.SendMessage(WndMsg::new(
                             WM::from_raw(EM::SETLIMITTEXT.raw()),
                             CCH_NAME_MAX,
                             0,
-                        ));
-                    }
+                        ))
+                    };
 
-                    SetDlgItemTextW(
-                        hdlg_raw,
-                        ControlId::EditName as i32,
-                        WString::from_str(current_name).as_ptr(),
-                    );
+                    let _ = edit_hwnd.SetWindowText(&current_name);
                 }
 
                 Ok(true)
@@ -1843,10 +1852,13 @@ fn set_dtext(h_dlg: &HWND, id: i32, time: u16, name: &str) {
     // TODO: Make this better
     let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
 
-    unsafe {
-        SetDlgItemTextW(h_dlg.ptr(), id, WString::from_str(&time_fmt).as_ptr());
-        SetDlgItemTextW(h_dlg.ptr(), id + 1, WString::from_str(name).as_ptr());
-    }
+    // TODO: Handle errors
+    let _ = h_dlg
+        .GetDlgItem(id as u16)
+        .and_then(|hwnd| hwnd.SetWindowText(&time_fmt));
+    let _ = h_dlg
+        .GetDlgItem((id + 1) as u16)
+        .and_then(|hwnd| hwnd.SetWindowText(name));
 }
 
 /// Resets the best scores dialog with the provided times and names.

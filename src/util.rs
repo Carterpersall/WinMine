@@ -2,7 +2,6 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
-use windows_sys::Win32::UI::WindowsAndMessaging::GetDlgItemInt;
 
 use winsafe::co::{GDC, HELPW, KEY, MB, REG_OPTION, SM};
 use winsafe::{
@@ -196,7 +195,7 @@ pub fn InitConst() {
         PrefKey::Difficulty,
         GameType::Begin as i32,
         GameType::Begin as i32,
-        GameType::Expert as i32 + 1,
+        GameType::Other as i32,
     );
     prefs.wGameType = match game_raw {
         0 => GameType::Begin,
@@ -383,9 +382,22 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 /// * `num_lo` - Minimum allowed value.
 /// * `num_hi` - Maximum allowed value.
 /// # Returns
-/// The clamped integer value from the dialog item.
-pub fn GetDlgInt(h_dlg: &HWND, dlg_id: i32, num_lo: u32, num_hi: u32) -> u32 {
-    let mut success = 0i32;
-    let value = unsafe { GetDlgItemInt(h_dlg.ptr(), dlg_id, &raw mut success, 0) };
-    value.clamp(num_lo, num_hi)
+/// The clamped integer value from the dialog item, or an error if retrieval or parsing fails.
+pub fn GetDlgInt(
+    h_dlg: &HWND,
+    dlg_id: i32,
+    num_lo: u32,
+    num_hi: u32,
+) -> Result<u32, Box<dyn core::error::Error + Send + Sync>> {
+    h_dlg
+        // Get a handle to the dialog item
+        .GetDlgItem(dlg_id as u16)
+        // Retrieve the integer value from the dialog item
+        .and_then(|dlg| dlg.GetWindowText())
+        // If there is an error, convert it into a form that can be propagated down the chain
+        .map_err(Into::into)
+        // Parse the retrieved text into a u32
+        .and_then(|text| text.parse::<u32>().map_err(Into::into))
+        // Clamp the parsed value within the specified bounds
+        .map(|value| value.clamp(num_lo, num_hi))
 }
