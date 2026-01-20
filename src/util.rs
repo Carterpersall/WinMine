@@ -15,7 +15,7 @@ use crate::globals::{
     MSG_VERSION_NAME,
 };
 use crate::pref::{
-    CCH_NAME_MAX, DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, ReadInt,
+    DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, ReadInt,
     SZ_WINMINE_REG_STR, SoundState, WritePreferences, pref_key_literal,
 };
 use crate::rtns::{AdjustFlag, preferences_mutex};
@@ -133,7 +133,7 @@ fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i3
     // On any modern system, this will read from the registry instead of a .ini file
     let value = unsafe {
         GetPrivateProfileIntW(
-            GAME_NAME.encode_utf16().collect::<Vec<u16>>().as_ptr(),
+            WString::from_str(GAME_NAME).as_ptr(),
             key.as_ptr(),
             val_default,
             ini_path.as_ptr(),
@@ -145,28 +145,18 @@ fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i3
 /// Read a string preference from the registry into the provided buffer.
 /// # Arguments
 /// * `pref` - The preference key to read.
-/// * `sz_ret` - Pointer to the buffer that receives the string (UTF-16).
-fn ReadIniSz(pref: PrefKey, sz_ret: &mut [u16; CCH_NAME_MAX]) {
+/// # Returns
+/// The string preference value, or the default player name if not found.
+fn ReadIniSz(pref: PrefKey) -> String {
     // Retrieve the key name for the preference
     let Some(key) = pref_key_literal(pref) else {
-        return;
+        return DEFAULT_PLAYER_NAME.to_string();
     };
 
-    // Read the string value from the registry
-    let value = match w::GetPrivateProfileString(GAME_NAME, key, SZ_INI_FILE) {
+    // Return the string value from the registry
+    match w::GetPrivateProfileString(GAME_NAME, key, SZ_INI_FILE) {
         Ok(Some(text)) => text,
         _ => DEFAULT_PLAYER_NAME.to_string(),
-    };
-
-    // Copy the string into the provided buffer, ensuring null-termination
-    // TODO: Is null-termination necessary here?
-    for (i, code_unit) in value
-        .encode_utf16()
-        .chain(Some(0))
-        .take(CCH_NAME_MAX)
-        .enumerate()
-    {
-        sz_ret[i] = code_unit;
     }
 }
 
@@ -247,9 +237,9 @@ pub fn InitConst() {
     prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999) as u32;
     prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999) as u32;
 
-    ReadIniSz(PrefKey::Name1, &mut prefs.szBegin);
-    ReadIniSz(PrefKey::Name2, &mut prefs.szInter);
-    ReadIniSz(PrefKey::Name3, &mut prefs.szExpert);
+    prefs.szBegin = ReadIniSz(PrefKey::Name1);
+    prefs.szInter = ReadIniSz(PrefKey::Name2);
+    prefs.szExpert = ReadIniSz(PrefKey::Name3);
 
     let desktop = HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {

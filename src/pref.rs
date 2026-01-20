@@ -153,11 +153,11 @@ pub struct Pref {
     /// Best times for each difficulty level.
     pub rgTime: [u32; 3],
     /// Player name for Beginner level.
-    pub szBegin: [u16; CCH_NAME_MAX],
+    pub szBegin: String,
     /// Player name for Intermediate level.
-    pub szInter: [u16; CCH_NAME_MAX],
+    pub szInter: String,
     /// Player name for Expert level.
-    pub szExpert: [u16; CCH_NAME_MAX],
+    pub szExpert: String,
 }
 
 /// Read an integer preference from the registry with clamping.
@@ -293,9 +293,9 @@ pub fn ReadPreferences() {
     prefs.rgTime[GameType::Inter as usize] = ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999);
     prefs.rgTime[GameType::Expert as usize] = ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999);
 
-    prefs.szBegin = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name1));
-    prefs.szInter = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name2));
-    prefs.szExpert = string_to_fixed_wide(&ReadSz(&key_guard, PrefKey::Name3));
+    prefs.szBegin = ReadSz(&key_guard, PrefKey::Name1);
+    prefs.szInter = ReadSz(&key_guard, PrefKey::Name2);
+    prefs.szExpert = ReadSz(&key_guard, PrefKey::Name3);
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
     let desktop = HWND::GetDesktopWindow();
@@ -367,9 +367,9 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
         prefs.rgTime[GameType::Expert as usize],
     )?;
 
-    WriteSz(&key_guard, PrefKey::Name1, prefs.szBegin.as_ptr())?;
-    WriteSz(&key_guard, PrefKey::Name2, prefs.szInter.as_ptr())?;
-    WriteSz(&key_guard, PrefKey::Name3, prefs.szExpert.as_ptr())?;
+    WriteSz(&key_guard, PrefKey::Name1, &prefs.szBegin)?;
+    WriteSz(&key_guard, PrefKey::Name2, &prefs.szInter)?;
+    WriteSz(&key_guard, PrefKey::Name3, &prefs.szExpert)?;
     Ok(())
 }
 
@@ -395,88 +395,30 @@ fn WriteInt(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::e
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to write
-/// * `sz` - Pointer to zero-terminated UTF-16 string to store
+/// * `sz` - String to store
 ///
 /// TODO: Change the sz argument to be a &str or String instead of a pointer to a UTF-16 string.
 /// # Returns
 /// Result indicating success or failure
-fn WriteSz(handle: &HKEY, key: PrefKey, sz: *const u16) -> Result<(), Box<dyn core::error::Error>> {
-    if sz.is_null() {
-        return Err("Invalid string pointer".into());
-    }
-
+fn WriteSz(handle: &HKEY, key: PrefKey, sz: &String) -> Result<(), Box<dyn core::error::Error>> {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return Err("Invalid preference key".into());
     };
 
-    // Convert the UTF-16 pointer to a Rust String
-    let Some(value) = wide_ptr_to_string(sz) else {
-        return Err("Invalid string data".into());
-    };
-
     // Store the string value in the registry
-    handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(value))?;
+    handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(sz.to_string()))?;
     Ok(())
 }
 
 /// Retrieve the string literal for a given preference key.
 ///
 /// TODO: Remove this function.
+/// TODO: Does this need to return an Option?
 /// # Arguments
 /// * `key` - Preference key to look up
 /// # Returns
 /// Option containing the string literal, or None if the key is invalid
 pub fn pref_key_literal(key: PrefKey) -> Option<&'static str> {
     PREF_STRINGS.get(key as usize).copied()
-}
-
-/// Convert a string slice into a fixed-size UTF-16 array suitable for registry storage
-/// # Arguments
-/// * `src` - Source string slice to convert
-/// # Returns
-/// Fixed-size UTF-16 array with null termination
-fn string_to_fixed_wide(src: &str) -> [u16; CCH_NAME_MAX] {
-    // Create a zero-filled fixed-size UTF-16 array
-    let mut out = [0u16; CCH_NAME_MAX];
-    // Encode the string into UTF-16 and copy up to CCH_NAME_MAX - 1 characters to the array (reserving space for null terminator)
-    src.encode_utf16()
-        .take(CCH_NAME_MAX - 1)
-        .enumerate()
-        .for_each(|(i, ch)| out[i] = ch);
-    out
-}
-
-/// Convert a pointer to a zero-terminated UTF-16 string into a String.
-/// # Arguments
-/// * `ptr` - Pointer to the UTF-16 string
-/// # Returns
-/// Option containing the String, or None if the pointer is null
-fn wide_ptr_to_string(ptr: *const u16) -> Option<String> {
-    if ptr.is_null() {
-        return None;
-    }
-
-    let len = wide_len(ptr);
-    let slice = unsafe { core::slice::from_raw_parts(ptr, len) };
-    Some(String::from_utf16_lossy(slice))
-}
-
-/// Calculate the length of a zero-terminated UTF-16 string.
-/// # Arguments
-/// * `ptr` - Pointer to the UTF-16 string
-/// # Returns
-/// Length of the string in UTF-16 code units
-const fn wide_len(mut ptr: *const u16) -> usize {
-    if ptr.is_null() {
-        return 0;
-    }
-    let mut len = 0usize;
-    unsafe {
-        while *ptr != 0 {
-            len += 1;
-            ptr = ptr.add(1);
-        }
-    }
-    len
 }

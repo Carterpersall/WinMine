@@ -101,9 +101,9 @@ pub fn preferences_mutex() -> &'static Mutex<Pref> {
             fMenu: MenuMode::AlwaysOn,
             fColor: false,
             rgTime: [0; 3],
-            szBegin: [0; CCH_NAME_MAX],
-            szInter: [0; CCH_NAME_MAX],
-            szExpert: [0; CCH_NAME_MAX],
+            szBegin: String::with_capacity(CCH_NAME_MAX),
+            szInter: String::with_capacity(CCH_NAME_MAX),
+            szExpert: String::with_capacity(CCH_NAME_MAX),
         })
     })
 }

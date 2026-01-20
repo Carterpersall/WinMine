@@ -1444,9 +1444,9 @@ impl BestDialog {
                     prefs.rgTime[GameType::Begin as usize],
                     prefs.rgTime[GameType::Inter as usize],
                     prefs.rgTime[GameType::Expert as usize],
-                    prefs.szBegin,
-                    prefs.szInter,
-                    prefs.szExpert,
+                    &prefs.szBegin,
+                    &prefs.szInter,
+                    &prefs.szExpert,
                 );
 
                 Ok(true)
@@ -1458,8 +1458,8 @@ impl BestDialog {
             .wm_command(ControlId::BtnReset as u16, BN::CLICKED, {
                 let dlg = self.dlg.clone();
                 move || -> AnyResult<()> {
-                    // Generate a snapshot of the default preferences to reset the best times
-                    let snapshot = {
+                    // Set best times and names to defaults
+                    {
                         let mut prefs = match preferences_mutex().lock() {
                             Ok(guard) => guard,
                             Err(poisoned) => poisoned.into_inner(),
@@ -1470,38 +1470,21 @@ impl BestDialog {
                         prefs.rgTime[GameType::Inter as usize] = 999;
                         prefs.rgTime[GameType::Expert as usize] = 999;
 
-                        // Get the default name from global state, and copy it into all three name fields
-                        DEFAULT_PLAYER_NAME
-                            .encode_utf16()
-                            .take(CCH_NAME_MAX - 1)
-                            .enumerate()
-                            .for_each(|(i, ch)| {
-                                prefs.szBegin[i] = ch;
-                                prefs.szInter[i] = ch;
-                                prefs.szExpert[i] = ch;
-                            });
-
-                        (
-                            prefs.rgTime[GameType::Begin as usize],
-                            prefs.rgTime[GameType::Inter as usize],
-                            prefs.rgTime[GameType::Expert as usize],
-                            prefs.szBegin,
-                            prefs.szInter,
-                            prefs.szExpert,
-                        )
+                        // Set the three best names to the default values
+                        prefs.szBegin = DEFAULT_PLAYER_NAME.to_string();
+                        prefs.szInter = DEFAULT_PLAYER_NAME.to_string();
+                        prefs.szExpert = DEFAULT_PLAYER_NAME.to_string();
                     };
 
-                    let (time_begin, time_inter, time_expert, name_begin, name_inter, name_expert) =
-                        snapshot;
                     UPDATE_INI.store(true, Ordering::Relaxed);
                     reset_best_dialog(
                         dlg.hwnd(),
-                        time_begin,
-                        time_inter,
-                        time_expert,
-                        name_begin,
-                        name_inter,
-                        name_expert,
+                        999,
+                        999,
+                        999,
+                        DEFAULT_PLAYER_NAME,
+                        DEFAULT_PLAYER_NAME,
+                        DEFAULT_PLAYER_NAME,
                     );
                     Ok(())
                 }
@@ -1575,10 +1558,11 @@ impl EnterDialog {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
+        let new_name = String::from_utf16_lossy(&buffer);
         match prefs.wGameType {
-            GameType::Begin => prefs.szBegin = buffer,
-            GameType::Inter => prefs.szInter = buffer,
-            _ => prefs.szExpert = buffer,
+            GameType::Begin => prefs.szBegin = new_name,
+            GameType::Inter => prefs.szInter = new_name,
+            _ => prefs.szExpert = new_name,
         }
     }
 
@@ -1592,9 +1576,9 @@ impl EnterDialog {
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     let name = match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin,
-                        GameType::Inter => prefs.szInter,
-                        _ => prefs.szExpert,
+                        GameType::Begin => prefs.szBegin.clone(),
+                        GameType::Inter => prefs.szInter.clone(),
+                        _ => prefs.szExpert.clone(),
                     };
                     (prefs.wGameType, name)
                 };
@@ -1625,7 +1609,11 @@ impl EnterDialog {
                         ));
                     }
 
-                    SetDlgItemTextW(hdlg_raw, ControlId::EditName as i32, current_name.as_ptr());
+                    SetDlgItemTextW(
+                        hdlg_raw,
+                        ControlId::EditName as i32,
+                        WString::from_str(current_name).as_ptr(),
+                    );
                 }
 
                 Ok(true)
@@ -1844,27 +1832,20 @@ const fn command_id(w_param: usize) -> u16 {
 }
 
 /// Sets the dialog text for a given time and name in the best scores dialog.
+///
+/// TODO: Remove this function
 /// # Arguments
 /// * `h_dlg` - Handle to the dialog window.
 /// * `id` - The control ID for the time text.
 /// * `time` - The time value to display.
 /// * `name` - The name associated with the time.
-fn set_dtext(h_dlg: &HWND, id: i32, time: u32, name: &[u16; CCH_NAME_MAX]) {
-    let mut buffer = [0u16; CCH_NAME_MAX];
+fn set_dtext(h_dlg: &HWND, id: i32, time: u32, name: &str) {
     // TODO: Make this better
-    let text = TIME_FORMAT.replace("%d", &time.to_string());
-    for (i, code_unit) in text
-        .encode_utf16()
-        .chain(Some(0))
-        .take(buffer.len())
-        .enumerate()
-    {
-        buffer[i] = code_unit;
-    }
+    let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
 
     unsafe {
-        SetDlgItemTextW(h_dlg.ptr(), id, buffer.as_ptr());
-        SetDlgItemTextW(h_dlg.ptr(), id + 1, name.as_ptr());
+        SetDlgItemTextW(h_dlg.ptr(), id, WString::from_str(&time_fmt).as_ptr());
+        SetDlgItemTextW(h_dlg.ptr(), id + 1, WString::from_str(name).as_ptr());
     }
 }
 
@@ -1882,17 +1863,17 @@ fn reset_best_dialog(
     time_begin: u32,
     time_inter: u32,
     time_expert: u32,
-    name_begin: [u16; CCH_NAME_MAX],
-    name_inter: [u16; CCH_NAME_MAX],
-    name_expert: [u16; CCH_NAME_MAX],
+    name_begin: &str,
+    name_inter: &str,
+    name_expert: &str,
 ) {
-    set_dtext(h_dlg, ControlId::TimeBegin as i32, time_begin, &name_begin);
-    set_dtext(h_dlg, ControlId::TimeInter as i32, time_inter, &name_inter);
+    set_dtext(h_dlg, ControlId::TimeBegin as i32, time_begin, name_begin);
+    set_dtext(h_dlg, ControlId::TimeInter as i32, time_inter, name_inter);
     set_dtext(
         h_dlg,
         ControlId::TimeExpert as i32,
         time_expert,
-        &name_expert,
+        name_expert,
     );
 }
 
