@@ -803,13 +803,13 @@ pub fn StartGame(hwnd: &HWND) {
         let mut x;
         let mut y;
         loop {
-            x = Rnd(width) + 1;
-            y = Rnd(height) + 1;
-            if !is_bomb(x, y) {
+            x = Rnd(width as u32) + 1;
+            y = Rnd(height as u32) + 1;
+            if !is_bomb(x as i32, y as i32) {
                 break;
             }
         }
-        set_bomb(x, y);
+        set_bomb(x as i32, y as i32);
         bombs -= 1;
     }
 

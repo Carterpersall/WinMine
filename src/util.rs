@@ -58,9 +58,8 @@ fn seed_rng(seed: u32) {
 ///
 /// This formula is the same used in Windows' `rand()` function.
 ///
-/// TODO: Change return type to u32 since the current RNG value is stored as a u32
 /// TODO: Consider using using Rust's built-in RNG facilities
-fn next_rand() -> i32 {
+fn next_rand() -> u32 {
     let mut current = RNG_STATE.load(Ordering::Relaxed);
     loop {
         // Compute the next RNG state using LCG formula
@@ -68,7 +67,7 @@ fn next_rand() -> i32 {
             .wrapping_mul(RNG_MULTIPLIER)
             .wrapping_add(RNG_INCREMENT);
         match RNG_STATE.compare_exchange(current, next, Ordering::Relaxed, Ordering::Relaxed) {
-            Ok(_) => return ((next >> 16) & 0x7FFF) as i32,
+            Ok(_) => return (next >> 16) & 0x7FFF,
             Err(actual) => current = actual,
         }
     }
@@ -79,12 +78,8 @@ fn next_rand() -> i32 {
 /// * `rnd_max` - Upper bound (exclusive) for the random number
 /// # Returns
 /// A pseudo-random number in the [0, `rnd_max`) range
-pub fn Rnd(rnd_max: i32) -> i32 {
-    if rnd_max <= 0 {
-        0
-    } else {
-        next_rand() % rnd_max
-    }
+pub fn Rnd(rnd_max: u32) -> u32 {
+    next_rand() % rnd_max
 }
 
 /// Display an error message box for the specified error ID.

@@ -73,8 +73,6 @@ pub enum StatusFlag {
 /// This is kept in sync with the main window DPI (via `HWND::GetDpiForWindow` and
 /// `WM_DPICHANGED`). All UI measurements that represent "logical" sizes from the
 /// classic WinMine assets are scaled from 96 DPI to this value.
-///
-/// TODO: Should this be a usize?
 pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 
 /// Update cached system metrics which vary with DPI.

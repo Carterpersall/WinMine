@@ -403,8 +403,6 @@ fn WriteInt(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::e
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to write
 /// * `sz` - String to store
-///
-/// TODO: Change the sz argument to be a &str or String instead of a pointer to a UTF-16 string.
 /// # Returns
 /// Result indicating success or failure
 fn WriteSz(handle: &HKEY, key: PrefKey, sz: &String) -> Result<(), Box<dyn core::error::Error>> {
