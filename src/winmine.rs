@@ -93,6 +93,29 @@ pub enum MenuCommand {
     HelpAbout = 593,
 }
 
+impl TryFrom<usize> for MenuCommand {
+    type Error = Box<dyn core::error::Error>;
+    fn try_from(value: usize) -> Result<Self, Self::Error> {
+        match (value & 0xFFFF) as u16 {
+            510 => Ok(MenuCommand::New),
+            512 => Ok(MenuCommand::Exit),
+            521 => Ok(MenuCommand::Begin),
+            522 => Ok(MenuCommand::Inter),
+            523 => Ok(MenuCommand::Expert),
+            524 => Ok(MenuCommand::Custom),
+            526 => Ok(MenuCommand::Sound),
+            527 => Ok(MenuCommand::Mark),
+            528 => Ok(MenuCommand::Best),
+            529 => Ok(MenuCommand::Color),
+            590 => Ok(MenuCommand::Help),
+            591 => Ok(MenuCommand::HowToPlay),
+            592 => Ok(MenuCommand::HelpHelp),
+            593 => Ok(MenuCommand::HelpAbout),
+            val => Err(format!("Invalid MenuCommand value: {}", val).into()),
+        }
+    }
+}
+
 /// Dialog template identifiers.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -412,6 +435,43 @@ impl WinMineMainWindow {
         );
     }
 
+    /// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
+    /// # Arguments
+    /// * `command` - The system command identifier.
+    fn handle_syscommand(&self, command: SC) {
+        // Isolate the system command identifier by masking out the lower 4 bits.
+        //let command = (sys_cmd & 0xFFF0) as u32;
+        if command == SC::MINIMIZE {
+            PauseGame();
+            set_status_pause();
+            set_status_icon();
+        } else if command == SC::RESTORE {
+            clr_status_pause();
+            clr_status_icon();
+            ResumeGame();
+            IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
+        }
+    }
+
+    /// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
+    /// # Arguments
+    /// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
+    fn handle_window_pos_changed(&self, pos: &WINDOWPOS) {
+        if status_icon() {
+            return;
+        }
+
+        // TODO: Don't double lock here
+        if let Ok(mut prefs) = preferences_mutex().lock() {
+            prefs.xWindow = pos.x;
+            prefs.yWindow = pos.y;
+        } else if let Err(poisoned) = preferences_mutex().lock() {
+            let mut guard = poisoned.into_inner();
+            guard.xWindow = pos.x;
+            guard.yWindow = pos.y;
+        }
+    }
+
     /// Handles the "Custom" menu command by displaying the preferences dialog,
     /// updating the game settings, and starting a new game.
     ///
@@ -438,11 +498,16 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `w_param`: The wParam from the `WM_COMMAND` message.
     /// # Returns
-    /// Some exit code if the command resulted in application exit, None otherwise.
+    /// `Some(isize)` if the command was handled, `None` otherwise.
+    /// # Notes
+    /// This function returns an `Option` to indicate whether the command was handled.
+    /// If the command was handled, it returns `Some(0)` to indicate success. If the command was not handled,
+    /// it returns `None` to allow the default handler to process it. This means that there is no need to return
+    /// a `Result` type with an error, as unhandled commands are simply passed to the default handler.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
-        match menu_command(w_param) {
-            Some(MenuCommand::New) => StartGame(self.wnd.hwnd()),
-            Some(MenuCommand::Exit) => {
+        match MenuCommand::try_from(w_param) {
+            Ok(MenuCommand::New) => StartGame(self.wnd.hwnd()),
+            Ok(MenuCommand::Exit) => {
                 self.wnd.hwnd().ShowWindow(SW::HIDE);
                 unsafe {
                     let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
@@ -451,9 +516,8 @@ impl WinMineMainWindow {
                         0,
                     ));
                 }
-                return Some(0);
             }
-            Some(command @ (MenuCommand::Begin | MenuCommand::Inter | MenuCommand::Expert)) => {
+            Ok(command @ (MenuCommand::Begin | MenuCommand::Inter | MenuCommand::Expert)) => {
                 let game = match command {
                     MenuCommand::Begin => GameType::Begin,
                     MenuCommand::Inter => GameType::Inter,
@@ -478,8 +542,8 @@ impl WinMineMainWindow {
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Custom) => self.DoPref(),
-            Some(MenuCommand::Sound) => {
+            Ok(MenuCommand::Custom) => self.DoPref(),
+            Ok(MenuCommand::Sound) => {
                 let current_sound = {
                     let prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
@@ -505,7 +569,7 @@ impl WinMineMainWindow {
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Color) => {
+            Ok(MenuCommand::Color) => {
                 let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(g) => g,
@@ -525,7 +589,6 @@ impl WinMineMainWindow {
                             0,
                         ));
                     }
-                    return Some(0);
                 }
 
                 // Repaint immediately so toggling color off updates without restarting.
@@ -533,7 +596,7 @@ impl WinMineMainWindow {
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Mark) => {
+            Ok(MenuCommand::Mark) => {
                 let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(g) => g,
@@ -545,24 +608,23 @@ impl WinMineMainWindow {
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.SetMenuBar(f_menu);
             }
-            Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
-            Some(MenuCommand::Help) => {
+            Ok(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
+            Ok(MenuCommand::Help) => {
                 DoHelp(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
             }
-            Some(MenuCommand::HowToPlay) => {
+            Ok(MenuCommand::HowToPlay) => {
                 DoHelp(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
             }
-            Some(MenuCommand::HelpHelp) => {
+            Ok(MenuCommand::HelpHelp) => {
                 DoHelp(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
             }
-            Some(MenuCommand::HelpAbout) => {
+            Ok(MenuCommand::HelpAbout) => {
                 DoAbout(self.wnd.hwnd());
-                return Some(0);
             }
-            None => {}
+            Err(_) => return None,
         }
 
-        None
+        Some(0)
     }
 
     /// Handles clicks on the smiley face button.
@@ -915,7 +977,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_window_pos_changed({
             let self2 = self.clone();
             move |wnd_pos| {
-                handle_window_pos_changed(wnd_pos.windowpos);
+                self2.handle_window_pos_changed(wnd_pos.windowpos);
                 unsafe { self2.wnd.hwnd().DefWindowProc(wnd_pos) };
                 Ok(())
             }
@@ -924,7 +986,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_sys_command({
             let self2 = self.clone();
             move |msg| {
-                handle_syscommand(msg.request);
+                self2.handle_syscommand(msg.request);
                 unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
                 Ok(())
             }
@@ -934,6 +996,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm(WM::COMMAND, {
             let self2 = self.clone();
             move |msg: WndMsg| {
+                // If we have a handler for the command, execute it. Otherwise, run the default handler
                 if let Some(result) = self2.handle_command(msg.wparam) {
                     return Ok(result);
                 }
@@ -1241,70 +1304,6 @@ fn current_face_sprite() -> ButtonSprite {
         2 => ButtonSprite::Lose,
         3 => ButtonSprite::Win,
         _ => ButtonSprite::Down,
-    }
-}
-
-/* Window Message Handlers */
-
-/// Maps a command ID to a `MenuCommand` enum variant.
-/// # Arguments
-/// * `w_param`: The WPARAM from the `WM_COMMAND` message.
-/// # Returns
-/// An Option containing the corresponding `MenuCommand`, or None if not found.
-const fn menu_command(w_param: usize) -> Option<MenuCommand> {
-    match command_id(w_param) {
-        510 => Some(MenuCommand::New),
-        512 => Some(MenuCommand::Exit),
-        521 => Some(MenuCommand::Begin),
-        522 => Some(MenuCommand::Inter),
-        523 => Some(MenuCommand::Expert),
-        524 => Some(MenuCommand::Custom),
-        526 => Some(MenuCommand::Sound),
-        527 => Some(MenuCommand::Mark),
-        528 => Some(MenuCommand::Best),
-        529 => Some(MenuCommand::Color),
-        590 => Some(MenuCommand::Help),
-        591 => Some(MenuCommand::HowToPlay),
-        592 => Some(MenuCommand::HelpHelp),
-        593 => Some(MenuCommand::HelpAbout),
-        _ => None,
-    }
-}
-
-/// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
-/// # Arguments
-/// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
-fn handle_window_pos_changed(pos: &WINDOWPOS) {
-    if status_icon() {
-        return;
-    }
-
-    // TODO: Don't double lock here
-    if let Ok(mut prefs) = preferences_mutex().lock() {
-        prefs.xWindow = pos.x;
-        prefs.yWindow = pos.y;
-    } else if let Err(poisoned) = preferences_mutex().lock() {
-        let mut guard = poisoned.into_inner();
-        guard.xWindow = pos.x;
-        guard.yWindow = pos.y;
-    }
-}
-
-/// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
-/// # Arguments
-/// * `command` - The system command identifier.
-fn handle_syscommand(command: SC) {
-    // Isolate the system command identifier by masking out the lower 4 bits.
-    //let command = (sys_cmd & 0xFFF0) as u32;
-    if command == SC::MINIMIZE {
-        PauseGame();
-        set_status_pause();
-        set_status_icon();
-    } else if command == SC::RESTORE {
-        clr_status_pause();
-        clr_status_icon();
-        ResumeGame();
-        IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
     }
 }
 
@@ -1831,15 +1830,6 @@ fn our_get_system_metrics(index: SM) -> i32 {
         }
         _ => GetSystemMetrics(index),
     }
-}
-
-/// Extracts the command identifier from a WPARAM value.
-/// # Arguments
-/// * `w_param` - The WPARAM value to extract from.
-/// # Returns
-/// The command identifier as a u16.
-const fn command_id(w_param: usize) -> u16 {
-    (w_param & 0xFFFF) as u16
 }
 
 /// Sets the dialog text for a given time and name in the best scores dialog.
