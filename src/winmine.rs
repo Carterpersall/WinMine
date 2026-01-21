@@ -654,8 +654,8 @@ impl WinMineMainWindow {
                     UI_DPI.store(dpi as u32, Ordering::Relaxed);
                     update_ui_metrics_for_dpi(dpi as u32);
                 }
-
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
+
                 if let Some(rc) = suggested {
                     // Persist the suggested top-left so AdjustWindow keeps us on the same monitor.
                     // TODO: Don't double lock here
@@ -1409,6 +1409,7 @@ impl PrefDialog {
             }
         });
 
+        // TODO: WinSafe's wm_context_menu doesn't have any arguments, that might be a bug
         self.dlg.on().wm(WM::CONTEXTMENU, {
             move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };

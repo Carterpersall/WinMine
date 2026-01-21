@@ -928,8 +928,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
 
         // Paint the sprite into the 96-DPI bitmap.
         {
-            let bmp_h = unsafe { HBITMAP::from_ptr(base_bmp.ptr()) };
-            if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+            if let Ok(mut sel_guard) = dc_guard.SelectObject(&*base_bmp) {
                 let _ = sel_guard.leak();
             }
             unsafe {
@@ -961,8 +960,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
         };
 
         // Ensure the DC holds the final bitmap.
-        let bmp_h = unsafe { HBITMAP::from_ptr(final_bmp.ptr()) };
-        if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+        if let Ok(mut sel_guard) = dc_guard.SelectObject(&*final_bmp) {
             let _ = sel_guard.leak();
         }
 
@@ -991,8 +989,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
             && let Some(dc_guard) = state.mem_led_dc[i].as_ref()
             && let Some(bmp_guard) = state.mem_led_bitmap[i].as_ref()
         {
-            let bmp_h = unsafe { HBITMAP::from_ptr(bmp_guard.ptr()) };
-            if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+            if let Ok(mut sel_guard) = dc_guard.SelectObject(&**bmp_guard) {
                 let _ = sel_guard.leak();
             }
             unsafe {
@@ -1039,8 +1036,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
 
         // Paint the sprite into the 96-DPI bitmap.
         {
-            let bmp_h = unsafe { HBITMAP::from_ptr(base_bmp.ptr()) };
-            if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+            if let Ok(mut sel_guard) = dc_guard.SelectObject(&*base_bmp) {
                 let _ = sel_guard.leak();
             }
             unsafe {
@@ -1079,8 +1075,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
         };
 
         // Ensure the DC holds the final bitmap.
-        let bmp_h = unsafe { HBITMAP::from_ptr(final_bmp.ptr()) };
-        if let Ok(mut sel_guard) = dc_guard.SelectObject(&bmp_h) {
+        if let Ok(mut sel_guard) = dc_guard.SelectObject(&*final_bmp) {
             let _ = sel_guard.leak();
         }
 
