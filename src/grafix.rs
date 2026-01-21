@@ -7,7 +7,7 @@ use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice,
 use winsafe::{
     self as w, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
     HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, SysResult,
-    co::{BI, DIB, LAYOUT, PS, ROP, RT, STOCK_PEN, STRETCH_MODE},
+    co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE},
     guard::{DeleteDCGuard, DeleteObjectGuard},
     prelude::*,
 };
@@ -119,9 +119,9 @@ struct GrafixState {
     /// Pointer to the loaded button sprites DIB
     lp_dib_button: *const BITMAPINFO,
     /// Cached gray pen used for drawing borders
-    h_gray_pen: HPEN,
+    h_gray_pen: Option<DeleteObjectGuard<HPEN>>,
     /// Cached white pen used for drawing borders
-    h_white_pen: HPEN,
+    h_white_pen: Option<DeleteObjectGuard<HPEN>>,
     /// Cached compatible DCs for each block sprite
     mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
     /// Cached compatible bitmaps for each block sprite
@@ -151,8 +151,8 @@ impl Default for GrafixState {
             lp_dib_blks: null(),
             lp_dib_led: null(),
             lp_dib_button: null(),
-            h_gray_pen: HPEN::NULL,
-            h_white_pen: HPEN::NULL,
+            h_gray_pen: None,
+            h_white_pen: None,
             mem_blk_dc: [const { None }; I_BLK_MAX],
             mem_blk_bitmap: [const { None }; I_BLK_MAX],
             mem_led_dc: [const { None }; I_LED_MAX],
@@ -204,21 +204,8 @@ pub fn FreeBitmaps() {
         Err(poisoned) => poisoned.into_inner(),
     };
 
-    if state.h_gray_pen != HPEN::NULL {
-        unsafe {
-            let pen = HPEN::from_ptr(state.h_gray_pen.ptr());
-            let _ = DeleteObjectGuard::new(pen);
-        }
-        state.h_gray_pen = HPEN::NULL;
-    }
-
-    if state.h_white_pen != HPEN::NULL {
-        unsafe {
-            let pen = HPEN::from_ptr(state.h_white_pen.ptr());
-            let _ = DeleteObjectGuard::new(pen);
-        }
-        state.h_white_pen = HPEN::NULL;
-    }
+    state.h_gray_pen = None;
+    state.h_white_pen = None;
 
     state.h_res_blks = HRSRCMEM::NULL;
     state.h_res_led = HRSRCMEM::NULL;
@@ -658,11 +645,9 @@ fn SetThePen(hdc: &HDC, border_style: BorderStyle) {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        if state.h_white_pen != HPEN::NULL {
+        if let Some(ref white_pen) = state.h_white_pen {
             // Note: This somehow does not cause a resource leak
-            let _ = hdc
-                .SelectObject(&state.h_white_pen)
-                .map(|mut guard| guard.leak());
+            let _ = hdc.SelectObject(&**white_pen).map(|mut guard| guard.leak());
         }
     } else {
         // Use cached gray pen for raised and flat borders
@@ -670,11 +655,9 @@ fn SetThePen(hdc: &HDC, border_style: BorderStyle) {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        if state.h_gray_pen != HPEN::NULL {
+        if let Some(ref gray_pen) = state.h_gray_pen {
             // Note: This somehow does not cause a resource leak
-            let _ = hdc
-                .SelectObject(&state.h_gray_pen)
-                .map(|mut guard| guard.leak());
+            let _ = hdc.SelectObject(&**gray_pen).map(|mut guard| guard.leak());
         }
     }
 }
@@ -884,18 +867,18 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     state.lp_dib_button = lp_button;
 
     state.h_gray_pen = if color_on {
-        HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128))
-            .map_or(HPEN::NULL, |mut pen| pen.leak())
+        HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128)).ok()
     } else {
-        HPEN::GetStockObject(STOCK_PEN::BLACK).unwrap_or(HPEN::NULL)
+        HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(0, 0, 0)).ok()
     };
 
-    if state.h_gray_pen == HPEN::NULL {
+    if state.h_gray_pen.is_none() {
         return Err("Failed to create gray pen".into());
     }
 
-    state.h_white_pen = HPEN::GetStockObject(STOCK_PEN::WHITE).unwrap_or(HPEN::NULL);
-    if state.h_white_pen == HPEN::NULL {
+    state.h_white_pen = HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(255, 255, 255)).ok();
+
+    if state.h_white_pen.is_none() {
         return Err("Failed to get white pen".into());
     }
 
