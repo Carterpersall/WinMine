@@ -1,24 +1,13 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
-use windows_sys::Win32::System::WindowsProgramming::GetPrivateProfileIntW;
 
-use winsafe::co::{GDC, HELPW, KEY, MB, REG_OPTION, SM};
-use winsafe::{
-    self as w, GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, WString,
-    prelude::*,
-};
+use winsafe::co::{HELPW, KEY, MB, REG_OPTION, SM};
+use winsafe::{GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, prelude::*};
 
-use crate::globals::{
-    CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_TITLE, GAME_NAME, MSG_CREDIT,
-    MSG_VERSION_NAME,
-};
-use crate::pref::{
-    DEFHEIGHT, DEFWIDTH, GameType, MINHEIGHT, MINWIDTH, MenuMode, PrefKey, ReadInt,
-    SZ_WINMINE_REG_STR, SoundState, WritePreferences, pref_key_literal,
-};
+use crate::globals::{CXBORDER, CYCAPTION, CYMENU, ERR_TITLE, MSG_CREDIT, MSG_VERSION_NAME};
+use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
-use crate::sound::FInitTunes;
 use crate::winmine::{AdjustWindow, MenuCommand};
 
 /// Multiplier used by the linear congruential generator that produces the app's RNG values.
@@ -40,11 +29,6 @@ pub enum IconId {
 
 /// Maximum path buffer used when resolving help files.
 const CCH_MAX_PATHNAME: usize = 250;
-
-/// Legacy initialization file name used for first-run migration.
-///
-/// TODO: Remove this once preferences are fully migrated to the registry.
-const SZ_INI_FILE: &str = "entpack.ini";
 
 /// Seed the RNG with the specified seed value.
 /// # Arguments
@@ -112,53 +96,6 @@ pub fn ReportErr(err: &str) {
     let _ = HWND::NULL.MessageBox(err, ERR_TITLE, MB::ICONHAND);
 }
 
-/// Read an integer preference from the legacy .ini file, clamping it within the specified bounds.
-/// # Arguments
-/// * `pref` - The preference key to read.
-/// * `val_default` - Default value if the key is missing or invalid.
-/// * `val_min` - Minimum allowed value.
-/// * `val_max` - Maximum allowed value.
-/// # Returns
-/// The clamped integer preference value.
-fn ReadIniInt(pref: PrefKey, val_default: i32, val_min: i32, val_max: i32) -> i32 {
-    // Retrieve the key name for the preference
-    let key = match pref_key_literal(pref) {
-        Some(name) => WString::from_str(name),
-        None => return val_default,
-    };
-
-    let ini_path = WString::from_str(SZ_INI_FILE);
-    // Read the integer value from the preference storage location
-    // On any modern system, this will read from the registry instead of a .ini file
-    let value = unsafe {
-        GetPrivateProfileIntW(
-            WString::from_str(GAME_NAME).as_ptr(),
-            key.as_ptr(),
-            val_default,
-            ini_path.as_ptr(),
-        )
-    };
-    value.clamp(val_min, val_max)
-}
-
-/// Read a string preference from the registry into the provided buffer.
-/// # Arguments
-/// * `pref` - The preference key to read.
-/// # Returns
-/// The string preference value, or the default player name if not found.
-fn ReadIniSz(pref: PrefKey) -> String {
-    // Retrieve the key name for the preference
-    let Some(key) = pref_key_literal(pref) else {
-        return DEFAULT_PLAYER_NAME.to_string();
-    };
-
-    // Return the string value from the registry
-    match w::GetPrivateProfileString(GAME_NAME, key, SZ_INI_FILE) {
-        Ok(Some(text)) => text,
-        _ => DEFAULT_PLAYER_NAME.to_string(),
-    }
-}
-
 /// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
 pub fn InitConst() {
     // Seed the RNG using the low 16 bits of the current tick count
@@ -170,96 +107,16 @@ pub fn InitConst() {
     CYMENU.store(GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
     CXBORDER.store(GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
-    // Check if the user has already played the game to avoid overwriting existing preferences
-    if let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
+    // Create or open the registry key for storing preferences
+    // TODO: Handle errors
+    // TODO: Now that the ini migration code is gone, what happens when there are no existing preferences? Does the AlreadyPlayed flag need to exist anymore?
+    let _ = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         REG_OPTION::default(),
         KEY::READ,
         None,
-    ) && ReadInt(&key_guard, PrefKey::AlreadyPlayed, 0, 0, 1) != 0
-    {
-        return;
-    };
-
-    // If the user has not played before, migrate preferences from the .ini file to the registry
-    // TODO: Any non 16-bit Windows program should use the registry, so remove .ini support entirely
-    let mut prefs = match preferences_mutex().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    prefs.Height = ReadIniInt(PrefKey::Height, MINHEIGHT as i32, DEFHEIGHT as i32, 25);
-    prefs.Width = ReadIniInt(PrefKey::Width, MINWIDTH as i32, DEFWIDTH as i32, 30);
-    let game_raw = ReadIniInt(
-        PrefKey::Difficulty,
-        GameType::Begin as i32,
-        GameType::Begin as i32,
-        GameType::Other as i32,
     );
-    prefs.wGameType = match game_raw {
-        0 => GameType::Begin,
-        1 => GameType::Inter,
-        2 => GameType::Expert,
-        _ => GameType::Other,
-    };
-    prefs.Mines = ReadIniInt(PrefKey::Mines, 10, 10, 999) as i16;
-    prefs.xWindow = ReadIniInt(PrefKey::Xpos, 80, 0, 1024);
-    prefs.yWindow = ReadIniInt(PrefKey::Ypos, 80, 0, 1024);
-
-    let sound_raw = ReadIniInt(
-        PrefKey::Sound,
-        SoundState::Off as i32,
-        SoundState::Off as i32,
-        SoundState::On as i32,
-    );
-    prefs.fSound = if sound_raw == SoundState::On as i32 {
-        SoundState::On
-    } else {
-        SoundState::Off
-    };
-    prefs.fMark = ReadIniInt(PrefKey::Mark, 1, 0, 1) != 0;
-    prefs.fTick = ReadIniInt(PrefKey::Tick, 0, 0, 1) != 0;
-    let menu_raw = ReadIniInt(
-        PrefKey::Menu,
-        MenuMode::AlwaysOn as i32,
-        MenuMode::AlwaysOn as i32,
-        MenuMode::On as i32,
-    );
-    prefs.fMenu = match menu_raw {
-        1 => MenuMode::Hidden,
-        2 => MenuMode::On,
-        _ => MenuMode::AlwaysOn,
-    };
-
-    prefs.rgTime[GameType::Begin as usize] = ReadIniInt(PrefKey::Time1, 999, 0, 999) as u16;
-    prefs.rgTime[GameType::Inter as usize] = ReadIniInt(PrefKey::Time2, 999, 0, 999) as u16;
-    prefs.rgTime[GameType::Expert as usize] = ReadIniInt(PrefKey::Time3, 999, 0, 999) as u16;
-
-    prefs.szBegin = ReadIniSz(PrefKey::Name1);
-    prefs.szInter = ReadIniSz(PrefKey::Name2);
-    prefs.szExpert = ReadIniSz(PrefKey::Name3);
-
-    let desktop = HWND::GetDesktopWindow();
-    let default_color = match desktop.GetDC() {
-        Ok(hdc) => {
-            if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 {
-                1
-            } else {
-                0
-            }
-        }
-        Err(_) => 0,
-    };
-    prefs.fColor = ReadIniInt(PrefKey::Color, default_color, 0, 1) != 0;
-
-    if prefs.fSound == SoundState::On {
-        prefs.fSound = FInitTunes();
-    }
-
-    if let Err(e) = WritePreferences() {
-        eprintln!("Failed to write preferences during initialization: {e}");
-    }
 }
 
 /// Check or uncheck a menu item based on the specified command ID.
