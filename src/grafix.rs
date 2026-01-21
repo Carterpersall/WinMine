@@ -3,9 +3,7 @@ use core::ptr::null;
 use core::sync::atomic::Ordering::Relaxed;
 use std::sync::{Mutex, OnceLock};
 
-use windows_sys::Win32::Graphics::Gdi::{
-    GDI_ERROR, GetLayout, R2_COPYPEN, R2_WHITE, SetDIBitsToDevice, SetLayout, SetROP2,
-};
+use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 use winsafe::{
     self as w, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
     HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, SysResult,
@@ -120,8 +118,10 @@ struct GrafixState {
     lp_dib_led: *const BITMAPINFO,
     /// Pointer to the loaded button sprites DIB
     lp_dib_button: *const BITMAPINFO,
-    /// Cached gray pen used for monochrome rendering
+    /// Cached gray pen used for drawing borders
     h_gray_pen: HPEN,
+    /// Cached white pen used for drawing borders
+    h_white_pen: HPEN,
     /// Cached compatible DCs for each block sprite
     mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
     /// Cached compatible bitmaps for each block sprite
@@ -152,6 +152,7 @@ impl Default for GrafixState {
             lp_dib_led: null(),
             lp_dib_button: null(),
             h_gray_pen: HPEN::NULL,
+            h_white_pen: HPEN::NULL,
             mem_blk_dc: [const { None }; I_BLK_MAX],
             mem_blk_bitmap: [const { None }; I_BLK_MAX],
             mem_led_dc: [const { None }; I_LED_MAX],
@@ -209,6 +210,14 @@ pub fn FreeBitmaps() {
             let _ = DeleteObjectGuard::new(pen);
         }
         state.h_gray_pen = HPEN::NULL;
+    }
+
+    if state.h_white_pen != HPEN::NULL {
+        unsafe {
+            let pen = HPEN::from_ptr(state.h_white_pen.ptr());
+            let _ = DeleteObjectGuard::new(pen);
+        }
+        state.h_white_pen = HPEN::NULL;
     }
 
     state.h_res_blks = HRSRCMEM::NULL;
@@ -370,7 +379,7 @@ fn DrawLed(hdc: &HDC, x: i32, led_index: u16) {
 fn DrawBombCount(hdc: &HDC) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
-    // TODO: What in the world is this nonsense?
+    // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
     if mirrored {
         unsafe {
@@ -629,27 +638,43 @@ pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) {
     }
 }
 
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum BorderStyle {
+    Raised = 0b00,
+    Sunken = 0b01,
+    Flat = 0b10,
+}
+
 /// Set the pen for drawing based on the normal flag.
 /// # Arguments
 /// * `hdc` - The device context to set the pen on.
 /// * `f_normal` - The normal flag determining the pen style.
-fn SetThePen(hdc: &HDC, f_normal: i32) {
-    // Reproduce the old pen combos: even values use the gray pen, odd values use white.
-    if (f_normal & 1) != 0 {
-        unsafe {
-            SetROP2(hdc.ptr(), R2_WHITE);
-        }
-    } else {
+fn SetThePen(hdc: &HDC, border_style: BorderStyle) {
+    // Select the appropriate pen based on the border style
+    if border_style == BorderStyle::Sunken {
+        // Use cached white pen for sunken borders
         let state = match grafix_state().lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        unsafe {
-            SetROP2(hdc.ptr(), R2_COPYPEN);
-            if state.h_gray_pen != HPEN::NULL {
-                let pen = HPEN::from_ptr(state.h_gray_pen.ptr());
-                let _ = hdc.SelectObject(&pen).map(|mut guard| guard.leak());
-            }
+        if state.h_white_pen != HPEN::NULL {
+            // Note: This somehow does not cause a resource leak
+            let _ = hdc
+                .SelectObject(&state.h_white_pen)
+                .map(|mut guard| guard.leak());
+        }
+    } else {
+        // Use cached gray pen for raised and flat borders
+        let state = match grafix_state().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if state.h_gray_pen != HPEN::NULL {
+            // Note: This somehow does not cause a resource leak
+            let _ = hdc
+                .SelectObject(&state.h_gray_pen)
+                .map(|mut guard| guard.leak());
         }
     }
 }
@@ -662,7 +687,7 @@ fn SetThePen(hdc: &HDC, f_normal: i32) {
 /// * `x2` - The right X coordinate of the rectangle.
 /// * `y2` - The bottom Y coordinate of the rectangle.
 /// * `width` - The width of the border in pixels.
-/// * `f_normal` - The normal flag determining the border style.
+/// * `border_style` - The border style determining the border appearance.
 fn DrawBorder(
     hdc: &HDC,
     mut x1: i32,
@@ -670,12 +695,13 @@ fn DrawBorder(
     mut x2: i32,
     mut y2: i32,
     width: i32,
-    f_normal: i32,
+    border_style: BorderStyle,
 ) {
     let mut i = 0;
-    // Draw the raised or sunken beveled rectangle one pixel at a time
-    SetThePen(hdc, f_normal);
+    // Set the initial pen style based on given border style
+    SetThePen(hdc, border_style);
 
+    // Draw the top and left edges
     while i < width {
         y2 -= 1;
         let _ = hdc.MoveToEx(x1, y2, None);
@@ -687,10 +713,19 @@ fn DrawBorder(
         i += 1;
     }
 
-    if f_normal < 2 {
-        SetThePen(hdc, f_normal ^ 1);
+    // Switch pen style for bottom and right edges if not flat
+    if border_style != BorderStyle::Flat {
+        SetThePen(
+            hdc,
+            if border_style == BorderStyle::Sunken {
+                BorderStyle::Raised
+            } else {
+                BorderStyle::Sunken
+            },
+        );
     }
 
+    // Draw the bottom and right edges
     while i > 0 {
         y2 += 1;
         let _ = hdc.MoveToEx(x1, y2, None);
@@ -707,17 +742,18 @@ fn DrawBorder(
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 fn DrawBackground(hdc: &HDC) {
-    // Repaint every chrome element (outer frame, counters, smiley bezel) before drawing content.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Relaxed);
     let border = CXBORDER.load(Relaxed);
+    // Outer sunken border
     let mut x = dx_window - 1;
     let mut y = dy_window - 1;
     let b3 = scale_dpi(3);
     let b2 = scale_dpi(2);
     let b1 = scale_dpi(1);
-    DrawBorder(hdc, 0, 0, x, y, b3, 1);
+    DrawBorder(hdc, 0, 0, x, y, b3, BorderStyle::Sunken);
 
+    // Inner raised borders
     x -= scale_dpi(DX_RIGHT_SPACE_96) - b3;
     y -= scale_dpi(DY_BOTTOM_SPACE_96) - b3;
     DrawBorder(
@@ -727,8 +763,9 @@ fn DrawBackground(hdc: &HDC) {
         x,
         y,
         b3,
-        0,
+        BorderStyle::Raised,
     );
+    // LED area border
     DrawBorder(
         hdc,
         scale_dpi(DX_LEFT_SPACE_96) - b3,
@@ -738,9 +775,10 @@ fn DrawBackground(hdc: &HDC) {
             + scale_dpi(DY_LED_96)
             + (scale_dpi(DY_BOTTOM_SPACE_96) - scale_dpi(6)),
         b2,
-        0,
+        BorderStyle::Raised,
     );
 
+    // LED borders
     let x_left_bomb = scale_dpi(DX_LEFT_BOMB_96);
     let dx_led = scale_dpi(DX_LED_96);
     x = x_left_bomb + dx_led * 3;
@@ -752,9 +790,10 @@ fn DrawBackground(hdc: &HDC) {
         x,
         y,
         b1,
-        0,
+        BorderStyle::Raised,
     );
 
+    // Timer borders
     x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border + b1);
     DrawBorder(
         hdc,
@@ -763,9 +802,10 @@ fn DrawBackground(hdc: &HDC) {
         x + (dx_led * 3 + b1),
         y,
         b1,
-        0,
+        BorderStyle::Raised,
     );
 
+    // Button border
     let dx_button = scale_dpi(DX_BUTTON_96);
     let dy_button = scale_dpi(DY_BUTTON_96);
     x = ((dx_window - dx_button) / 2) - b1;
@@ -776,7 +816,7 @@ fn DrawBackground(hdc: &HDC) {
         x + dx_button + b1,
         scale_dpi(DY_TOP_LED_96) + dy_button,
         b1,
-        2,
+        BorderStyle::Flat,
     );
 }
 
@@ -852,6 +892,11 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
 
     if state.h_gray_pen == HPEN::NULL {
         return Err("Failed to create gray pen".into());
+    }
+
+    state.h_white_pen = HPEN::GetStockObject(STOCK_PEN::WHITE).unwrap_or(HPEN::NULL);
+    if state.h_white_pen == HPEN::NULL {
+        return Err("Failed to get white pen".into());
     }
 
     let header = dib_header_size(color_on);
