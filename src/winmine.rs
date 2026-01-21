@@ -7,8 +7,7 @@ use windows_sys::Win32::Data::HtmlHelp::{
 };
 
 use winsafe::co::{
-    BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MB, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
-    WS_EX,
+    BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS, WS_EX,
 };
 use winsafe::msg::WndMsg;
 use winsafe::msg::wm::Destroy;
@@ -241,31 +240,6 @@ const BEST_HELP_IDS: [u32; 22] = [
     0,
     0,
 ];
-
-/// Determines whether the initial window state is minimized.
-/// # Arguments
-/// * `n_cmd_show`: The nCmdShow parameter from `WinMain`.
-/// # Returns
-/// True if the initial window state is minimized, false otherwise.
-const fn initial_minimized_state(n_cmd_show: i32) -> bool {
-    n_cmd_show == SW::SHOWMINNOACTIVE.raw() || n_cmd_show == SW::SHOWMINIMIZED.raw()
-}
-
-/// Initializes common controls used by the application using `InitCommonControlsEx`.
-fn init_common_controls() {
-    let mut icc = INITCOMMONCONTROLSEX::default();
-    icc.icc = ICC::ANIMATE_CLASS
-        | ICC::BAR_CLASSES
-        | ICC::COOL_CLASSES
-        | ICC::HOTKEY_CLASS
-        | ICC::LISTVIEW_CLASSES
-        | ICC::PAGESCROLLER_CLASS
-        | ICC::PROGRESS_CLASS
-        | ICC::TAB_CLASSES
-        | ICC::UPDOWN_CLASS
-        | ICC::USEREX_CLASSES;
-    let _ = InitCommonControlsEx(&icc);
-}
 
 /// Struct containing the main window with its event handlers and the shared state.
 #[derive(Clone)]
@@ -1147,67 +1121,72 @@ impl WinMineMainWindow {
 /// * `h_instance`: The application instance handle.
 /// * `n_cmd_show`: The initial window show command.
 /// # Returns
-/// The application exit code.
-///
-/// TODO: Return a result value
-pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
+/// Ok(()) on success, or an error on failure.
+pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> Result<(), Box<dyn core::error::Error>> {
+    // Seed the RNG, initialize global values, and ensure the preferences registry key exists
     InitConst();
 
     // Initialize DPI to 96 (default) before creating the window
     UI_DPI.store(96, Ordering::Relaxed);
     update_ui_metrics_for_dpi(UI_DPI.load(Ordering::Relaxed));
 
-    INIT_MINIMIZED.store(initial_minimized_state(n_cmd_show), Ordering::Relaxed);
+    // Initialize common controls
+    let mut icc = INITCOMMONCONTROLSEX::default();
+    icc.icc = ICC::ANIMATE_CLASS
+        | ICC::BAR_CLASSES
+        | ICC::COOL_CLASSES
+        | ICC::HOTKEY_CLASS
+        | ICC::LISTVIEW_CLASSES
+        | ICC::PAGESCROLLER_CLASS
+        | ICC::PROGRESS_CLASS
+        | ICC::TAB_CLASSES
+        | ICC::UPDOWN_CLASS
+        | ICC::USEREX_CLASSES;
+    InitCommonControlsEx(&icc)?;
 
-    init_common_controls();
+    // Get a handle to the menu resource
+    let mut menu = hinst.LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))?;
 
-    let Ok(mut menu) = hinst.LoadMenu(IdStr::Id(MenuResourceId::Menu as u16)) else {
-        eprintln!("Failed to load menu resource.");
-        return 0;
-    };
+    // Get a handle to the accelerators resource
+    let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
 
-    let h_accel = hinst
-        .LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))
-        .ok();
-
+    // Read user preferences into the global state
     ReadPreferences();
 
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
 
-    // WinSafe `gui::WindowMain` owns the application message loop.
+    // Create the main application window
     let wnd = gui::WindowMain::new(gui::WindowMainOpts {
         class_name: GAME_NAME,
         title: GAME_NAME,
         class_icon: gui::Icon::Id(IconId::Main as u16),
         class_cursor: gui::Cursor::Idc(IDC::ARROW),
-        class_bg_brush: gui::Brush::Handle(
-            HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY).unwrap_or(HBRUSH::NULL),
-        ),
+        class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
         size: (dx_window, dy_window),
         style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
         menu: menu.leak(),
-        accel_table: h_accel,
+        accel_table: Some(h_accel),
         ..Default::default()
     });
 
+    // Create the main application state
     let app = WinMineMainWindow::new(wnd);
 
-    let cmd_show = if initial_minimized_state(n_cmd_show) {
-        Some(SW::SHOWMINIMIZED)
-    } else {
-        Some(SW::SHOWNORMAL)
-    };
+    // Determine whether to start minimized
+    let cmd_show =
+        if n_cmd_show == SW::SHOWMINNOACTIVE.raw() || n_cmd_show == SW::SHOWMINIMIZED.raw() {
+            INIT_MINIMIZED.store(true, Ordering::Relaxed);
+            Some(SW::SHOWMINIMIZED)
+        } else {
+            INIT_MINIMIZED.store(false, Ordering::Relaxed);
+            Some(SW::SHOWNORMAL)
+        };
 
+    // Run the main application window, blocking until exit
     match app.wnd.run_main(cmd_show) {
-        Ok(code) => code,
-        Err(e) => {
-            eprintln!("Unhandled error running main window: {e}");
-            let _ = HWND::NULL
-                .MessageBox(&e.to_string(), "Unhandled error", MB::OK | MB::ICONERROR)
-                .ok();
-            0
-        }
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Unhandled error during main window execution: {e}").into()),
     }
 }
 

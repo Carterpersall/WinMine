@@ -91,7 +91,9 @@ pub fn ReportErr(err: &str) {
     let _ = HWND::NULL.MessageBox(err, ERR_TITLE, MB::ICONHAND);
 }
 
-/// Initialize UI globals, migrate preferences from the .ini file exactly once, and seed randomness.
+/// Initialize UI globals and seed the RNG state.
+///
+/// TODO: Does this function need to exist? It is only called once during startup.
 pub fn InitConst() {
     // Seed the RNG using the low 16 bits of the current tick count
     let ticks = (GetTickCount64() as u32) & 0xFFFF;

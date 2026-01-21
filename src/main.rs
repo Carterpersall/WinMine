@@ -31,12 +31,11 @@ mod winmine;
 mod xyzzy;
 
 use crate::winmine::run_winmine;
-use winsafe::{HINSTANCE, co::SW, prelude::Handle as _};
+use winsafe::{HINSTANCE, co::SW};
 
-fn main() {
+fn main() -> Result<(), Box<dyn core::error::Error>> {
     // Get the module handle for the current process
-    let h_instance_handle = HINSTANCE::GetModuleHandle(None).unwrap_or(HINSTANCE::NULL);
+    let h_instance_handle = HINSTANCE::GetModuleHandle(None)?;
     // Run the main WinMine application logic
-    // TODO: Handle the return value appropriately
-    let _ = run_winmine(&h_instance_handle, SW::SHOWNORMAL.raw());
+    run_winmine(&h_instance_handle, SW::SHOWNORMAL.raw())
 }
