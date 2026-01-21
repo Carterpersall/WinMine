@@ -173,17 +173,6 @@ fn grafix_state() -> &'static Mutex<GrafixState> {
     GRAFIX_STATE.get_or_init(|| Mutex::new(GrafixState::default()))
 }
 
-/// Retrieve whether color mode is enabled from preferences.
-/// # Returns
-/// `true` if color mode is enabled, `false` otherwise.
-fn current_color_flag() -> bool {
-    let prefs = match preferences_mutex().lock() {
-        Ok(g) => g,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    prefs.fColor
-}
-
 /// Initialize local graphics resources and reset the minefield before the game starts.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
@@ -837,7 +826,13 @@ pub fn DisplayScreen(hwnd: &HWND) {
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
 pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
-    let color_on = current_color_flag();
+    let color_on = {
+        let prefs = match preferences_mutex().lock() {
+            Ok(g) => g,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        prefs.fColor
+    };
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),

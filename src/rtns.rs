@@ -1,3 +1,5 @@
+// Module containing core routines for game logic and board management.
+
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI16, AtomicI32, AtomicU8, AtomicU16, Ordering};
 use std::sync::{Mutex, MutexGuard, OnceLock};

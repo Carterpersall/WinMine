@@ -8,7 +8,7 @@ use winsafe::{GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdP
 use crate::globals::{CXBORDER, CYCAPTION, CYMENU, ERR_TITLE, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
-use crate::winmine::{AdjustWindow, MenuCommand};
+use crate::winmine::{AdjustWindow, MenuCommand, WinMineMainWindow};
 
 /// Multiplier used by the linear congruential generator that produces the app's RNG values.
 const RNG_MULTIPLIER: u32 = 1_103_515_245;
@@ -126,43 +126,44 @@ pub fn CheckEm(hmenu: &HMENU, idm: MenuCommand, f_check: bool) {
     }
 }
 
-/// Show or hide the menu bar based on the specified mode.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-/// * `f_active` - The desired menu mode.
-pub fn SetMenuBar(hwnd: &HWND, f_active: MenuMode) {
-    // Persist the menu visibility preference, refresh accelerator state, and resize the window.
-    let (menu_on, game_type, color, mark, sound) = {
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
+impl WinMineMainWindow {
+    /// Show or hide the menu bar based on the specified mode.
+    /// # Arguments
+    /// * `f_active` - The desired menu mode.
+    pub fn SetMenuBar(&self, f_active: MenuMode) {
+        // Persist the menu visibility preference, refresh accelerator state, and resize the window.
+        let (menu_on, game_type, color, mark, sound) = {
+            let mut prefs = match preferences_mutex().lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            prefs.fMenu = f_active;
+            (
+                !matches!(prefs.fMenu, MenuMode::Hidden),
+                prefs.wGameType,
+                prefs.fColor,
+                prefs.fMark,
+                prefs.fSound,
+            )
         };
-        prefs.fMenu = f_active;
-        (
-            !matches!(prefs.fMenu, MenuMode::Hidden),
-            prefs.wGameType,
-            prefs.fColor,
-            prefs.fMark,
-            prefs.fSound,
-        )
-    };
 
-    // Update the menu checkmarks to reflect the current preferences
-    let hmenu = hwnd.GetMenu().unwrap_or(HMENU::NULL);
-    CheckEm(&hmenu, MenuCommand::Begin, game_type == GameType::Begin);
-    CheckEm(&hmenu, MenuCommand::Inter, game_type == GameType::Inter);
-    CheckEm(&hmenu, MenuCommand::Expert, game_type == GameType::Expert);
-    CheckEm(&hmenu, MenuCommand::Custom, game_type == GameType::Other);
+        // Update the menu checkmarks to reflect the current preferences
+        let hmenu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
+        CheckEm(&hmenu, MenuCommand::Begin, game_type == GameType::Begin);
+        CheckEm(&hmenu, MenuCommand::Inter, game_type == GameType::Inter);
+        CheckEm(&hmenu, MenuCommand::Expert, game_type == GameType::Expert);
+        CheckEm(&hmenu, MenuCommand::Custom, game_type == GameType::Other);
 
-    CheckEm(&hmenu, MenuCommand::Color, color);
-    CheckEm(&hmenu, MenuCommand::Mark, mark);
-    CheckEm(&hmenu, MenuCommand::Sound, sound == SoundState::On);
+        CheckEm(&hmenu, MenuCommand::Color, color);
+        CheckEm(&hmenu, MenuCommand::Mark, mark);
+        CheckEm(&hmenu, MenuCommand::Sound, sound == SoundState::On);
 
-    // Show or hide the menu bar as set in preferences
-    let menu = hwnd.GetMenu().unwrap_or(HMENU::NULL);
-    let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
-    let _ = hwnd.SetMenu(menu_arg);
-    AdjustWindow(hwnd, AdjustFlag::Resize as i32);
+        // Show or hide the menu bar as set in preferences
+        let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
+        let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
+        let _ = self.wnd.hwnd().SetMenu(menu_arg);
+        AdjustWindow(self.wnd.hwnd(), AdjustFlag::Resize as i32);
+    }
 }
 
 /// Display the About dialog box with version and credit information.

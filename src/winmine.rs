@@ -39,7 +39,7 @@ use crate::rtns::{
     TrackMouse, board_mutex, make_guess, preferences_mutex,
 };
 use crate::sound::{FInitTunes, stop_all_sounds};
-use crate::util::{DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr, SetMenuBar};
+use crate::util::{DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -270,9 +270,9 @@ fn init_common_controls() {
 
 /// Struct containing the main window with its event handlers and the shared state.
 #[derive(Clone)]
-struct WinMineMainWindow {
+pub struct WinMineMainWindow {
     /// The main window, containing the HWND and event callbacks
-    wnd: gui::WindowMain,
+    pub wnd: gui::WindowMain,
 }
 
 impl WinMineMainWindow {
@@ -304,6 +304,73 @@ impl WinMineMainWindow {
             DoButton1Up(self.wnd.hwnd());
         } else {
             TrackMouse(self.wnd.hwnd(), -2, -2);
+        }
+    }
+
+    /// Handles the `WM_KEYDOWN` message.
+    /// # Arguments
+    /// * `key`: The virtual key code of the key that was pressed.
+    fn handle_keydown(&self, key: VK) {
+        match key {
+            code if code == VK::F4 => {
+                let current_sound = {
+                    let prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.fSound
+                };
+
+                if matches!(current_sound, SoundState::On | SoundState::Off) {
+                    let new_sound = match current_sound {
+                        SoundState::On => {
+                            stop_all_sounds();
+                            SoundState::Off
+                        }
+                        SoundState::Off => FInitTunes(),
+                    };
+
+                    let f_menu = {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(g) => g,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.fSound = new_sound;
+                        prefs.fMenu
+                    };
+
+                    UPDATE_INI.store(true, Ordering::Relaxed);
+                    self.SetMenuBar(f_menu);
+                }
+            }
+            code if code == VK::F5 => {
+                let menu_value = {
+                    let prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.fMenu
+                };
+
+                if !matches!(menu_value, MenuMode::AlwaysOn) {
+                    self.SetMenuBar(MenuMode::Hidden);
+                }
+            }
+            code if code == VK::F6 => {
+                let menu_value = {
+                    let prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.fMenu
+                };
+
+                if !matches!(menu_value, MenuMode::AlwaysOn) {
+                    self.SetMenuBar(MenuMode::On);
+                }
+            }
+            code if code == VK::SHIFT => handle_xyzzys_shift(),
+            _ => handle_xyzzys_default_key(key),
         }
     }
 
@@ -390,7 +457,7 @@ impl WinMineMainWindow {
             prefs.fMenu
         };
         UPDATE_INI.store(true, Ordering::Relaxed);
-        SetMenuBar(self.wnd.hwnd(), fmenu);
+        self.SetMenuBar(fmenu);
         StartGame(self.wnd.hwnd());
     }
 
@@ -436,7 +503,7 @@ impl WinMineMainWindow {
                 };
                 StartGame(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                SetMenuBar(self.wnd.hwnd(), f_menu);
+                self.SetMenuBar(f_menu);
             }
             Some(MenuCommand::Custom) => self.DoPref(),
             Some(MenuCommand::Sound) => {
@@ -463,7 +530,7 @@ impl WinMineMainWindow {
                     prefs.fMenu
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                SetMenuBar(self.wnd.hwnd(), f_menu);
+                self.SetMenuBar(f_menu);
             }
             Some(MenuCommand::Color) => {
                 let f_menu = {
@@ -491,7 +558,7 @@ impl WinMineMainWindow {
                 // Repaint immediately so toggling color off updates without restarting.
                 DisplayScreen(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                SetMenuBar(self.wnd.hwnd(), f_menu);
+                self.SetMenuBar(f_menu);
             }
             Some(MenuCommand::Mark) => {
                 let f_menu = {
@@ -503,7 +570,7 @@ impl WinMineMainWindow {
                     prefs.fMenu
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                SetMenuBar(self.wnd.hwnd(), f_menu);
+                self.SetMenuBar(f_menu);
             }
             Some(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
             Some(MenuCommand::Help) => {
@@ -595,6 +662,162 @@ impl WinMineMainWindow {
         }
     }
 
+    /* Helper Functions */
+
+    /// Adjusts the main window size and position based on the current board and menu state.
+    ///
+    /// This function is called whenever the board or menu state changes to ensure
+    /// that the main window is appropriately sized and positioned on the screen.
+    /// # Arguments
+    /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
+    ///
+    /// TODO: Make `f_adjust` an enum
+    fn AdjustWindow(&self, mut f_adjust: i32) {
+        let menu_handle = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
+
+        let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
+        let y_boxes = BOARD_HEIGHT.load(Ordering::Relaxed);
+        let dx_window = scale_dpi(DX_BLK_96) * x_boxes
+            + scale_dpi(DX_LEFT_SPACE_96)
+            + scale_dpi(DX_RIGHT_SPACE_96);
+        let dy_window = scale_dpi(DY_BLK_96) * y_boxes
+            + scale_dpi(DY_GRID_OFF_96)
+            + scale_dpi(DY_BOTTOM_SPACE_96);
+        WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
+        WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
+
+        let (mut x_window, mut y_window, f_menu) = {
+            let prefs = match preferences_mutex().lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            (prefs.xWindow, prefs.yWindow, prefs.fMenu)
+        };
+
+        let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.as_opt().is_some();
+        let mut menu_extra = 0;
+        let mut diff_level = false;
+        if menu_visible
+            && let Some(hwnd) = self.wnd.hwnd().as_opt()
+            && let Some(menu) = menu_handle.as_opt()
+            && let (Ok(game_rect), Ok(help_rect)) =
+                (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
+            && game_rect.top != help_rect.top
+        {
+            diff_level = true;
+            menu_extra = CYMENU.load(Ordering::Relaxed);
+        }
+
+        let desired = RECT {
+            left: 0,
+            top: 0,
+            right: dx_window,
+            bottom: dy_window,
+        };
+        let dw_style = self.wnd.hwnd().GetWindowLongPtr(GWLP::STYLE);
+        let dw_ex_style = self.wnd.hwnd().GetWindowLongPtr(GWLP::EXSTYLE);
+        let mut frame_extra = CXBORDER.load(Ordering::Relaxed);
+        let mut dyp_adjust;
+        if let Ok(adjusted) = AdjustWindowRectExForDpi(
+            desired,
+            unsafe { WS::from_raw(dw_style as _) },
+            menu_visible,
+            unsafe { WS_EX::from_raw(dw_ex_style as _) },
+            UI_DPI.load(Ordering::Relaxed),
+        ) {
+            let cx_total = adjusted.right - adjusted.left;
+            let cy_total = adjusted.bottom - adjusted.top;
+            frame_extra = max(0, cx_total - dx_window);
+            dyp_adjust = max(0, cy_total - dy_window);
+        } else {
+            dyp_adjust = CYCAPTION.load(Ordering::Relaxed);
+            if menu_visible {
+                dyp_adjust += CYMENU.load(Ordering::Relaxed);
+            }
+        }
+
+        dyp_adjust += menu_extra;
+        WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
+
+        let mut excess = x_window + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
+        if excess > 0 {
+            f_adjust |= AdjustFlag::Resize as i32;
+            x_window -= excess;
+        }
+        excess = y_window + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
+        if excess > 0 {
+            f_adjust |= AdjustFlag::Resize as i32;
+            y_window -= excess;
+        }
+
+        if !INIT_MINIMIZED.load(Ordering::Relaxed) {
+            if (f_adjust & AdjustFlag::Resize as i32) != 0 {
+                let _ = self.wnd.hwnd().MoveWindow(
+                    POINT {
+                        x: x_window,
+                        y: y_window,
+                    },
+                    SIZE {
+                        cx: dx_window + frame_extra,
+                        cy: dy_window + dyp_adjust,
+                    },
+                    true,
+                );
+            }
+
+            if diff_level
+                && menu_visible
+                && menu_handle.as_opt().is_some()
+                && menu_handle
+                    .as_opt()
+                    .and_then(|menu| {
+                        self.wnd
+                            .hwnd()
+                            .GetMenuItemRect(menu, 0)
+                            .ok()
+                            .zip(self.wnd.hwnd().GetMenuItemRect(menu, 1).ok())
+                    })
+                    .is_some_and(|(g, h)| g.top == h.top)
+            {
+                dyp_adjust -= CYMENU.load(Ordering::Relaxed);
+                WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
+                let _ = self.wnd.hwnd().MoveWindow(
+                    POINT {
+                        x: x_window,
+                        y: y_window,
+                    },
+                    SIZE {
+                        cx: dx_window + frame_extra,
+                        cy: dy_window + dyp_adjust,
+                    },
+                    true,
+                );
+            }
+
+            if (f_adjust & AdjustFlag::Display as i32) != 0 {
+                let rect = RECT {
+                    left: 0,
+                    top: 0,
+                    right: dx_window,
+                    bottom: dy_window,
+                };
+                let _ = self.wnd.hwnd().InvalidateRect(Some(&rect), true);
+            }
+        }
+
+        // TODO: Don't double lock here
+        if let Ok(mut prefs) = preferences_mutex().lock() {
+            prefs.xWindow = x_window;
+            prefs.yWindow = y_window;
+        } else if let Err(poisoned) = preferences_mutex().lock() {
+            let mut guard = poisoned.into_inner();
+            guard.xWindow = x_window;
+            guard.yWindow = y_window;
+        }
+    }
+
+    /* Event Handlers */
+
     /// Hooks the window messages to their respective handlers.
     fn events(&self) {
         self.wnd.on().wm_create({
@@ -606,10 +829,7 @@ impl WinMineMainWindow {
                 update_ui_metrics_for_dpi(dpi);
 
                 // Ensure the client area matches the board size for the active DPI.
-                AdjustWindow(
-                    self2.wnd.hwnd(),
-                    AdjustFlag::Resize as i32 | AdjustFlag::Display as i32,
-                );
+                self2.AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
 
                 // Initialize local resources.
                 if let Err(e) = FInitLocal(self2.wnd.hwnd()) {
@@ -626,7 +846,7 @@ impl WinMineMainWindow {
                     };
                     prefs_guard.fMenu
                 };
-                SetMenuBar(self2.wnd.hwnd(), f_menu);
+                self2.SetMenuBar(f_menu);
                 StartGame(self2.wnd.hwnd());
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
@@ -657,13 +877,12 @@ impl WinMineMainWindow {
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
 
                 if let Some(rc) = suggested {
-                    // Persist the suggested top-left so AdjustWindow keeps us on the same monitor.
-                    // TODO: Don't double lock here
-                    if let Ok(mut prefs) = preferences_mutex().lock() {
-                        prefs.xWindow = rc.left;
-                        prefs.yWindow = rc.top;
-                    } else if let Err(poisoned) = preferences_mutex().lock() {
-                        let mut prefs = poisoned.into_inner();
+                    // Persist the suggested top-left so AdjustWindow keeps us on the same monitor
+                    {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(g) => g,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
                         prefs.xWindow = rc.left;
                         prefs.yWindow = rc.top;
                     }
@@ -689,10 +908,7 @@ impl WinMineMainWindow {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
-                AdjustWindow(
-                    self2.wnd.hwnd(),
-                    AdjustFlag::Resize as i32 | AdjustFlag::Display as i32,
-                );
+                self2.AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
                 Ok(0)
             }
         });
@@ -745,7 +961,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_key_down({
             let self2 = self.clone();
             move |key| {
-                handle_keydown(self2.wnd.hwnd(), key.vkey_code);
+                self2.handle_keydown(key.vkey_code);
                 unsafe { self2.wnd.hwnd().DefWindowProc(key) };
                 Ok(())
             }
@@ -1077,74 +1293,6 @@ const fn menu_command(w_param: usize) -> Option<MenuCommand> {
     }
 }
 
-/// Handles the `WM_KEYDOWN` message.
-/// # Arguments
-/// * `hwnd`: A reference to the window handle.
-/// * `key`: The virtual key code of the key that was pressed.
-fn handle_keydown(hwnd: &HWND, key: VK) {
-    match key {
-        code if code == VK::F4 => {
-            let current_sound = {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                prefs.fSound
-            };
-
-            if matches!(current_sound, SoundState::On | SoundState::Off) {
-                let new_sound = match current_sound {
-                    SoundState::On => {
-                        stop_all_sounds();
-                        SoundState::Off
-                    }
-                    SoundState::Off => FInitTunes(),
-                };
-
-                let f_menu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.fSound = new_sound;
-                    prefs.fMenu
-                };
-
-                UPDATE_INI.store(true, Ordering::Relaxed);
-                SetMenuBar(hwnd, f_menu);
-            }
-        }
-        code if code == VK::F5 => {
-            let menu_value = {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                prefs.fMenu
-            };
-
-            if !matches!(menu_value, MenuMode::AlwaysOn) {
-                SetMenuBar(hwnd, MenuMode::Hidden);
-            }
-        }
-        code if code == VK::F6 => {
-            let menu_value = {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
-                prefs.fMenu
-            };
-
-            if !matches!(menu_value, MenuMode::AlwaysOn) {
-                SetMenuBar(hwnd, MenuMode::On);
-            }
-        }
-        code if code == VK::SHIFT => handle_xyzzys_shift(),
-        _ => handle_xyzzys_default_key(key),
-    }
-}
-
 /// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
 /// # Arguments
 /// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
@@ -1183,6 +1331,8 @@ fn handle_syscommand(command: SC) {
 }
 
 /// Checks if the given (x, y) coordinates are within the valid board range.
+///
+/// TODO: Does this function need to exist?
 /// # Arguments
 /// * `x`: The x-coordinate to check.
 /// * `y`: The y-coordinate to check.
