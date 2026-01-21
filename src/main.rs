@@ -28,6 +28,7 @@ mod rtns;
 mod sound;
 mod util;
 mod winmine;
+mod xyzzy;
 
 use crate::winmine::run_winmine;
 use winsafe::{HINSTANCE, co::SW, prelude::Handle as _};

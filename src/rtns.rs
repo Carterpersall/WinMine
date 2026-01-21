@@ -145,11 +145,14 @@ pub static CURSOR_Y_POS: AtomicI32 = AtomicI32::new(-1);
 /// Packed board cell values stored row-major including border
 ///
 /// TODO: Replace with a better data structure, perhaps using a struct?
+/// TODO: Use an enum for the cell values instead of i8
 static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
 
 /// Accessor for the packed board cell array.
 /// # Returns
 /// A mutex guard for the packed board cell array.
+///
+/// TODO: Use an enum for the cell values instead of i8
 pub fn board_mutex() -> MutexGuard<'static, [i8; C_BLK_MAX]> {
     match RG_BLK
         .get_or_init(|| Mutex::new([BlockCell::BlankUp as i8; C_BLK_MAX]))
@@ -183,7 +186,7 @@ static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 /// * `y` - The Y coordinate.
 /// # Returns
 /// An option containing the board index if valid, or None if out of range.
-const fn board_index(x: i32, y: i32) -> Option<usize> {
+pub const fn board_index(x: i32, y: i32) -> Option<usize> {
     // Calculate the offset in the packed board array.
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {

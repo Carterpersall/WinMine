@@ -1,21 +1,21 @@
 use core::cmp::{max, min};
 use core::ffi::c_void;
-use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
 };
 
 use winsafe::co::{
-    BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MB, MK, PM, PS, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
+    BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MB, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
     WS_EX,
 };
 use winsafe::msg::WndMsg;
 use winsafe::msg::wm::Destroy;
 use winsafe::{
-    AdjustWindowRectExForDpi, AnyResult, COLORREF, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE,
-    HMENU, HPEN, HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage,
-    PtsRc, RECT, SIZE, WINDOWPOS, gui, prelude::*,
+    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HMENU,
+    HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PtsRc, RECT,
+    SIZE, WINDOWPOS, gui, prelude::*,
 };
 
 use crate::globals::{
@@ -34,9 +34,8 @@ use crate::pref::{
     WritePreferences,
 };
 use crate::rtns::{
-    AdjustFlag, BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BTN_FACE_STATE, BlockMask, C_BLK_MAX,
-    CURSOR_X_POS, CURSOR_Y_POS, DoButton1Up, DoTimer, ID_TIMER, PauseGame, ResumeGame, StartGame,
-    TrackMouse, board_mutex, make_guess, preferences_mutex,
+    AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, DoButton1Up,
+    DoTimer, ID_TIMER, PauseGame, ResumeGame, StartGame, TrackMouse, make_guess, preferences_mutex,
 };
 use crate::sound::{FInitTunes, stop_all_sounds};
 use crate::util::{DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr};
@@ -369,8 +368,8 @@ impl WinMineMainWindow {
                     self.SetMenuBar(MenuMode::On);
                 }
             }
-            code if code == VK::SHIFT => handle_xyzzys_shift(),
-            _ => handle_xyzzys_default_key(key),
+            code if code == VK::SHIFT => self.handle_xyzzys_shift(),
+            _ => self.handle_xyzzys_default_key(key),
         }
     }
 
@@ -384,15 +383,15 @@ impl WinMineMainWindow {
             if status_play() {
                 TrackMouse(
                     self.wnd.hwnd(),
-                    x_box_from_xpos(point.x),
-                    y_box_from_ypos(point.y),
+                    self.x_box_from_xpos(point.x),
+                    self.y_box_from_ypos(point.y),
                 );
             } else {
                 self.finish_primary_button_drag();
             }
         } else {
             // Regular mouse move
-            handle_xyzzys_mouse(key, point);
+            self.handle_xyzzys_mouse(key, point);
         }
     }
 
@@ -434,8 +433,8 @@ impl WinMineMainWindow {
         // Regular right-click: make a guess
         make_guess(
             self.wnd.hwnd(),
-            x_box_from_xpos(point.x),
-            y_box_from_ypos(point.y),
+            self.x_box_from_xpos(point.x),
+            self.y_box_from_ypos(point.y),
         );
     }
 
@@ -816,6 +815,32 @@ impl WinMineMainWindow {
         }
     }
 
+    /// Converts an x-coordinate in pixels to a box index.
+    /// # Arguments
+    /// * `x`: The x-coordinate in pixels.
+    /// # Returns
+    /// The corresponding box index.
+    pub fn x_box_from_xpos(&self, x: i32) -> i32 {
+        let cell = scale_dpi(DX_BLK_96);
+        if cell <= 0 {
+            return 0;
+        }
+        (x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell
+    }
+
+    /// Converts a y-coordinate in pixels to a box index.
+    /// # Arguments
+    /// * `y`: The y-coordinate in pixels.
+    /// # Returns
+    /// The corresponding box index.
+    pub fn y_box_from_ypos(&self, y: i32) -> i32 {
+        let cell = scale_dpi(DY_BLK_96);
+        if cell <= 0 {
+            return 0;
+        }
+        (y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell
+    }
+
     /* Event Handlers */
 
     /// Hooks the window messages to their respective handlers.
@@ -1186,32 +1211,6 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> i32 {
     }
 }
 
-/// Converts an x-coordinate in pixels to a box index.
-/// # Arguments
-/// * `x`: The x-coordinate in pixels.
-/// # Returns
-/// The corresponding box index.
-fn x_box_from_xpos(x: i32) -> i32 {
-    let cell = scale_dpi(DX_BLK_96);
-    if cell <= 0 {
-        return 0;
-    }
-    (x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell
-}
-
-/// Converts a y-coordinate in pixels to a box index.
-/// # Arguments
-/// * `y`: The y-coordinate in pixels.
-/// # Returns
-/// The corresponding box index.
-fn y_box_from_ypos(y: i32) -> i32 {
-    let cell = scale_dpi(DY_BLK_96);
-    if cell <= 0 {
-        return 0;
-    }
-    (y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell
-}
-
 /// Returns whether the game is currently in the 'icon' (minimized) status.
 /// # Returns
 /// True if the game is in icon status, false otherwise.
@@ -1327,133 +1326,6 @@ fn handle_syscommand(command: SC) {
         clr_status_icon();
         ResumeGame();
         IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
-    }
-}
-
-/// Checks if the given (x, y) coordinates are within the valid board range.
-///
-/// TODO: Does this function need to exist?
-/// # Arguments
-/// * `x`: The x-coordinate to check.
-/// * `y`: The y-coordinate to check.
-/// # Returns
-/// True if the coordinates are within range, false otherwise.
-fn in_range(x: i32, y: i32) -> bool {
-    let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
-    let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
-    x > 0 && y > 0 && x <= x_max && y <= y_max
-}
-
-/// Calculates the board index for the given (x, y) coordinates.
-/// # Arguments
-/// * `x`: The x-coordinate.
-/// * `y`: The y-coordinate.
-/// # Returns
-/// The calculated board index.
-fn board_index(x: i32, y: i32) -> usize {
-    let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
-    offset.max(0) as usize
-}
-
-/// Checks if the cell at the given (x, y) coordinates is a bomb.
-/// # Arguments
-/// * `x`: The x-coordinate of the cell.
-/// * `y`: The y-coordinate of the cell.
-/// # Returns
-/// True if the cell is a bomb, false otherwise.
-fn cell_is_bomb(x: i32, y: i32) -> bool {
-    if !in_range(x, y) {
-        return false;
-    }
-    let idx = board_index(x, y);
-    if idx >= C_BLK_MAX {
-        return false;
-    }
-    let guard = board_mutex();
-    (guard[idx] as u8 & BlockMask::Bomb as u8) != 0
-}
-
-/* XYZZY Cheat Code Handling */
-
-/// Length of the XYZZY cheat code sequence.
-const CCH_XYZZY: i32 = 5;
-/// Atomic counter tracking the progress of the XYZZY cheat code entry.
-static I_XYZZY: AtomicI32 = AtomicI32::new(0);
-/// The expected sequence of virtual key codes for the XYZZY cheat code.
-const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
-
-/// Handles the SHIFT key press for the XYZZY cheat code.
-/// If the cheat code has been fully entered, this function toggles
-/// the cheat code state by XORing the counter with 20 (0b10100).
-fn handle_xyzzys_shift() {
-    if I_XYZZY.load(Ordering::Relaxed) >= CCH_XYZZY {
-        I_XYZZY.fetch_xor(20, Ordering::Relaxed);
-    }
-}
-
-/// Handles default key presses for the XYZZY cheat code.
-/// It checks if the pressed key matches the expected character in the
-/// XYZZY sequence and updates the counter accordingly.
-/// If the sequence is broken, the counter is reset.
-/// # Arguments
-/// * `w_param` - The WPARAM from the keydown message, containing the virtual key code
-fn handle_xyzzys_default_key(key: VK) {
-    let current = I_XYZZY.load(Ordering::Relaxed);
-    if current < CCH_XYZZY {
-        let expected = XYZZY_SEQUENCE[current as usize];
-        if expected == key {
-            I_XYZZY.store(current + 1, Ordering::Relaxed);
-        } else {
-            I_XYZZY.store(0, Ordering::Relaxed);
-        }
-    }
-}
-
-/// Handles mouse movement for the XYZZY cheat code.
-/// If the cheat code is active and the Control key is held down,
-/// or if the cheat code has been fully entered,
-/// it reveals whether the cell under the cursor is a bomb or not by
-/// setting the pixel at (0,0) of the device context to black (bomb) or white (no bomb).
-/// # Arguments
-/// * `key` - The WPARAM from the mouse move message, containing key states.
-/// * `point` - The LPARAM from the mouse move message, containing cursor position.
-fn handle_xyzzys_mouse(key: MK, point: POINT) {
-    // Check if the XYZZY cheat code is active.
-    let state = I_XYZZY.load(Ordering::Relaxed);
-    if state == 0 {
-        return;
-    }
-
-    // Check if the Control key is held down.
-    let control_down = key == MK::CONTROL;
-    if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
-        let x_pos = x_box_from_xpos(point.x);
-        let y_pos = y_box_from_ypos(point.y);
-        CURSOR_X_POS.store(x_pos, Ordering::Relaxed);
-        CURSOR_Y_POS.store(y_pos, Ordering::Relaxed);
-        if in_range(x_pos, y_pos)
-            && let Ok(hdc) = HWND::DESKTOP.GetDC()
-        {
-            let color = if cell_is_bomb(x_pos, y_pos) {
-                COLORREF::from_rgb(0, 0, 0)
-            } else {
-                COLORREF::from_rgb(0xFF, 0xFF, 0xFF)
-            };
-
-            // Set the pixel at (0,0) to indicate bomb status.
-            HPEN::CreatePen(PS::SOLID, 0, color)
-                .and_then(|mut pen| {
-                    let mut old_pen = hdc.SelectObject(&pen.leak())?;
-                    hdc.MoveToEx(0, 0, None)?;
-                    // LineTo excludes the endpoint, so drawing to (1,0) sets pixel (0,0)
-                    hdc.LineTo(1, 0)?;
-                    hdc.SelectObject(&old_pen.leak())?;
-                    Ok(())
-                })
-                .unwrap_or_else(|e| {
-                    eprintln!("Failed to draw pixel at (0,0): {e}");
-                });
-        }
     }
 }
 
