@@ -8,7 +8,7 @@ use winsafe::{GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdP
 use crate::globals::{CXBORDER, CYCAPTION, CYMENU, ERR_TITLE, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
-use crate::winmine::{AdjustWindow, MenuCommand, WinMineMainWindow};
+use crate::winmine::{MenuCommand, WinMineMainWindow};
 
 /// Multiplier used by the linear congruential generator that produces the app's RNG values.
 const RNG_MULTIPLIER: u32 = 1_103_515_245;
@@ -164,7 +164,7 @@ impl WinMineMainWindow {
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
         let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
         let _ = self.wnd.hwnd().SetMenu(menu_arg);
-        AdjustWindow(self.wnd.hwnd(), AdjustFlag::Resize as i32);
+        self.AdjustWindow(AdjustFlag::Resize as i32);
     }
 }
 

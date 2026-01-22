@@ -15,7 +15,7 @@ use crate::grafix::{
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
 use crate::sound::{PlayTune, Tune, stop_all_sounds};
 use crate::util::{ReportErr, Rnd};
-use crate::winmine::{AdjustWindow, NEW_RECORD_DLG};
+use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 
 /// Encoded board values used to track each tile state.
 ///
@@ -768,68 +768,70 @@ pub fn DoTimer(hwnd: &HWND) {
     }
 }
 
-/// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-pub fn StartGame(hwnd: &HWND) {
-    F_TIMER.store(false, Ordering::Relaxed);
+impl WinMineMainWindow {
+    /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
+    /// # Arguments
+    /// * `hwnd` - Handle to the main window.
+    pub fn StartGame(&self) {
+        F_TIMER.store(false, Ordering::Relaxed);
 
-    let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
-    let y_prev = BOARD_HEIGHT.load(Ordering::Relaxed);
+        let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
+        let y_prev = BOARD_HEIGHT.load(Ordering::Relaxed);
 
-    let (pref_width, pref_height, pref_mines) = {
-        let prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
+        let (pref_width, pref_height, pref_mines) = {
+            let prefs = match preferences_mutex().lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            (prefs.Width, prefs.Height, prefs.Mines)
         };
-        (prefs.Width, prefs.Height, prefs.Mines)
-    };
 
-    let f_adjust = if pref_width != x_prev || pref_height != y_prev {
-        AdjustFlag::Resize as i32 | AdjustFlag::Display as i32
-    } else {
-        AdjustFlag::Display as i32
-    };
+        let f_adjust = if pref_width != x_prev || pref_height != y_prev {
+            AdjustFlag::Resize as i32 | AdjustFlag::Display as i32
+        } else {
+            AdjustFlag::Display as i32
+        };
 
-    BOARD_WIDTH.store(pref_width, Ordering::Relaxed);
-    BOARD_HEIGHT.store(pref_height, Ordering::Relaxed);
+        BOARD_WIDTH.store(pref_width, Ordering::Relaxed);
+        BOARD_HEIGHT.store(pref_height, Ordering::Relaxed);
 
-    ClearField();
-    BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
+        ClearField();
+        BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
 
-    CBOMB_START.store(pref_mines, Ordering::Relaxed);
+        CBOMB_START.store(pref_mines, Ordering::Relaxed);
 
-    let total_bombs = CBOMB_START.load(Ordering::Relaxed);
-    let width = BOARD_WIDTH.load(Ordering::Relaxed);
-    let height = BOARD_HEIGHT.load(Ordering::Relaxed);
+        let total_bombs = CBOMB_START.load(Ordering::Relaxed);
+        let width = BOARD_WIDTH.load(Ordering::Relaxed);
+        let height = BOARD_HEIGHT.load(Ordering::Relaxed);
 
-    let mut bombs = total_bombs;
-    while bombs > 0 {
-        let mut x;
-        let mut y;
-        loop {
-            x = Rnd(width as u32) + 1;
-            y = Rnd(height as u32) + 1;
-            if !is_bomb(x as i32, y as i32) {
-                break;
+        let mut bombs = total_bombs;
+        while bombs > 0 {
+            let mut x;
+            let mut y;
+            loop {
+                x = Rnd(width as u32) + 1;
+                y = Rnd(height as u32) + 1;
+                if !is_bomb(x as i32, y as i32) {
+                    break;
+                }
             }
+            set_bomb(x as i32, y as i32);
+            bombs -= 1;
         }
-        set_bomb(x as i32, y as i32);
-        bombs -= 1;
+
+        SECS_ELAPSED.store(0, Ordering::Relaxed);
+        BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
+        C_BOX_VISIT.store(0, Ordering::Relaxed);
+        CBOX_VISIT_MAC.store(
+            (width * height) as u16 - total_bombs as u16,
+            Ordering::Relaxed,
+        );
+        GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
+
+        display_bomb_count(self.wnd.hwnd());
+
+        self.AdjustWindow(f_adjust);
     }
-
-    SECS_ELAPSED.store(0, Ordering::Relaxed);
-    BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
-    C_BOX_VISIT.store(0, Ordering::Relaxed);
-    CBOX_VISIT_MAC.store(
-        (width * height) as u16 - total_bombs as u16,
-        Ordering::Relaxed,
-    );
-    GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
-
-    display_bomb_count(hwnd);
-
-    AdjustWindow(hwnd, f_adjust);
 }
 
 /// Track mouse movement over the board and provide visual feedback.

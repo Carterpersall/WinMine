@@ -34,7 +34,7 @@ use crate::pref::{
 };
 use crate::rtns::{
     AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, DoButton1Up,
-    DoTimer, ID_TIMER, PauseGame, ResumeGame, StartGame, TrackMouse, make_guess, preferences_mutex,
+    DoTimer, ID_TIMER, PauseGame, ResumeGame, TrackMouse, make_guess, preferences_mutex,
 };
 use crate::sound::{FInitTunes, stop_all_sounds};
 use crate::util::{DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr};
@@ -491,7 +491,7 @@ impl WinMineMainWindow {
         };
         UPDATE_INI.store(true, Ordering::Relaxed);
         self.SetMenuBar(fmenu);
-        StartGame(self.wnd.hwnd());
+        self.StartGame();
     }
 
     /// Handles command messages from the menu and accelerators.
@@ -506,7 +506,7 @@ impl WinMineMainWindow {
     /// a `Result` type with an error, as unhandled commands are simply passed to the default handler.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
         match MenuCommand::try_from(w_param) {
-            Ok(MenuCommand::New) => StartGame(self.wnd.hwnd()),
+            Ok(MenuCommand::New) => self.StartGame(),
             Ok(MenuCommand::Exit) => {
                 self.wnd.hwnd().ShowWindow(SW::HIDE);
                 unsafe {
@@ -538,7 +538,7 @@ impl WinMineMainWindow {
                     }
                     prefs.fMenu
                 };
-                StartGame(self.wnd.hwnd());
+                self.StartGame();
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.SetMenuBar(f_menu);
             }
@@ -676,7 +676,7 @@ impl WinMineMainWindow {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
                             display_button(self.wnd.hwnd(), ButtonSprite::Happy);
-                            StartGame(self.wnd.hwnd());
+                            self.StartGame();
                         }
                         return true;
                     }
@@ -707,7 +707,7 @@ impl WinMineMainWindow {
     /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
     ///
     /// TODO: Make `f_adjust` an enum
-    fn AdjustWindow(&self, mut f_adjust: i32) {
+    pub fn AdjustWindow(&self, mut f_adjust: i32) {
         let menu_handle = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
 
         let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
@@ -908,7 +908,7 @@ impl WinMineMainWindow {
                     prefs_guard.fMenu
                 };
                 self2.SetMenuBar(f_menu);
-                StartGame(self2.wnd.hwnd());
+                self2.StartGame();
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
                 Ok(0)
@@ -1010,7 +1010,8 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
-                    DoEnterName(&self2.wnd);
+                    EnterDialog::new().show_modal(&self2.wnd);
+                    UPDATE_INI.store(true, Ordering::Relaxed);
                     BestDialog::new().show_modal(&self2.wnd);
                     return Ok(0);
                 }
@@ -1649,161 +1650,6 @@ impl EnterDialog {
                 Ok(())
             }
         });
-    }
-}
-
-/// Handles the high-score name entry dialog.
-/// # Arguments
-/// * `parent`: The parent GUI element for the modal dialog.
-fn DoEnterName(parent: &impl GuiParent) {
-    EnterDialog::new().show_modal(parent);
-    UPDATE_INI.store(true, Ordering::Relaxed);
-}
-
-/// Adjusts the main window size and position based on the current board and menu state.
-///
-/// This function is called whenever the board or menu state changes to ensure
-/// that the main window is appropriately sized and positioned on the screen.
-/// # Arguments
-/// * `hwnd` - A reference to the main window handle.
-/// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
-pub fn AdjustWindow(hwnd: &HWND, mut f_adjust: i32) {
-    let menu_handle = hwnd.GetMenu().unwrap_or(HMENU::NULL);
-
-    let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
-    let y_boxes = BOARD_HEIGHT.load(Ordering::Relaxed);
-    let dx_window =
-        scale_dpi(DX_BLK_96) * x_boxes + scale_dpi(DX_LEFT_SPACE_96) + scale_dpi(DX_RIGHT_SPACE_96);
-    let dy_window =
-        scale_dpi(DY_BLK_96) * y_boxes + scale_dpi(DY_GRID_OFF_96) + scale_dpi(DY_BOTTOM_SPACE_96);
-    WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
-    WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
-
-    let (mut x_window, mut y_window, f_menu) = {
-        let prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        (prefs.xWindow, prefs.yWindow, prefs.fMenu)
-    };
-
-    let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.as_opt().is_some();
-    let mut menu_extra = 0;
-    let mut diff_level = false;
-    if menu_visible
-        && let Some(hwnd) = hwnd.as_opt()
-        && let Some(menu) = menu_handle.as_opt()
-        && let (Ok(game_rect), Ok(help_rect)) =
-            (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
-        && game_rect.top != help_rect.top
-    {
-        diff_level = true;
-        menu_extra = CYMENU.load(Ordering::Relaxed);
-    }
-
-    let desired = RECT {
-        left: 0,
-        top: 0,
-        right: dx_window,
-        bottom: dy_window,
-    };
-    let dw_style = hwnd.GetWindowLongPtr(GWLP::STYLE);
-    let dw_ex_style = hwnd.GetWindowLongPtr(GWLP::EXSTYLE);
-    let mut frame_extra = CXBORDER.load(Ordering::Relaxed);
-    let mut dyp_adjust;
-    if let Ok(adjusted) = AdjustWindowRectExForDpi(
-        desired,
-        unsafe { WS::from_raw(dw_style as _) },
-        menu_visible,
-        unsafe { WS_EX::from_raw(dw_ex_style as _) },
-        UI_DPI.load(Ordering::Relaxed),
-    ) {
-        let cx_total = adjusted.right - adjusted.left;
-        let cy_total = adjusted.bottom - adjusted.top;
-        frame_extra = max(0, cx_total - dx_window);
-        dyp_adjust = max(0, cy_total - dy_window);
-    } else {
-        dyp_adjust = CYCAPTION.load(Ordering::Relaxed);
-        if menu_visible {
-            dyp_adjust += CYMENU.load(Ordering::Relaxed);
-        }
-    }
-
-    dyp_adjust += menu_extra;
-    WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
-
-    let mut excess = x_window + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
-    if excess > 0 {
-        f_adjust |= AdjustFlag::Resize as i32;
-        x_window -= excess;
-    }
-    excess = y_window + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
-    if excess > 0 {
-        f_adjust |= AdjustFlag::Resize as i32;
-        y_window -= excess;
-    }
-
-    if !INIT_MINIMIZED.load(Ordering::Relaxed) {
-        if (f_adjust & AdjustFlag::Resize as i32) != 0 {
-            let _ = hwnd.MoveWindow(
-                POINT {
-                    x: x_window,
-                    y: y_window,
-                },
-                SIZE {
-                    cx: dx_window + frame_extra,
-                    cy: dy_window + dyp_adjust,
-                },
-                true,
-            );
-        }
-
-        if diff_level
-            && menu_visible
-            && menu_handle.as_opt().is_some()
-            && menu_handle
-                .as_opt()
-                .and_then(|menu| {
-                    hwnd.GetMenuItemRect(menu, 0)
-                        .ok()
-                        .zip(hwnd.GetMenuItemRect(menu, 1).ok())
-                })
-                .is_some_and(|(g, h)| g.top == h.top)
-        {
-            dyp_adjust -= CYMENU.load(Ordering::Relaxed);
-            WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
-            let _ = hwnd.MoveWindow(
-                POINT {
-                    x: x_window,
-                    y: y_window,
-                },
-                SIZE {
-                    cx: dx_window + frame_extra,
-                    cy: dy_window + dyp_adjust,
-                },
-                true,
-            );
-        }
-
-        if (f_adjust & AdjustFlag::Display as i32) != 0 {
-            let rect = RECT {
-                left: 0,
-                top: 0,
-                right: dx_window,
-                bottom: dy_window,
-            };
-            let _ = hwnd.InvalidateRect(Some(&rect), true);
-        }
-    }
-
-    // TODO: Don't double lock here
-    if let Ok(mut prefs) = preferences_mutex().lock() {
-        prefs.xWindow = x_window;
-        prefs.yWindow = y_window;
-    } else if let Err(poisoned) = preferences_mutex().lock() {
-        let mut guard = poisoned.into_inner();
-        guard.xWindow = x_window;
-        guard.yWindow = y_window;
     }
 }
 
