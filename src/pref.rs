@@ -105,6 +105,26 @@ pub enum GameType {
     Other = 3,
 }
 
+impl GameType {
+    /// Mines, height, and width tuples for the preset difficulty levels.
+    const LEVEL_DATA: [(i16, u32, u32); 3] =
+        [(10, MINHEIGHT, MINWIDTH), (40, 16, 16), (99, 16, 30)];
+
+    /// Returns the preset data for a given game type, or None for custom games.
+    /// # Arguments
+    /// * `game`: The game type to get preset data for.
+    /// # Returns
+    /// The preset data as (mines, height, width), or None for a custom game.
+    pub const fn preset_data(&self) -> Option<(i16, u32, u32)> {
+        match self {
+            GameType::Begin => Some(Self::LEVEL_DATA[0]),
+            GameType::Inter => Some(Self::LEVEL_DATA[1]),
+            GameType::Expert => Some(Self::LEVEL_DATA[2]),
+            GameType::Other => None,
+        }
+    }
+}
+
 /// Strings corresponding to each preference key for registry access.
 ///
 /// The order matches the `PrefKey` enum.

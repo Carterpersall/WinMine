@@ -9,10 +9,9 @@ use windows_sys::Win32::Data::HtmlHelp::{
 };
 
 use winsafe::co::{
-    BN, DLGID, EM, GWLP, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS, WS_EX,
+    BN, DLGID, GWLP, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS, WS_EX,
 };
-use winsafe::msg::WndMsg;
-use winsafe::msg::wm::Destroy;
+use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HMENU,
     HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PtsRc, RECT,
@@ -190,23 +189,6 @@ enum HelpContextId {
     BestBtnReset = 1003,
     /// Static text for best times
     SText = 1004,
-}
-
-/// Mines, height, and width tuples for the preset difficulty levels.
-const LEVEL_DATA: [(i16, u32, u32); 3] = [(10, MINHEIGHT, MINWIDTH), (40, 16, 16), (99, 16, 30)];
-
-/// Returns the preset data for a given game type, or None for custom games.
-/// # Arguments
-/// * `game`: The game type to get preset data for.
-/// # Returns
-/// The preset data as (mines, height, width), or None for a custom game.
-const fn preset_data(game: GameType) -> Option<(i16, u32, u32)> {
-    match game {
-        GameType::Begin => Some(LEVEL_DATA[0]),
-        GameType::Inter => Some(LEVEL_DATA[1]),
-        GameType::Expert => Some(LEVEL_DATA[2]),
-        GameType::Other => None,
-    }
 }
 
 /// Help file name
@@ -532,7 +514,7 @@ impl WinMineMainWindow {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    if let Some(data) = preset_data(game) {
+                    if let Some(data) = game.preset_data() {
                         prefs.wGameType = game;
                         prefs.Mines = data.0;
                         prefs.Height = data.1 as i32;
@@ -582,6 +564,7 @@ impl WinMineMainWindow {
                 };
                 FreeBitmaps();
                 if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
+                    // TODO: This probably isn't necessary
                     eprintln!("Failed to reload bitmaps: {e}");
                     ReportErr(ERR_OUT_OF_MEMORY);
                     unsafe {
@@ -785,12 +768,12 @@ impl WinMineMainWindow {
         dyp_adjust += menu_extra;
         WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
 
-        let mut excess = x_window + dx_window + frame_extra - our_get_system_metrics(SM::CXSCREEN);
+        let mut excess = x_window + dx_window + frame_extra - self.get_system_metrics(SM::CXSCREEN);
         if excess > 0 {
             f_adjust |= AdjustFlag::Resize as i32;
             x_window -= excess;
         }
-        excess = y_window + dy_window + dyp_adjust - our_get_system_metrics(SM::CYSCREEN);
+        excess = y_window + dy_window + dyp_adjust - self.get_system_metrics(SM::CYSCREEN);
         if excess > 0 {
             f_adjust |= AdjustFlag::Resize as i32;
             y_window -= excess;
@@ -859,6 +842,34 @@ impl WinMineMainWindow {
             let mut guard = poisoned.into_inner();
             guard.xWindow = x_window;
             guard.yWindow = y_window;
+        }
+    }
+
+    /// Retrieves system metrics, favoring virtual screen metrics for multi-monitor support.
+    ///
+    /// TODO: Is this function necessary? Could just call `GetSystemMetrics` directly where needed,
+    /// which is only twice in `AdjustWindow`.
+    /// # Arguments
+    /// * `index` - The system metric index to retrieve.
+    /// # Returns
+    /// The requested system metric value.
+    fn get_system_metrics(&self, index: SM) -> i32 {
+        match index {
+            SM::CXSCREEN => {
+                let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
+                if result == 0 {
+                    result = GetSystemMetrics(SM::CXSCREEN);
+                }
+                result
+            }
+            SM::CYSCREEN => {
+                let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN);
+                if result == 0 {
+                    result = GetSystemMetrics(SM::CYSCREEN);
+                }
+                result
+            }
+            _ => GetSystemMetrics(index),
         }
     }
 
@@ -1446,17 +1457,64 @@ impl BestDialog {
         }
     }
 
+    /* Helper Functions */
+
+    /// Sets the dialog text for a given time and name in the best scores dialog.
+    ///
+    /// TODO: Remove this function
+    /// # Arguments
+    /// * `id` - The control ID for the time text.
+    /// * `time` - The time value to display.
+    /// * `name` - The name associated with the time.
+    fn set_dtext(&self, id: i32, time: u16, name: &str) {
+        // TODO: Make this better
+        let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
+
+        // TODO: Handle errors
+        let _ = self
+            .dlg
+            .hwnd()
+            .GetDlgItem(id as u16)
+            .and_then(|hwnd| hwnd.SetWindowText(&time_fmt));
+        let _ = self
+            .dlg
+            .hwnd()
+            .GetDlgItem((id + 1) as u16)
+            .and_then(|hwnd| hwnd.SetWindowText(name));
+    }
+
+    /// Resets the best scores dialog with the provided times and names.
+    /// # Arguments
+    /// * `time_begin` - The best time for the beginner level.
+    /// * `time_inter` - The best time for the intermediate level.
+    /// * `time_expert` - The best time for the expert level.
+    /// * `name_begin` - The name associated with the beginner level best time.
+    /// * `name_inter` - The name associated with the intermediate level best time.
+    /// * `name_expert` - The name associated with the expert level best time.
+    fn reset_best_dialog(
+        &self,
+        time_begin: u16,
+        time_inter: u16,
+        time_expert: u16,
+        name_begin: &str,
+        name_inter: &str,
+        name_expert: &str,
+    ) {
+        self.set_dtext(ControlId::TimeBegin as i32, time_begin, name_begin);
+        self.set_dtext(ControlId::TimeInter as i32, time_inter, name_inter);
+        self.set_dtext(ControlId::TimeExpert as i32, time_expert, name_expert);
+    }
+
     /// Hooks the dialog window messages to their respective handlers.
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
-            let dlg = self.dlg.clone();
+            let self2 = self.clone();
             move |_| -> AnyResult<bool> {
                 let prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                reset_best_dialog(
-                    dlg.hwnd(),
+                self2.reset_best_dialog(
                     prefs.rgTime[GameType::Begin as usize],
                     prefs.rgTime[GameType::Inter as usize],
                     prefs.rgTime[GameType::Expert as usize],
@@ -1472,7 +1530,7 @@ impl BestDialog {
         self.dlg
             .on()
             .wm_command(ControlId::BtnReset as u16, BN::CLICKED, {
-                let dlg = self.dlg.clone();
+                let self2 = self.clone();
                 move || -> AnyResult<()> {
                     // Set best times and names to defaults
                     {
@@ -1493,8 +1551,7 @@ impl BestDialog {
                     };
 
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    reset_best_dialog(
-                        dlg.hwnd(),
+                    self2.reset_best_dialog(
                         999,
                         999,
                         999,
@@ -1624,12 +1681,10 @@ impl EnterDialog {
                 }
 
                 if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
-                    let _ = unsafe {
-                        edit_hwnd.SendMessage(WndMsg::new(
-                            WM::from_raw(EM::SETLIMITTEXT.raw()),
-                            CCH_NAME_MAX,
-                            0,
-                        ))
+                    unsafe {
+                        edit_hwnd.SendMessage(SetLimitText {
+                            max_chars: Some(CCH_NAME_MAX as u32),
+                        });
                     };
 
                     let _ = edit_hwnd.SetWindowText(&current_name);
@@ -1659,80 +1714,6 @@ impl EnterDialog {
             }
         });
     }
-}
-
-/// Retrieves system metrics, favoring virtual screen metrics for multi-monitor support.
-/// # Arguments
-/// * `index` - The system metric index to retrieve.
-/// # Returns
-/// The requested system metric value.
-fn our_get_system_metrics(index: SM) -> i32 {
-    match index {
-        SM::CXSCREEN => {
-            let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
-            if result == 0 {
-                result = GetSystemMetrics(SM::CXSCREEN);
-            }
-            result
-        }
-        SM::CYSCREEN => {
-            let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN);
-            if result == 0 {
-                result = GetSystemMetrics(SM::CYSCREEN);
-            }
-            result
-        }
-        _ => GetSystemMetrics(index),
-    }
-}
-
-/// Sets the dialog text for a given time and name in the best scores dialog.
-///
-/// TODO: Remove this function
-/// # Arguments
-/// * `h_dlg` - Handle to the dialog window.
-/// * `id` - The control ID for the time text.
-/// * `time` - The time value to display.
-/// * `name` - The name associated with the time.
-fn set_dtext(h_dlg: &HWND, id: i32, time: u16, name: &str) {
-    // TODO: Make this better
-    let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
-
-    // TODO: Handle errors
-    let _ = h_dlg
-        .GetDlgItem(id as u16)
-        .and_then(|hwnd| hwnd.SetWindowText(&time_fmt));
-    let _ = h_dlg
-        .GetDlgItem((id + 1) as u16)
-        .and_then(|hwnd| hwnd.SetWindowText(name));
-}
-
-/// Resets the best scores dialog with the provided times and names.
-/// # Arguments
-/// * `h_dlg` - Handle to the dialog window.
-/// * `time_begin` - The best time for the beginner level.
-/// * `time_inter` - The best time for the intermediate level.
-/// * `time_expert` - The best time for the expert level.
-/// * `name_begin` - The name associated with the beginner level best time.
-/// * `name_inter` - The name associated with the intermediate level best time.
-/// * `name_expert` - The name associated with the expert level best time.
-fn reset_best_dialog(
-    h_dlg: &HWND,
-    time_begin: u16,
-    time_inter: u16,
-    time_expert: u16,
-    name_begin: &str,
-    name_inter: &str,
-    name_expert: &str,
-) {
-    set_dtext(h_dlg, ControlId::TimeBegin as i32, time_begin, name_begin);
-    set_dtext(h_dlg, ControlId::TimeInter as i32, time_inter, name_inter);
-    set_dtext(
-        h_dlg,
-        ControlId::TimeExpert as i32,
-        time_expert,
-        name_expert,
-    );
 }
 
 /// Applies help context based on the HELPINFO structure pointed to by `l_param`.
