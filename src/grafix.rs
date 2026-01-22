@@ -1,3 +1,6 @@
+//! Graphics handling for the Minesweeper game, including bitmap loading,
+//! scaling, and rendering of game elements.
+
 use core::mem::size_of;
 use core::ptr::null;
 use core::sync::atomic::Ordering::Relaxed;
@@ -614,11 +617,15 @@ pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) {
     }
 }
 
+/// Border styles for drawing beveled borders.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum BorderStyle {
+    /// Raised beveled border.
     Raised = 0b00,
+    /// Sunken beveled border.
     Sunken = 0b01,
+    /// Flat border (no bevel).
     Flat = 0b10,
 }
 

@@ -1,3 +1,5 @@
+//! Main window and event handling for the Minesweeper game.
+
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -688,7 +690,16 @@ impl WinMineMainWindow {
                             }
                         } else if pressed {
                             pressed = false;
-                            display_button(self.wnd.hwnd(), current_face_sprite());
+                            display_button(
+                                self.wnd.hwnd(),
+                                match BTN_FACE_STATE.load(Ordering::Relaxed) {
+                                    0 => ButtonSprite::Happy,
+                                    1 => ButtonSprite::Caution,
+                                    2 => ButtonSprite::Lose,
+                                    3 => ButtonSprite::Win,
+                                    _ => ButtonSprite::Down,
+                                },
+                            );
                         }
                     }
                     _ => {}
@@ -1295,19 +1306,6 @@ fn set_block_flag(active: bool) {
     BLK_BTN_INPUT.store(active, Ordering::Relaxed);
 }
 
-/// Returns the current face button sprite based on the button state.
-/// # Returns
-/// The current face button sprite state.
-fn current_face_sprite() -> ButtonSprite {
-    match BTN_FACE_STATE.load(Ordering::Relaxed) {
-        0 => ButtonSprite::Happy,
-        1 => ButtonSprite::Caution,
-        2 => ButtonSprite::Lose,
-        3 => ButtonSprite::Win,
-        _ => ButtonSprite::Down,
-    }
-}
-
 /// Struct containing the state shared by the Preferences dialog
 #[derive(Clone)]
 struct PrefDialog {
@@ -1424,10 +1422,14 @@ impl PrefDialog {
 /// Best times dialog
 #[derive(Clone)]
 struct BestDialog {
+    /// The modal dialog window
     dlg: gui::WindowModal,
 }
 
 impl BestDialog {
+    /// Creates a new BestDialog instance and sets up event handlers.
+    /// # Returns
+    /// A new BestDialog instance.
     fn new() -> Self {
         let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Best as u16);
         let new_self = Self { dlg };
@@ -1435,12 +1437,16 @@ impl BestDialog {
         new_self
     }
 
+    /// Displays the best-times dialog as a modal window.
+    /// # Arguments
+    /// * `parent`: The parent GUI element for the modal dialog.
     fn show_modal(&self, parent: &impl GuiParent) {
         if let Err(e) = self.dlg.show_modal(parent) {
             eprintln!("Failed to show best-times dialog: {e}");
         }
     }
 
+    /// Hooks the dialog window messages to their respective handlers.
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();
@@ -1536,6 +1542,7 @@ impl BestDialog {
 /// New record name entry dialog
 #[derive(Clone)]
 struct EnterDialog {
+    /// The modal dialog window
     dlg: gui::WindowModal,
 }
 
@@ -1583,6 +1590,7 @@ impl EnterDialog {
         }
     }
 
+    /// Hooks the dialog window messages to their respective handlers.
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
             let dlg = self.dlg.clone();

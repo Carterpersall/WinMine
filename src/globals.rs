@@ -1,3 +1,5 @@
+//! Global constants and variables used throughout the application.
+
 use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
 
 use winsafe::{self as w, GetSystemMetrics, GetSystemMetricsForDpi};

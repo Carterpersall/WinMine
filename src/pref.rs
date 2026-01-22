@@ -1,3 +1,6 @@
+//! Preference management for the Minesweeper game, including reading and writing
+//! settings to the Windows registry.
+
 use core::sync::atomic::Ordering;
 
 use winsafe::co::{GDC, KEY, REG_OPTION};
@@ -289,7 +292,7 @@ pub fn ReadPreferences() {
         1 => MenuMode::Hidden,
         2 => MenuMode::On,
         // Unreachable due to `ReadInt`'s clamping
-        _ => MenuMode::AlwaysOn,
+        _ => MenuMode::On,
     };
 
     // Get best times and player names for each difficulty level

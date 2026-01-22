@@ -1,4 +1,5 @@
-/// Quick helpers for the small set of winmm-backed tunes used by the UI.
+//! Sound handling for the Minesweeper game, including tune playback and sound state management.
+
 use core::ptr::{null, null_mut};
 
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};

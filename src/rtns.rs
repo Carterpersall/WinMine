@@ -1,4 +1,5 @@
-// Module containing core routines for game logic and board management.
+//! Handlers for the core game logic and state management.
+//! This includes board representation, game status tracking, and related utilities.
 
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, AtomicI16, AtomicI32, AtomicU8, AtomicU16, Ordering};

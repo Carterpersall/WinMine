@@ -1,3 +1,5 @@
+//! Minesweeper Game - Main Entry Point
+
 // Clippy Lints used for style and correctness checks
 // Some lints are commented out as they are useful for targeted checks that
 // may not be applicable project-wide (e.g., absolute_paths).

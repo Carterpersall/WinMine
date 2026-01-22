@@ -1,3 +1,5 @@
+//! Utility functions and helpers used across the application.
+
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
