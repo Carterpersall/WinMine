@@ -754,13 +754,26 @@ impl WinMineMainWindow {
 
         dyp_adjust += menu_extra;
         WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
-
-        let mut excess = x_window + dx_window + frame_extra - self.get_system_metrics(SM::CXSCREEN);
+        let cx_screen = {
+            let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
+            if result == 0 {
+                result = GetSystemMetrics(SM::CXSCREEN);
+            }
+            result
+        };
+        let mut excess = x_window + dx_window + frame_extra - cx_screen;
         if excess > 0 {
             f_adjust |= AdjustFlag::Resize as i32;
             x_window -= excess;
         }
-        excess = y_window + dy_window + dyp_adjust - self.get_system_metrics(SM::CYSCREEN);
+        let cy_screen = {
+            let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN);
+            if result == 0 {
+                result = GetSystemMetrics(SM::CYSCREEN);
+            }
+            result
+        };
+        excess = y_window + dy_window + dyp_adjust - cy_screen;
         if excess > 0 {
             f_adjust |= AdjustFlag::Resize as i32;
             y_window -= excess;
@@ -821,43 +834,12 @@ impl WinMineMainWindow {
             }
         }
 
-        // TODO: Don't double lock here
-        if let Ok(mut prefs) = preferences_mutex().lock() {
-            prefs.wnd_x_pos = x_window;
-            prefs.wnd_y_pos = y_window;
-        } else if let Err(poisoned) = preferences_mutex().lock() {
-            let mut guard = poisoned.into_inner();
-            guard.wnd_x_pos = x_window;
-            guard.wnd_y_pos = y_window;
-        }
-    }
-
-    /// Retrieves system metrics, favoring virtual screen metrics for multi-monitor support.
-    ///
-    /// TODO: Is this function necessary? Could just call `GetSystemMetrics` directly where needed,
-    /// which is only twice in `adjust_window`.
-    /// # Arguments
-    /// * `index` - The system metric index to retrieve.
-    /// # Returns
-    /// The requested system metric value.
-    fn get_system_metrics(&self, index: SM) -> i32 {
-        match index {
-            SM::CXSCREEN => {
-                let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
-                if result == 0 {
-                    result = GetSystemMetrics(SM::CXSCREEN);
-                }
-                result
-            }
-            SM::CYSCREEN => {
-                let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN);
-                if result == 0 {
-                    result = GetSystemMetrics(SM::CYSCREEN);
-                }
-                result
-            }
-            _ => GetSystemMetrics(index),
-        }
+        let mut prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        prefs.wnd_x_pos = x_window;
+        prefs.wnd_y_pos = y_window;
     }
 
     /// Converts an x-coordinate in pixels to a box index.
@@ -1336,19 +1318,15 @@ impl PrefDialog {
                 };
 
                 // Populate the dialog controls with the current settings
-                // TODO: Handle errors
-                let _ = dlg
-                    .hwnd()
+                dlg.hwnd()
                     .GetDlgItem(ControlId::EditHeight as u16)
-                    .and_then(|edit| edit.SetWindowText(&height.to_string()));
-                let _ = dlg
-                    .hwnd()
+                    .and_then(|edit| edit.SetWindowText(&height.to_string()))?;
+                dlg.hwnd()
                     .GetDlgItem(ControlId::EditWidth as u16)
-                    .and_then(|edit| edit.SetWindowText(&width.to_string()));
-                let _ = dlg
-                    .hwnd()
+                    .and_then(|edit| edit.SetWindowText(&width.to_string()))?;
+                dlg.hwnd()
                     .GetDlgItem(ControlId::EditMines as u16)
-                    .and_then(|edit| edit.SetWindowText(&mines.to_string()));
+                    .and_then(|edit| edit.SetWindowText(&mines.to_string()))?;
 
                 Ok(true)
             }
@@ -1358,14 +1336,10 @@ impl PrefDialog {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
                 // Retrieve and validate user input from the dialog controls
-                // TODO: Handle errors properly
-                let height = get_dlg_int(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)
-                    .unwrap_or(MINHEIGHT);
-                let width = get_dlg_int(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30)
-                    .unwrap_or(MINWIDTH);
+                let height = get_dlg_int(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)?;
+                let width = get_dlg_int(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30)?;
                 let max_mines = min(999, (height - 1) * (width - 1));
-                let mines = get_dlg_int(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines)
-                    .unwrap_or(10);
+                let mines = get_dlg_int(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines)?;
 
                 // Update preferences with the new settings
                 let mut prefs = match preferences_mutex().lock() {
@@ -1445,21 +1419,21 @@ impl BestDialog {
     /// * `id` - The control ID for the time text.
     /// * `time` - The time value to display.
     /// * `name` - The name associated with the time.
-    fn set_dtext(&self, id: i32, time: u16, name: &str) {
+    /// # Returns
+    /// A `Result` indicating success or failure.
+    fn set_dtext(&self, id: i32, time: u16, name: &str) -> AnyResult<()> {
         // TODO: Make this better
         let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
 
-        // TODO: Handle errors
-        let _ = self
-            .dlg
+        self.dlg
             .hwnd()
             .GetDlgItem(id as u16)
-            .and_then(|hwnd| hwnd.SetWindowText(&time_fmt));
-        let _ = self
-            .dlg
+            .and_then(|hwnd| hwnd.SetWindowText(&time_fmt))?;
+        self.dlg
             .hwnd()
             .GetDlgItem((id + 1) as u16)
-            .and_then(|hwnd| hwnd.SetWindowText(name));
+            .and_then(|hwnd| hwnd.SetWindowText(name))?;
+        Ok(())
     }
 
     /// Resets the best scores dialog with the provided times and names.
@@ -1470,6 +1444,8 @@ impl BestDialog {
     /// * `name_begin` - The name associated with the beginner level best time.
     /// * `name_inter` - The name associated with the intermediate level best time.
     /// * `name_expert` - The name associated with the expert level best time.
+    /// # Returns
+    /// A `Result` indicating success or failure.
     fn reset_best_dialog(
         &self,
         time_begin: u16,
@@ -1478,10 +1454,11 @@ impl BestDialog {
         name_begin: &str,
         name_inter: &str,
         name_expert: &str,
-    ) {
-        self.set_dtext(ControlId::TimeBegin as i32, time_begin, name_begin);
-        self.set_dtext(ControlId::TimeInter as i32, time_inter, name_inter);
-        self.set_dtext(ControlId::TimeExpert as i32, time_expert, name_expert);
+    ) -> AnyResult<()> {
+        self.set_dtext(ControlId::TimeBegin as i32, time_begin, name_begin)?;
+        self.set_dtext(ControlId::TimeInter as i32, time_inter, name_inter)?;
+        self.set_dtext(ControlId::TimeExpert as i32, time_expert, name_expert)?;
+        Ok(())
     }
 
     /// Hooks the dialog window messages to their respective handlers.
@@ -1500,7 +1477,7 @@ impl BestDialog {
                     &prefs.beginner_name,
                     &prefs.inter_name,
                     &prefs.expert_name,
-                );
+                )?;
 
                 Ok(true)
             }
@@ -1537,7 +1514,7 @@ impl BestDialog {
                         DEFAULT_PLAYER_NAME,
                         DEFAULT_PLAYER_NAME,
                         DEFAULT_PLAYER_NAME,
-                    );
+                    )?;
                     Ok(())
                 }
             });
@@ -1603,15 +1580,15 @@ impl EnterDialog {
     }
 
     /// Saves the entered high-score name to preferences.
-    fn save_high_score_name(&self) {
+    /// # Returns
+    /// A `Result` indicating success or failure.
+    fn save_high_score_name(&self) -> AnyResult<()> {
         // Retrieve the entered name from the dialog's edit control
-        // TODO: Handle errors properly
         let new_name = self
             .dlg
             .hwnd()
             .GetDlgItem(ControlId::EditName as u16)
-            .and_then(|edit_hwnd| edit_hwnd.GetWindowText())
-            .unwrap_or(DEFAULT_PLAYER_NAME.to_string());
+            .and_then(|edit_hwnd| edit_hwnd.GetWindowText())?;
 
         let mut prefs = match preferences_mutex().lock() {
             Ok(guard) => guard,
@@ -1624,6 +1601,7 @@ impl EnterDialog {
             // Unreachable
             GameType::Other => {}
         }
+        Ok(())
     }
 
     /// Hooks the dialog window messages to their respective handlers.
@@ -1646,7 +1624,6 @@ impl EnterDialog {
                     (prefs.game_type, name)
                 };
 
-                // TODO: Handle errors
                 if let Ok(best_hwnd) = dlg.hwnd().GetDlgItem(ControlId::TextBest as u16) {
                     let string = match game_type {
                         GameType::Begin => MSG_FASTEST_BEGINNER,
@@ -1656,7 +1633,7 @@ impl EnterDialog {
                         GameType::Other => "",
                     };
 
-                    let _ = best_hwnd.SetWindowText(string);
+                    best_hwnd.SetWindowText(string)?;
                 }
 
                 if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
@@ -1666,7 +1643,7 @@ impl EnterDialog {
                         });
                     };
 
-                    let _ = edit_hwnd.SetWindowText(&current_name);
+                    edit_hwnd.SetWindowText(&current_name)?;
                 }
 
                 Ok(true)
@@ -1678,7 +1655,7 @@ impl EnterDialog {
             .wm_command(ControlId::BtnOk as u16, BN::CLICKED, {
                 let self2 = self.clone();
                 move || -> AnyResult<()> {
-                    self2.save_high_score_name();
+                    self2.save_high_score_name()?;
                     let _ = self2.dlg.hwnd().EndDialog(1);
                     Ok(())
                 }
@@ -1687,7 +1664,7 @@ impl EnterDialog {
         self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
             let self2 = self.clone();
             move || -> AnyResult<()> {
-                self2.save_high_score_name();
+                self2.save_high_score_name()?;
                 let _ = self2.dlg.hwnd().EndDialog(1);
                 Ok(())
             }
