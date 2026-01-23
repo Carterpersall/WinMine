@@ -21,8 +21,8 @@ use winsafe::{
 use crate::globals::{
     BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, GAME_NAME,
     GAME_STATUS, IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER,
-    MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, StatusFlag, TIME_FORMAT, UI_DPI, WINDOW_HEIGHT,
-    WINDOW_WIDTH, WND_Y_OFFSET, update_ui_metrics_for_dpi,
+    MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
+    WND_Y_OFFSET, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -1421,13 +1421,10 @@ impl BestDialog {
     /// # Returns
     /// A `Result` indicating success or failure.
     fn set_dtext(&self, id: i32, time: u16, name: &str) -> AnyResult<()> {
-        // TODO: Make this better
-        let time_fmt = TIME_FORMAT.replace("%d", &time.to_string());
-
         self.dlg
             .hwnd()
             .GetDlgItem(id as u16)
-            .and_then(|hwnd| hwnd.SetWindowText(&time_fmt))?;
+            .and_then(|hwnd| hwnd.SetWindowText(&format!("{time} seconds")))?;
         self.dlg
             .hwnd()
             .GetDlgItem((id + 1) as u16)

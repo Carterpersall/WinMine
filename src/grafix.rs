@@ -93,13 +93,6 @@ enum BitmapId {
     Button = 430,
 }
 
-/// Debug string emitted when a compatible DC cannot be created.
-///
-/// TODO: Error handling is currently a mess, refactor to a more centralized system.
-const DEBUG_CREATE_DC: &str = "load_bitmaps failed to create compatible dc\n";
-/// Debug string emitted when a compatible bitmap cannot be created.
-const DEBUG_CREATE_BITMAP: &str = "Failed to create Bitmap\n";
-
 /// Internal state tracking loaded graphics resources and cached DCs
 struct GrafixState {
     /// Precalculated byte offsets to each block sprite within the DIB
@@ -861,19 +854,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
     let dst_blk_w = scale_dpi(DX_BLK_96);
     let dst_blk_h = scale_dpi(DY_BLK_96);
     for i in 0..I_BLK_MAX {
-        let Ok(dc_guard) = hdc.CreateCompatibleDC() else {
-            w::OutputDebugString(DEBUG_CREATE_DC);
-            state.mem_blk_dc[i] = None;
-            state.mem_blk_bitmap[i] = None;
-            continue;
-        };
+        let dc_guard = hdc.CreateCompatibleDC()?;
 
-        let Ok(base_bmp) = hdc.CreateCompatibleBitmap(DX_BLK_96, DY_BLK_96) else {
-            w::OutputDebugString(DEBUG_CREATE_BITMAP);
-            state.mem_blk_dc[i] = None;
-            state.mem_blk_bitmap[i] = None;
-            continue;
-        };
+        let base_bmp = hdc.CreateCompatibleBitmap(DX_BLK_96, DY_BLK_96)?;
 
         // Paint the sprite into the 96-DPI bitmap.
         {
@@ -919,19 +902,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
 
     // Cache LED digits in compatible bitmaps.
     for i in 0..I_LED_MAX {
-        state.mem_led_dc[i] = hdc
-            .CreateCompatibleDC()
-            .map_err(|_| {
-                w::OutputDebugString(DEBUG_CREATE_DC);
-            })
-            .ok();
+        state.mem_led_dc[i] = Some(hdc.CreateCompatibleDC()?);
 
-        state.mem_led_bitmap[i] = hdc
-            .CreateCompatibleBitmap(DX_LED_96, DY_LED_96)
-            .map_err(|_| {
-                w::OutputDebugString(DEBUG_CREATE_BITMAP);
-            })
-            .ok();
+        state.mem_led_bitmap[i] = Some(hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?);
 
         if state.mem_led_dc[i].is_some()
             && state.mem_led_bitmap[i].is_some()
@@ -969,19 +942,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
     let dst_btn_w = scale_dpi(DX_BUTTON_96);
     let dst_btn_h = scale_dpi(DY_BUTTON_96);
     for i in 0..BUTTON_SPRITE_COUNT {
-        let Ok(dc_guard) = hdc.CreateCompatibleDC() else {
-            w::OutputDebugString(DEBUG_CREATE_DC);
-            state.mem_button_dc[i] = None;
-            state.mem_button_bitmap[i] = None;
-            continue;
-        };
+        let dc_guard = hdc.CreateCompatibleDC()?;
 
-        let Ok(base_bmp) = hdc.CreateCompatibleBitmap(DX_BUTTON_96, DY_BUTTON_96) else {
-            w::OutputDebugString(DEBUG_CREATE_BITMAP);
-            state.mem_button_dc[i] = None;
-            state.mem_button_bitmap[i] = None;
-            continue;
-        };
+        let base_bmp = hdc.CreateCompatibleBitmap(DX_BUTTON_96, DY_BUTTON_96)?;
 
         // Paint the sprite into the 96-DPI bitmap.
         {

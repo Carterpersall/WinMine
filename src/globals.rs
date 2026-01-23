@@ -21,9 +21,6 @@ pub const GAME_NAME: &str = "Minesweeper";
 /// Default name for the best-times dialog.
 pub const DEFAULT_PLAYER_NAME: &str = "Anonymous";
 
-/// Time display formatting.
-pub const TIME_FORMAT: &str = "%d seconds";
-
 /// Prompt for fastest beginner time.
 pub const MSG_FASTEST_BEGINNER: &str =
     "You have the fastest time\rfor beginner level.\rPlease enter your name.";
