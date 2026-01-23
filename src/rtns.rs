@@ -14,8 +14,8 @@ use crate::grafix::{
     ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
 };
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
-use crate::sound::{PlayTune, Tune, stop_all_sounds};
-use crate::util::{ReportErr, Rnd};
+use crate::sound::{Tune, play_sound, stop_all_sounds};
+use crate::util::{report_error, rnd};
 use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 
 /// Encoded board values used to track each tile state.
@@ -92,21 +92,21 @@ static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
 pub fn preferences_mutex() -> &'static Mutex<Pref> {
     PREFERENCES.get_or_init(|| {
         Mutex::new(Pref {
-            wGameType: GameType::Begin,
-            Mines: 0,
-            Height: 0,
-            Width: 0,
-            xWindow: 0,
-            yWindow: 0,
-            fSound: SoundState::Off,
-            fMark: false,
-            fTick: false,
-            fMenu: MenuMode::AlwaysOn,
-            fColor: false,
-            rgTime: [0; 3],
-            szBegin: String::with_capacity(CCH_NAME_MAX),
-            szInter: String::with_capacity(CCH_NAME_MAX),
-            szExpert: String::with_capacity(CCH_NAME_MAX),
+            game_type: GameType::Begin,
+            mines: 0,
+            height: 0,
+            width: 0,
+            wnd_x_pos: 0,
+            wnd_y_pos: 0,
+            sound_state: SoundState::Off,
+            mark_enabled: false,
+            timer: false,
+            menu_mode: MenuMode::AlwaysOn,
+            color: false,
+            best_times: [0; 3],
+            beginner_name: String::with_capacity(CCH_NAME_MAX),
+            inter_name: String::with_capacity(CCH_NAME_MAX),
+            expert_name: String::with_capacity(CCH_NAME_MAX),
         })
     })
 }
@@ -355,11 +355,11 @@ fn play_tune(hinst: &HINSTANCE, tune: Tune) {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        prefs.fSound == SoundState::On
+        prefs.sound_state == SoundState::On
     };
 
     if sound_on {
-        PlayTune(hinst, tune);
+        play_sound(hinst, tune);
     }
 }
 
@@ -430,11 +430,11 @@ fn record_win_if_needed(hwnd: &HWND) {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let game = prefs.wGameType;
+    let game = prefs.game_type;
     if game != GameType::Other {
         let game_idx = game as usize;
-        if game_idx < prefs.rgTime.len() && elapsed < prefs.rgTime[game_idx] {
-            prefs.rgTime[game_idx] = elapsed;
+        if game_idx < prefs.best_times.len() && elapsed < prefs.best_times[game_idx] {
+            prefs.best_times[game_idx] = elapsed;
             drop(prefs);
 
             if hwnd.as_opt().is_some() {
@@ -610,7 +610,7 @@ fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
     if !is_visit(x_center, y_center)
         || block_data(x_center, y_center) != count_marks(x_center, y_center)
     {
-        TrackMouse(hwnd, -2, -2);
+        track_mouse(hwnd, -2, -2);
         return;
     }
 
@@ -660,7 +660,7 @@ pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        prefs.fMark
+        prefs.mark_enabled
     };
 
     let block = if guessed_bomb(x, y) {
@@ -738,7 +738,7 @@ fn in_range_step(x: i32, y: i32) -> bool {
 }
 
 /// Reset the game field to its initial blank state and rebuild the border.
-pub fn ClearField() {
+pub fn clear_field() {
     {
         let mut board = board_mutex();
         board.iter_mut().for_each(|b| *b = BlockCell::BlankUp as i8);
@@ -760,7 +760,7 @@ pub fn ClearField() {
 /// Handle the per-second game timer tick.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn DoTimer(hwnd: &HWND) {
+pub fn do_timer(hwnd: &HWND) {
     let secs = SECS_ELAPSED.load(Ordering::Relaxed);
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
@@ -773,7 +773,7 @@ impl WinMineMainWindow {
     /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
-    pub fn StartGame(&self) {
+    pub fn start_game(&self) {
         F_TIMER.store(false, Ordering::Relaxed);
 
         let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
@@ -784,7 +784,7 @@ impl WinMineMainWindow {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            (prefs.Width, prefs.Height, prefs.Mines)
+            (prefs.width, prefs.height, prefs.mines)
         };
 
         let f_adjust = if pref_width != x_prev || pref_height != y_prev {
@@ -796,7 +796,7 @@ impl WinMineMainWindow {
         BOARD_WIDTH.store(pref_width, Ordering::Relaxed);
         BOARD_HEIGHT.store(pref_height, Ordering::Relaxed);
 
-        ClearField();
+        clear_field();
         BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
 
         CBOMB_START.store(pref_mines, Ordering::Relaxed);
@@ -810,8 +810,8 @@ impl WinMineMainWindow {
             let mut x;
             let mut y;
             loop {
-                x = Rnd(width as u32) + 1;
-                y = Rnd(height as u32) + 1;
+                x = rnd(width as u32) + 1;
+                y = rnd(height as u32) + 1;
                 if !is_bomb(x as i32, y as i32) {
                     break;
                 }
@@ -831,7 +831,7 @@ impl WinMineMainWindow {
 
         display_bomb_count(self.wnd.hwnd());
 
-        self.AdjustWindow(f_adjust);
+        self.adjust_window(f_adjust);
     }
 }
 
@@ -840,7 +840,7 @@ impl WinMineMainWindow {
 /// * `hwnd` - Handle to the main window.
 /// * `x_new` - The new X coordinate of the mouse.
 /// * `y_new` - The new Y coordinate of the mouse.
-pub fn TrackMouse(hwnd: &HWND, x_new: i32, y_new: i32) {
+pub fn track_mouse(hwnd: &HWND, x_new: i32, y_new: i32) {
     let x_old = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_old = CURSOR_Y_POS.load(Ordering::Relaxed);
 
@@ -917,7 +917,7 @@ pub fn TrackMouse(hwnd: &HWND, x_new: i32, y_new: i32) {
 /// Handle a left-button release: start the timer, then either chord or step.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn DoButton1Up(hwnd: &HWND) {
+pub fn do_button_1_up(hwnd: &HWND) {
     let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_pos = CURSOR_Y_POS.load(Ordering::Relaxed);
 
@@ -932,7 +932,7 @@ pub fn DoButton1Up(hwnd: &HWND) {
             if let Some(hwnd) = hwnd.as_opt()
                 && hwnd.SetTimer(ID_TIMER, 1000, None).is_err()
             {
-                ReportErr(ERR_TIMER);
+                report_error(ERR_TIMER);
             }
         }
 
@@ -959,7 +959,9 @@ pub fn DoButton1Up(hwnd: &HWND) {
 }
 
 /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.
-pub fn PauseGame() {
+///
+/// TODO: Put this under a future GameState struct impl
+pub fn pause_game() {
     stop_all_sounds();
 
     if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) == 0 {
@@ -973,7 +975,9 @@ pub fn PauseGame() {
 }
 
 /// Resume the game by restoring the timer state and clearing the pause flag.
-pub fn ResumeGame() {
+///
+/// TODO: Put this under a future GameState struct impl
+pub fn resume_game() {
     if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
         F_TIMER.store(
             F_OLD_TIMER_STATUS.load(Ordering::Relaxed),

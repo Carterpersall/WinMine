@@ -8,7 +8,7 @@ use winsafe::{HKEY, HWND, RegistryValue};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
-use crate::sound::FInitTunes;
+use crate::sound::init_sound;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
@@ -130,7 +130,7 @@ impl GameType {
 /// The order matches the `PrefKey` enum.
 const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
     "Difficulty",
-    "Mines",
+    "mines",
     "Height",
     "Width",
     "Xpos",
@@ -152,39 +152,39 @@ const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
 /// Structure containing all user preferences.
 pub struct Pref {
     /// Current game difficulty (Beginner, Intermediate, Expert, Custom).
-    pub wGameType: GameType,
+    pub game_type: GameType,
     /// Number of mines on the board.
     ///
     /// The maximum number of bombs is `min(999, (height - 1) * (width - 1))`.
     ///
     /// Note: The actual maximum number of bombs is `(max_height - 1) * (max_width - 1) = 667`.
-    pub Mines: i16,
+    pub mines: i16,
     /// Board height in cells.
-    pub Height: i32,
+    pub height: i32,
     /// Board width in cells.
-    pub Width: i32,
+    pub width: i32,
     /// X position of the main window.
-    pub xWindow: i32,
+    pub wnd_x_pos: i32,
     /// Y position of the main window.
-    pub yWindow: i32,
+    pub wnd_y_pos: i32,
     /// Whether sound effects are enabled.
-    pub fSound: SoundState,
+    pub sound_state: SoundState,
     /// Whether right-click marking is enabled.
-    pub fMark: bool,
+    pub mark_enabled: bool,
     /// Whether the game timer is enabled.
-    pub fTick: bool,
+    pub timer: bool,
     /// Menu visibility mode.
-    pub fMenu: MenuMode,
+    pub menu_mode: MenuMode,
     /// Whether to use color assets.
-    pub fColor: bool,
+    pub color: bool,
     /// Best times for each difficulty level.
-    pub rgTime: [u16; 3],
+    pub best_times: [u16; 3],
     /// Player name for Beginner level.
-    pub szBegin: String,
+    pub beginner_name: String,
     /// Player name for Intermediate level.
-    pub szInter: String,
+    pub inter_name: String,
     /// Player name for Expert level.
-    pub szExpert: String,
+    pub expert_name: String,
 }
 
 /// Read an integer preference from the registry with clamping.
@@ -198,7 +198,7 @@ pub struct Pref {
 /// The retrieved integer value, clamped within the specified range
 ///
 /// TODO: Change return type to option or result so this function does not need to handle defaults.
-pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val_max: u32) -> u32 {
+pub fn read_int(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val_max: u32) -> u32 {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return val_default;
@@ -220,7 +220,7 @@ pub fn ReadInt(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val_
 /// * `key` - Preference key to read
 /// # Returns
 /// The retrieved string, or the default name on failure
-fn ReadSz(handle: &HKEY, key: PrefKey) -> String {
+fn read_sz(handle: &HKEY, key: PrefKey) -> String {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return DEFAULT_PLAYER_NAME.to_string();
@@ -237,7 +237,7 @@ fn ReadSz(handle: &HKEY, key: PrefKey) -> String {
 ///
 /// TODO: Should this return a Result to indicate failure? It currently just uses defaults on failure,
 /// which would cause the current settings to be overwritten on the next save.
-pub fn ReadPreferences() {
+pub fn read_preferences() {
     // Create or open the preferences registry key with read access
     let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -255,17 +255,17 @@ pub fn ReadPreferences() {
     };
 
     // Get the height of the board
-    let height = ReadInt(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25) as i32;
+    let height = read_int(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25) as i32;
     BOARD_HEIGHT.store(height, Ordering::Relaxed);
-    prefs.Height = height;
+    prefs.height = height;
 
     // Get the width of the board
-    let width = ReadInt(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30) as i32;
+    let width = read_int(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30) as i32;
     BOARD_WIDTH.store(width, Ordering::Relaxed);
-    prefs.Width = width;
+    prefs.width = width;
 
     // Get the game difficulty
-    let game_raw = ReadInt(
+    let game_raw = read_int(
         &key_guard,
         PrefKey::Difficulty,
         GameType::Begin as u32,
@@ -273,59 +273,59 @@ pub fn ReadPreferences() {
         GameType::Other as u32,
     );
     // Convert the raw integer into the corresponding GameType enum variant
-    prefs.wGameType = match game_raw {
+    prefs.game_type = match game_raw {
         0 => GameType::Begin,
         1 => GameType::Inter,
         2 => GameType::Expert,
         _ => GameType::Other,
     };
     // Get the number of mines on the board and the window position
-    prefs.Mines = ReadInt(&key_guard, PrefKey::Mines, 10, 10, 999) as i16;
+    prefs.mines = read_int(&key_guard, PrefKey::Mines, 10, 10, 999) as i16;
     // TODO: These values are either not saved properly or are ignored when the window is created
-    prefs.xWindow = ReadInt(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
-    prefs.yWindow = ReadInt(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;
+    prefs.wnd_x_pos = read_int(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
+    prefs.wnd_y_pos = read_int(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;
 
     // Get sound, marking, ticking, and menu preferences
-    let sound_raw = ReadInt(
+    let sound_raw = read_int(
         &key_guard,
         PrefKey::Sound,
         SoundState::Off as u32,
         SoundState::Off as u32,
         SoundState::On as u32,
     );
-    prefs.fSound = if sound_raw == SoundState::On as u32 {
+    prefs.sound_state = if sound_raw == SoundState::On as u32 {
         SoundState::On
     } else {
         SoundState::Off
     };
-    prefs.fMark = ReadInt(&key_guard, PrefKey::Mark, 1, 0, 1) != 0;
-    prefs.fTick = ReadInt(&key_guard, PrefKey::Tick, 0, 0, 1) != 0;
-    let menu_raw = ReadInt(
+    prefs.mark_enabled = read_int(&key_guard, PrefKey::Mark, 1, 0, 1) != 0;
+    prefs.timer = read_int(&key_guard, PrefKey::Tick, 0, 0, 1) != 0;
+    let menu_raw = read_int(
         &key_guard,
         PrefKey::Menu,
         MenuMode::AlwaysOn as u32,
         MenuMode::AlwaysOn as u32,
         MenuMode::On as u32,
     );
-    prefs.fMenu = match menu_raw {
+    prefs.menu_mode = match menu_raw {
         0 => MenuMode::AlwaysOn,
         1 => MenuMode::Hidden,
         2 => MenuMode::On,
-        // Unreachable due to `ReadInt`'s clamping
+        // Unreachable due to `read_int`'s clamping
         _ => MenuMode::On,
     };
 
     // Get best times and player names for each difficulty level
-    prefs.rgTime[GameType::Begin as usize] =
-        ReadInt(&key_guard, PrefKey::Time1, 999, 0, 999) as u16;
-    prefs.rgTime[GameType::Inter as usize] =
-        ReadInt(&key_guard, PrefKey::Time2, 999, 0, 999) as u16;
-    prefs.rgTime[GameType::Expert as usize] =
-        ReadInt(&key_guard, PrefKey::Time3, 999, 0, 999) as u16;
+    prefs.best_times[GameType::Begin as usize] =
+        read_int(&key_guard, PrefKey::Time1, 999, 0, 999) as u16;
+    prefs.best_times[GameType::Inter as usize] =
+        read_int(&key_guard, PrefKey::Time2, 999, 0, 999) as u16;
+    prefs.best_times[GameType::Expert as usize] =
+        read_int(&key_guard, PrefKey::Time3, 999, 0, 999) as u16;
 
-    prefs.szBegin = ReadSz(&key_guard, PrefKey::Name1);
-    prefs.szInter = ReadSz(&key_guard, PrefKey::Name2);
-    prefs.szExpert = ReadSz(&key_guard, PrefKey::Name3);
+    prefs.beginner_name = read_sz(&key_guard, PrefKey::Name1);
+    prefs.inter_name = read_sz(&key_guard, PrefKey::Name2);
+    prefs.expert_name = read_sz(&key_guard, PrefKey::Name3);
 
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
     let desktop = HWND::GetDesktopWindow();
@@ -339,18 +339,18 @@ pub fn ReadPreferences() {
         }
         Err(_) => 0,
     };
-    prefs.fColor = ReadInt(&key_guard, PrefKey::Color, default_color, 0, 1) != 0;
+    prefs.color = read_int(&key_guard, PrefKey::Color, default_color, 0, 1) != 0;
 
     // If sound is enabled, initialize the sound system
-    if prefs.fSound == SoundState::On {
-        prefs.fSound = FInitTunes();
+    if prefs.sound_state == SoundState::On {
+        prefs.sound_state = init_sound();
     }
 }
 
 /// Write all user preferences from the shared PREF struct into the registry.
 /// # Returns
 /// Result indicating success or failure
-pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
+pub fn write_preferences() -> Result<(), Box<dyn core::error::Error>> {
     // Create or open the preferences registry key with write access
     let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -369,48 +369,50 @@ pub fn WritePreferences() -> Result<(), Box<dyn core::error::Error>> {
     };
 
     // Save all preferences to the registry
-    WriteInt(&key_guard, PrefKey::Difficulty, prefs.wGameType as u32)?;
-    WriteInt(&key_guard, PrefKey::Height, prefs.Height as u32)?;
-    WriteInt(&key_guard, PrefKey::Width, prefs.Width as u32)?;
-    WriteInt(&key_guard, PrefKey::Mines, prefs.Mines as u32)?;
-    WriteInt(&key_guard, PrefKey::Mark, u32::from(prefs.fMark))?;
-    WriteInt(&key_guard, PrefKey::AlreadyPlayed, 1)?;
+    write_int(&key_guard, PrefKey::Difficulty, prefs.game_type as u32)?;
+    write_int(&key_guard, PrefKey::Height, prefs.height as u32)?;
+    write_int(&key_guard, PrefKey::Width, prefs.width as u32)?;
+    write_int(&key_guard, PrefKey::Mines, prefs.mines as u32)?;
+    write_int(&key_guard, PrefKey::Mark, u32::from(prefs.mark_enabled))?;
+    write_int(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
-    WriteInt(&key_guard, PrefKey::Color, u32::from(prefs.fColor))?;
-    WriteInt(&key_guard, PrefKey::Sound, prefs.fSound as u32)?;
-    WriteInt(&key_guard, PrefKey::Xpos, prefs.xWindow as u32)?;
-    WriteInt(&key_guard, PrefKey::Ypos, prefs.yWindow as u32)?;
+    write_int(&key_guard, PrefKey::Color, u32::from(prefs.color))?;
+    write_int(&key_guard, PrefKey::Sound, prefs.sound_state as u32)?;
+    write_int(&key_guard, PrefKey::Xpos, prefs.wnd_x_pos as u32)?;
+    write_int(&key_guard, PrefKey::Ypos, prefs.wnd_y_pos as u32)?;
 
-    WriteInt(
+    write_int(
         &key_guard,
         PrefKey::Time1,
-        prefs.rgTime[GameType::Begin as usize] as u32,
+        prefs.best_times[GameType::Begin as usize] as u32,
     )?;
-    WriteInt(
+    write_int(
         &key_guard,
         PrefKey::Time2,
-        prefs.rgTime[GameType::Inter as usize] as u32,
+        prefs.best_times[GameType::Inter as usize] as u32,
     )?;
-    WriteInt(
+    write_int(
         &key_guard,
         PrefKey::Time3,
-        prefs.rgTime[GameType::Expert as usize] as u32,
+        prefs.best_times[GameType::Expert as usize] as u32,
     )?;
 
-    WriteSz(&key_guard, PrefKey::Name1, &prefs.szBegin)?;
-    WriteSz(&key_guard, PrefKey::Name2, &prefs.szInter)?;
-    WriteSz(&key_guard, PrefKey::Name3, &prefs.szExpert)?;
+    write_sz(&key_guard, PrefKey::Name1, &prefs.beginner_name)?;
+    write_sz(&key_guard, PrefKey::Name2, &prefs.inter_name)?;
+    write_sz(&key_guard, PrefKey::Name3, &prefs.expert_name)?;
     Ok(())
 }
 
 /// Write an integer preference to the registry.
+///
+/// TODO: Take `RegistryValue` directly, allowing write functions to be merged.
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to write
 /// * `val` - Integer value to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteInt(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::error::Error>> {
+fn write_int(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::error::Error>> {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return Err("Invalid preference key".into());
@@ -428,7 +430,7 @@ fn WriteInt(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::e
 /// * `sz` - String to store
 /// # Returns
 /// Result indicating success or failure
-fn WriteSz(handle: &HKEY, key: PrefKey, sz: &String) -> Result<(), Box<dyn core::error::Error>> {
+fn write_sz(handle: &HKEY, key: PrefKey, sz: &String) -> Result<(), Box<dyn core::error::Error>> {
     // Get the name of the preference key
     let Some(key_name) = pref_key_literal(key) else {
         return Err("Invalid preference key".into());

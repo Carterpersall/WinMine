@@ -80,7 +80,7 @@ fn next_rand() -> u32 {
 /// * `rnd_max` - Upper bound (exclusive) for the random number
 /// # Returns
 /// A pseudo-random number in the [0, `rnd_max`) range
-pub fn Rnd(rnd_max: u32) -> u32 {
+pub fn rnd(rnd_max: u32) -> u32 {
     next_rand() % rnd_max
 }
 
@@ -89,14 +89,14 @@ pub fn Rnd(rnd_max: u32) -> u32 {
 /// TODO: Centralize error handling
 /// # Arguments
 /// * `id_err` - The error ID used for selecting the error message.
-pub fn ReportErr(err: &str) {
+pub fn report_error(err: &str) {
     let _ = HWND::NULL.MessageBox(err, ERR_TITLE, MB::ICONHAND);
 }
 
 /// Initialize UI globals and seed the RNG state.
 ///
 /// TODO: Does this function need to exist? It is only called once during startup.
-pub fn InitConst() {
+pub fn init_const() {
     // Seed the RNG using the low 16 bits of the current tick count
     let ticks = (GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
@@ -124,7 +124,7 @@ pub fn InitConst() {
 /// # Arguments
 /// * `idm` - The menu command ID.
 /// * `f_check` - `true` to check the item, `false` to uncheck it.
-pub fn CheckEm(hmenu: &HMENU, idm: MenuCommand, f_check: bool) {
+pub fn menu_check(hmenu: &HMENU, idm: MenuCommand, f_check: bool) {
     if let Some(menu) = hmenu.as_opt() {
         let _ = menu.CheckMenuItem(IdPos::Id(idm as u16), f_check);
     }
@@ -134,39 +134,39 @@ impl WinMineMainWindow {
     /// Show or hide the menu bar based on the specified mode.
     /// # Arguments
     /// * `f_active` - The desired menu mode.
-    pub fn SetMenuBar(&self, f_active: MenuMode) {
+    pub fn set_menu_bar(&self, f_active: MenuMode) {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (menu_on, game_type, color, mark, sound) = {
             let mut prefs = match preferences_mutex().lock() {
                 Ok(g) => g,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            prefs.fMenu = f_active;
+            prefs.menu_mode = f_active;
             (
-                !matches!(prefs.fMenu, MenuMode::Hidden),
-                prefs.wGameType,
-                prefs.fColor,
-                prefs.fMark,
-                prefs.fSound,
+                !matches!(prefs.menu_mode, MenuMode::Hidden),
+                prefs.game_type,
+                prefs.color,
+                prefs.mark_enabled,
+                prefs.sound_state,
             )
         };
 
         // Update the menu checkmarks to reflect the current preferences
         let hmenu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
-        CheckEm(&hmenu, MenuCommand::Begin, game_type == GameType::Begin);
-        CheckEm(&hmenu, MenuCommand::Inter, game_type == GameType::Inter);
-        CheckEm(&hmenu, MenuCommand::Expert, game_type == GameType::Expert);
-        CheckEm(&hmenu, MenuCommand::Custom, game_type == GameType::Other);
+        menu_check(&hmenu, MenuCommand::Begin, game_type == GameType::Begin);
+        menu_check(&hmenu, MenuCommand::Inter, game_type == GameType::Inter);
+        menu_check(&hmenu, MenuCommand::Expert, game_type == GameType::Expert);
+        menu_check(&hmenu, MenuCommand::Custom, game_type == GameType::Other);
 
-        CheckEm(&hmenu, MenuCommand::Color, color);
-        CheckEm(&hmenu, MenuCommand::Mark, mark);
-        CheckEm(&hmenu, MenuCommand::Sound, sound == SoundState::On);
+        menu_check(&hmenu, MenuCommand::Color, color);
+        menu_check(&hmenu, MenuCommand::Mark, mark);
+        menu_check(&hmenu, MenuCommand::Sound, sound == SoundState::On);
 
         // Show or hide the menu bar as set in preferences
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
         let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
         let _ = self.wnd.hwnd().SetMenu(menu_arg);
-        self.AdjustWindow(AdjustFlag::Resize as i32);
+        self.adjust_window(AdjustFlag::Resize as i32);
     }
 }
 
@@ -175,7 +175,7 @@ impl WinMineMainWindow {
 /// TODO: Remove this function
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn DoAbout(hwnd: &HWND) {
+pub fn do_about(hwnd: &HWND) {
     let icon_guard = hwnd
         .hinstance()
         .LoadIcon(IdIdiStr::Id(IconId::Main as u16))
@@ -188,10 +188,11 @@ pub fn DoAbout(hwnd: &HWND) {
 /// Display the Help dialog for the given command.
 ///
 /// TODO: Refactor this function to only use the help dialog built into the resource file
+/// TODO: Move this function into a help module
 /// # Arguments
 /// * `w_command` - The help command (e.g., HELPONHELP).
 /// * `l_param` - Additional parameter for the help command.
-pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
+pub fn do_help(hwnd: &HWND, w_command: HELPW, l_param: u32) {
     // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
     let mut buffer = [0u8; CCH_MAX_PATHNAME];
 
@@ -233,6 +234,8 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 }
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
+///
+/// TODO: Remove this function.
 /// # Arguments
 /// * `h_dlg` - Handle to the dialog window.
 /// * `dlg_id` - The dialog item ID.
@@ -240,7 +243,7 @@ pub fn DoHelp(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 /// * `num_hi` - Maximum allowed value.
 /// # Returns
 /// The clamped integer value from the dialog item, or an error if retrieval or parsing fails.
-pub fn GetDlgInt(
+pub fn get_dlg_int(
     h_dlg: &HWND,
     dlg_id: i32,
     num_lo: u32,

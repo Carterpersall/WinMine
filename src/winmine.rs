@@ -25,20 +25,20 @@ use crate::globals::{
     WINDOW_WIDTH, WND_Y_OFFSET, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
-    ButtonSprite, CleanUp, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
-    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, DisplayScreen, DrawScreen,
-    FInitLocal, FreeBitmaps, display_button, load_bitmaps, scale_dpi,
+    ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
+    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, clean_up, display_button,
+    display_screen, draw_screen, free_bitmaps, init_game, load_bitmaps, scale_dpi,
 };
 use crate::pref::{
-    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, ReadPreferences, SoundState,
-    WritePreferences,
+    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, SoundState, read_preferences,
+    write_preferences,
 };
 use crate::rtns::{
-    AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, DoButton1Up,
-    DoTimer, ID_TIMER, PauseGame, ResumeGame, TrackMouse, make_guess, preferences_mutex,
+    AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, ID_TIMER,
+    do_button_1_up, do_timer, make_guess, pause_game, preferences_mutex, resume_game, track_mouse,
 };
-use crate::sound::{FInitTunes, stop_all_sounds};
-use crate::util::{DoAbout, DoHelp, GetDlgInt, IconId, InitConst, ReportErr};
+use crate::sound::{init_sound, stop_all_sounds};
+use crate::util::{IconId, do_about, do_help, get_dlg_int, init_const, report_error};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -281,9 +281,9 @@ impl WinMineMainWindow {
     fn finish_primary_button_drag(&self) {
         LEFT_CLK_DOWN.store(false, Ordering::Relaxed);
         if status_play() {
-            DoButton1Up(self.wnd.hwnd());
+            do_button_1_up(self.wnd.hwnd());
         } else {
-            TrackMouse(self.wnd.hwnd(), -2, -2);
+            track_mouse(self.wnd.hwnd(), -2, -2);
         }
     }
 
@@ -298,7 +298,7 @@ impl WinMineMainWindow {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fSound
+                    prefs.sound_state
                 };
 
                 if matches!(current_sound, SoundState::On | SoundState::Off) {
@@ -307,7 +307,7 @@ impl WinMineMainWindow {
                             stop_all_sounds();
                             SoundState::Off
                         }
-                        SoundState::Off => FInitTunes(),
+                        SoundState::Off => init_sound(),
                     };
 
                     let f_menu = {
@@ -315,12 +315,12 @@ impl WinMineMainWindow {
                             Ok(g) => g,
                             Err(poisoned) => poisoned.into_inner(),
                         };
-                        prefs.fSound = new_sound;
-                        prefs.fMenu
+                        prefs.sound_state = new_sound;
+                        prefs.menu_mode
                     };
 
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    self.SetMenuBar(f_menu);
+                    self.set_menu_bar(f_menu);
                 }
             }
             code if code == VK::F5 => {
@@ -329,11 +329,11 @@ impl WinMineMainWindow {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fMenu
+                    prefs.menu_mode
                 };
 
                 if !matches!(menu_value, MenuMode::AlwaysOn) {
-                    self.SetMenuBar(MenuMode::Hidden);
+                    self.set_menu_bar(MenuMode::Hidden);
                 }
             }
             code if code == VK::F6 => {
@@ -342,11 +342,11 @@ impl WinMineMainWindow {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fMenu
+                    prefs.menu_mode
                 };
 
                 if !matches!(menu_value, MenuMode::AlwaysOn) {
-                    self.SetMenuBar(MenuMode::On);
+                    self.set_menu_bar(MenuMode::On);
                 }
             }
             code if code == VK::SHIFT => self.handle_xyzzys_shift(),
@@ -362,7 +362,7 @@ impl WinMineMainWindow {
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
             // If the left button is down, the user is dragging
             if status_play() {
-                TrackMouse(
+                track_mouse(
                     self.wnd.hwnd(),
                     self.x_box_from_xpos(point.x),
                     self.y_box_from_ypos(point.y),
@@ -392,7 +392,7 @@ impl WinMineMainWindow {
         }
 
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-            TrackMouse(self.wnd.hwnd(), -3, -3);
+            track_mouse(self.wnd.hwnd(), -3, -3);
             set_block_flag(true);
             unsafe {
                 // TODO: Change this
@@ -426,13 +426,13 @@ impl WinMineMainWindow {
         // Isolate the system command identifier by masking out the lower 4 bits.
         //let command = (sys_cmd & 0xFFF0) as u32;
         if command == SC::MINIMIZE {
-            PauseGame();
+            pause_game();
             set_status_pause();
             set_status_icon();
         } else if command == SC::RESTORE {
             clr_status_pause();
             clr_status_icon();
-            ResumeGame();
+            resume_game();
             IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
         }
     }
@@ -447,35 +447,13 @@ impl WinMineMainWindow {
 
         // TODO: Don't double lock here
         if let Ok(mut prefs) = preferences_mutex().lock() {
-            prefs.xWindow = pos.x;
-            prefs.yWindow = pos.y;
+            prefs.wnd_x_pos = pos.x;
+            prefs.wnd_y_pos = pos.y;
         } else if let Err(poisoned) = preferences_mutex().lock() {
             let mut guard = poisoned.into_inner();
-            guard.xWindow = pos.x;
-            guard.yWindow = pos.y;
+            guard.wnd_x_pos = pos.x;
+            guard.wnd_y_pos = pos.y;
         }
-    }
-
-    /// Handles the "Custom" menu command by displaying the preferences dialog,
-    /// updating the game settings, and starting a new game.
-    ///
-    /// TODO: The way that the preferences dialog is handled causes a custom game to always
-    /// be started when the dialog is closed, even if the user clicked "Cancel". Fix this.
-    fn DoPref(&self) {
-        // Show the preferences dialog
-        PrefDialog::new().show_modal(&self.wnd);
-
-        let fmenu = {
-            let mut prefs = match preferences_mutex().lock() {
-                Ok(g) => g,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            prefs.wGameType = GameType::Other;
-            prefs.fMenu
-        };
-        UPDATE_INI.store(true, Ordering::Relaxed);
-        self.SetMenuBar(fmenu);
-        self.StartGame();
     }
 
     /// Handles command messages from the menu and accelerators.
@@ -490,7 +468,7 @@ impl WinMineMainWindow {
     /// a `Result` type with an error, as unhandled commands are simply passed to the default handler.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
         match MenuCommand::try_from(w_param) {
-            Ok(MenuCommand::New) => self.StartGame(),
+            Ok(MenuCommand::New) => self.start_game(),
             Ok(MenuCommand::Exit) => {
                 self.wnd.hwnd().ShowWindow(SW::HIDE);
                 unsafe {
@@ -515,43 +493,61 @@ impl WinMineMainWindow {
                         Err(poisoned) => poisoned.into_inner(),
                     };
                     if let Some(data) = game.preset_data() {
-                        prefs.wGameType = game;
-                        prefs.Mines = data.0;
-                        prefs.Height = data.1 as i32;
-                        prefs.Width = data.2 as i32;
+                        prefs.game_type = game;
+                        prefs.mines = data.0;
+                        prefs.height = data.1 as i32;
+                        prefs.width = data.2 as i32;
                     }
-                    prefs.fMenu
+                    prefs.menu_mode
                 };
-                self.StartGame();
+                self.start_game();
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.SetMenuBar(f_menu);
+                self.set_menu_bar(f_menu);
             }
-            Ok(MenuCommand::Custom) => self.DoPref(),
+            Ok(MenuCommand::Custom) => {
+                // TODO: The way that the preferences dialog is handled causes a custom game to always
+                // be started when the dialog is closed, even if the user clicked "Cancel". Fix this.
+
+                // Show the preferences dialog
+                PrefDialog::new().show_modal(&self.wnd);
+
+                let fmenu = {
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    prefs.game_type = GameType::Other;
+                    prefs.menu_mode
+                };
+                UPDATE_INI.store(true, Ordering::Relaxed);
+                self.set_menu_bar(fmenu);
+                self.start_game();
+            }
             Ok(MenuCommand::Sound) => {
                 let current_sound = {
                     let prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fSound
+                    prefs.sound_state
                 };
                 let new_sound = match current_sound {
                     SoundState::On => {
                         stop_all_sounds();
                         SoundState::Off
                     }
-                    SoundState::Off => FInitTunes(),
+                    SoundState::Off => init_sound(),
                 };
                 let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fSound = new_sound;
-                    prefs.fMenu
+                    prefs.sound_state = new_sound;
+                    prefs.menu_mode
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.SetMenuBar(f_menu);
+                self.set_menu_bar(f_menu);
             }
             Ok(MenuCommand::Color) => {
                 let f_menu = {
@@ -559,14 +555,14 @@ impl WinMineMainWindow {
                         Ok(g) => g,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fColor = !prefs.fColor;
-                    prefs.fMenu
+                    prefs.color = !prefs.color;
+                    prefs.menu_mode
                 };
-                FreeBitmaps();
+                free_bitmaps();
                 if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
                     // TODO: This probably isn't necessary
                     eprintln!("Failed to reload bitmaps: {e}");
-                    ReportErr(ERR_OUT_OF_MEMORY);
+                    report_error(ERR_OUT_OF_MEMORY);
                     unsafe {
                         let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
                             WM::SYSCOMMAND,
@@ -577,9 +573,9 @@ impl WinMineMainWindow {
                 }
 
                 // Repaint immediately so toggling color off updates without restarting.
-                DisplayScreen(self.wnd.hwnd());
+                display_screen(self.wnd.hwnd());
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.SetMenuBar(f_menu);
+                self.set_menu_bar(f_menu);
             }
             Ok(MenuCommand::Mark) => {
                 let f_menu = {
@@ -587,24 +583,24 @@ impl WinMineMainWindow {
                         Ok(g) => g,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs.fMark = !prefs.fMark;
-                    prefs.fMenu
+                    prefs.mark_enabled = !prefs.mark_enabled;
+                    prefs.menu_mode
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.SetMenuBar(f_menu);
+                self.set_menu_bar(f_menu);
             }
             Ok(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
             Ok(MenuCommand::Help) => {
-                DoHelp(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
+                do_help(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
             }
             Ok(MenuCommand::HowToPlay) => {
-                DoHelp(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
+                do_help(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
             }
             Ok(MenuCommand::HelpHelp) => {
-                DoHelp(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
+                do_help(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
             }
             Ok(MenuCommand::HelpAbout) => {
-                DoAbout(self.wnd.hwnd());
+                do_about(self.wnd.hwnd());
             }
             Err(_) => return None,
         }
@@ -661,7 +657,7 @@ impl WinMineMainWindow {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
                             display_button(self.wnd.hwnd(), ButtonSprite::Happy);
-                            self.StartGame();
+                            self.start_game();
                         }
                         return true;
                     }
@@ -701,7 +697,7 @@ impl WinMineMainWindow {
     /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
     ///
     /// TODO: Make `f_adjust` an enum
-    pub fn AdjustWindow(&self, mut f_adjust: i32) {
+    pub fn adjust_window(&self, mut f_adjust: i32) {
         let menu_handle = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
 
         let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
@@ -720,7 +716,7 @@ impl WinMineMainWindow {
                 Ok(guard) => guard,
                 Err(poisoned) => poisoned.into_inner(),
             };
-            (prefs.xWindow, prefs.yWindow, prefs.fMenu)
+            (prefs.wnd_x_pos, prefs.wnd_y_pos, prefs.menu_mode)
         };
 
         let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.as_opt().is_some();
@@ -836,19 +832,19 @@ impl WinMineMainWindow {
 
         // TODO: Don't double lock here
         if let Ok(mut prefs) = preferences_mutex().lock() {
-            prefs.xWindow = x_window;
-            prefs.yWindow = y_window;
+            prefs.wnd_x_pos = x_window;
+            prefs.wnd_y_pos = y_window;
         } else if let Err(poisoned) = preferences_mutex().lock() {
             let mut guard = poisoned.into_inner();
-            guard.xWindow = x_window;
-            guard.yWindow = y_window;
+            guard.wnd_x_pos = x_window;
+            guard.wnd_y_pos = y_window;
         }
     }
 
     /// Retrieves system metrics, favoring virtual screen metrics for multi-monitor support.
     ///
     /// TODO: Is this function necessary? Could just call `GetSystemMetrics` directly where needed,
-    /// which is only twice in `AdjustWindow`.
+    /// which is only twice in `adjust_window`.
     /// # Arguments
     /// * `index` - The system metric index to retrieve.
     /// # Returns
@@ -912,12 +908,12 @@ impl WinMineMainWindow {
                 update_ui_metrics_for_dpi(dpi);
 
                 // Ensure the client area matches the board size for the active DPI.
-                self2.AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
 
                 // Initialize local resources.
-                if let Err(e) = FInitLocal(self2.wnd.hwnd()) {
+                if let Err(e) = init_game(self2.wnd.hwnd()) {
                     eprintln!("Failed to initialize local resources: {e}");
-                    ReportErr(ERR_OUT_OF_MEMORY);
+                    report_error(ERR_OUT_OF_MEMORY);
                     return Err(std::io::Error::other(e.to_string()).into());
                 }
 
@@ -927,10 +923,10 @@ impl WinMineMainWindow {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    prefs_guard.fMenu
+                    prefs_guard.menu_mode
                 };
-                self2.SetMenuBar(f_menu);
-                self2.StartGame();
+                self2.set_menu_bar(f_menu);
+                self2.start_game();
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
                 Ok(0)
@@ -960,14 +956,14 @@ impl WinMineMainWindow {
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
 
                 if let Some(rc) = suggested {
-                    // Persist the suggested top-left so AdjustWindow keeps us on the same monitor
+                    // Persist the suggested top-left so adjust_window keeps us on the same monitor
                     {
                         let mut prefs = match preferences_mutex().lock() {
                             Ok(g) => g,
                             Err(poisoned) => poisoned.into_inner(),
                         };
-                        prefs.xWindow = rc.left;
-                        prefs.yWindow = rc.top;
+                        prefs.wnd_x_pos = rc.left;
+                        prefs.wnd_y_pos = rc.top;
                     }
 
                     let width = max(0, rc.right - rc.left);
@@ -986,12 +982,12 @@ impl WinMineMainWindow {
                 }
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
-                FreeBitmaps();
+                free_bitmaps();
                 if let Err(e) = load_bitmaps(self2.wnd.hwnd()) {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
-                self2.AdjustWindow(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
                 Ok(0)
             }
         });
@@ -1059,11 +1055,11 @@ impl WinMineMainWindow {
                 let _ = self2.wnd.hwnd().KillTimer(ID_TIMER);
 
                 // Clean up resources
-                CleanUp();
+                clean_up();
 
                 // Write preferences if they have changed
                 if UPDATE_INI.load(Ordering::Relaxed)
-                    && let Err(e) = WritePreferences()
+                    && let Err(e) = write_preferences()
                 {
                     eprintln!("Failed to write preferences: {e}");
                 }
@@ -1185,7 +1181,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_timer(ID_TIMER, {
             let self2 = self.clone();
             move || {
-                DoTimer(self2.wnd.hwnd());
+                do_timer(self2.wnd.hwnd());
                 Ok(())
             }
         });
@@ -1194,7 +1190,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 if let Ok(paint_guard) = self2.wnd.hwnd().BeginPaint() {
-                    DrawScreen(&paint_guard);
+                    draw_screen(&paint_guard);
                 }
                 Ok(())
             }
@@ -1210,7 +1206,7 @@ impl WinMineMainWindow {
 /// Ok(()) on success, or an error on failure.
 pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> Result<(), Box<dyn core::error::Error>> {
     // Seed the RNG, initialize global values, and ensure the preferences registry key exists
-    InitConst();
+    init_const();
 
     // Initialize DPI to 96 (default) before creating the window
     UI_DPI.store(96, Ordering::Relaxed);
@@ -1237,7 +1233,7 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> Result<(), Box<dyn cor
     let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
 
     // Read user preferences into the global state
-    ReadPreferences();
+    read_preferences();
 
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
@@ -1353,7 +1349,7 @@ impl PrefDialog {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    (prefs.Height, prefs.Width, prefs.Mines)
+                    (prefs.height, prefs.width, prefs.mines)
                 };
 
                 // Populate the dialog controls with the current settings
@@ -1380,22 +1376,22 @@ impl PrefDialog {
             move || -> AnyResult<()> {
                 // Retrieve and validate user input from the dialog controls
                 // TODO: Handle errors properly
-                let height = GetDlgInt(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)
+                let height = get_dlg_int(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)
                     .unwrap_or(MINHEIGHT);
-                let width = GetDlgInt(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30)
+                let width = get_dlg_int(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30)
                     .unwrap_or(MINWIDTH);
                 let max_mines = min(999, (height - 1) * (width - 1));
-                let mines =
-                    GetDlgInt(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines).unwrap_or(10);
+                let mines = get_dlg_int(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines)
+                    .unwrap_or(10);
 
                 // Update preferences with the new settings
                 let mut prefs = match preferences_mutex().lock() {
                     Ok(guard) => guard,
                     Err(poisoned) => poisoned.into_inner(),
                 };
-                prefs.Height = height as i32;
-                prefs.Width = width as i32;
-                prefs.Mines = mines as i16;
+                prefs.height = height as i32;
+                prefs.width = width as i32;
+                prefs.mines = mines as i16;
 
                 // Close the dialog
                 let _ = dlg.hwnd().EndDialog(1);
@@ -1515,12 +1511,12 @@ impl BestDialog {
                     Err(poisoned) => poisoned.into_inner(),
                 };
                 self2.reset_best_dialog(
-                    prefs.rgTime[GameType::Begin as usize],
-                    prefs.rgTime[GameType::Inter as usize],
-                    prefs.rgTime[GameType::Expert as usize],
-                    &prefs.szBegin,
-                    &prefs.szInter,
-                    &prefs.szExpert,
+                    prefs.best_times[GameType::Begin as usize],
+                    prefs.best_times[GameType::Inter as usize],
+                    prefs.best_times[GameType::Expert as usize],
+                    &prefs.beginner_name,
+                    &prefs.inter_name,
+                    &prefs.expert_name,
                 );
 
                 Ok(true)
@@ -1540,14 +1536,14 @@ impl BestDialog {
                         };
 
                         // Set all best times to 999 seconds
-                        prefs.rgTime[GameType::Begin as usize] = 999;
-                        prefs.rgTime[GameType::Inter as usize] = 999;
-                        prefs.rgTime[GameType::Expert as usize] = 999;
+                        prefs.best_times[GameType::Begin as usize] = 999;
+                        prefs.best_times[GameType::Inter as usize] = 999;
+                        prefs.best_times[GameType::Expert as usize] = 999;
 
                         // Set the three best names to the default values
-                        prefs.szBegin = DEFAULT_PLAYER_NAME.to_string();
-                        prefs.szInter = DEFAULT_PLAYER_NAME.to_string();
-                        prefs.szExpert = DEFAULT_PLAYER_NAME.to_string();
+                        prefs.beginner_name = DEFAULT_PLAYER_NAME.to_string();
+                        prefs.inter_name = DEFAULT_PLAYER_NAME.to_string();
+                        prefs.expert_name = DEFAULT_PLAYER_NAME.to_string();
                     };
 
                     UPDATE_INI.store(true, Ordering::Relaxed);
@@ -1638,10 +1634,10 @@ impl EnterDialog {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         };
-        match prefs.wGameType {
-            GameType::Begin => prefs.szBegin = new_name,
-            GameType::Inter => prefs.szInter = new_name,
-            GameType::Expert => prefs.szExpert = new_name,
+        match prefs.game_type {
+            GameType::Begin => prefs.beginner_name = new_name,
+            GameType::Inter => prefs.inter_name = new_name,
+            GameType::Expert => prefs.expert_name = new_name,
             // Unreachable
             GameType::Other => {}
         }
@@ -1657,14 +1653,14 @@ impl EnterDialog {
                         Ok(guard) => guard,
                         Err(poisoned) => poisoned.into_inner(),
                     };
-                    let name = match prefs.wGameType {
-                        GameType::Begin => prefs.szBegin.clone(),
-                        GameType::Inter => prefs.szInter.clone(),
-                        GameType::Expert => prefs.szExpert.clone(),
+                    let name = match prefs.game_type {
+                        GameType::Begin => prefs.beginner_name.clone(),
+                        GameType::Inter => prefs.inter_name.clone(),
+                        GameType::Expert => prefs.expert_name.clone(),
                         // Unreachable
                         GameType::Other => "".to_string(),
                     };
-                    (prefs.wGameType, name)
+                    (prefs.game_type, name)
                 };
 
                 // TODO: Handle errors
@@ -1734,6 +1730,9 @@ fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
 }
 
 /// Applies help context to a specific control.
+///
+/// TODO: There is a DC leak somewhere around here.
+/// TODO: Move help stuff into its own module.
 /// # Arguments
 /// * `hwnd` - The handle to the control.
 /// * `ids` - The array of help context IDs.

@@ -21,7 +21,6 @@
 #![warn(clippy::std_instead_of_core)]
 #![warn(clippy::unused_trait_names)]
 #![warn(clippy::useless_let_if_seq)]
-#![allow(non_snake_case)]
 
 mod globals;
 mod grafix;

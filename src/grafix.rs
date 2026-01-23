@@ -18,7 +18,7 @@ use winsafe::{
 use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
 use crate::rtns::{
     BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
-    ClearField, SECS_ELAPSED, board_mutex, preferences_mutex,
+    SECS_ELAPSED, board_mutex, clear_field, preferences_mutex,
 };
 use crate::sound::stop_all_sounds;
 
@@ -181,16 +181,16 @@ fn grafix_state() -> &'static Mutex<GrafixState> {
 /// * `hwnd` - Handle to the main window.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-pub fn FInitLocal(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
+pub fn init_game(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
     load_bitmaps(hwnd)?;
-    ClearField();
+    clear_field();
     Ok(())
 }
 
 /// Free all loaded bitmap resources and cached DCs.
 ///
-/// TODO: Does this function need to exist now that we use WinSafe?
-pub fn FreeBitmaps() {
+/// TODO: This function is no longer needed, it can be completely removed.
+pub fn free_bitmaps() {
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -236,8 +236,11 @@ pub fn FreeBitmaps() {
 }
 
 /// Clean up graphics resources and silence audio on exit.
-pub fn CleanUp() {
-    FreeBitmaps();
+///
+/// TODO: Is this function still needed?
+/// TODO: If it is needed, remove the function since its only called once and is not complex.
+pub fn clean_up() {
+    free_bitmaps();
     stop_all_sounds();
 }
 
@@ -246,7 +249,7 @@ pub fn CleanUp() {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-fn DrawBlk(hdc: &HDC, x: i32, y: i32) {
+fn draw_block(hdc: &HDC, x: i32, y: i32) {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -276,14 +279,14 @@ fn DrawBlk(hdc: &HDC, x: i32, y: i32) {
 /// * `y` - The Y coordinate of the block (1-based).
 pub fn display_block(hwnd: &HWND, x: i32, y: i32) {
     if let Ok(hdc) = hwnd.GetDC() {
-        DrawBlk(&hdc, x, y);
+        draw_block(&hdc, x, y);
     }
 }
 
 /// Draw the entire minefield grid onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawGrid(hdc: &HDC) {
+fn draw_grid(hdc: &HDC) {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -317,7 +320,7 @@ fn DrawGrid(hdc: &HDC) {
 /// * `hwnd` - Handle to the main window.
 pub fn display_grid(hwnd: &HWND) {
     if let Ok(hdc) = hwnd.GetDC() {
-        DrawGrid(&hdc);
+        draw_grid(&hdc);
     }
 }
 
@@ -328,7 +331,7 @@ pub fn display_grid(hwnd: &HWND) {
 /// * `led_index` - The index of the LED digit to draw.
 ///
 /// TODO: Could `led_index` be an enum?
-fn DrawLed(hdc: &HDC, x: i32, led_index: u16) {
+fn draw_led(hdc: &HDC, x: i32, led_index: u16) {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
@@ -355,7 +358,7 @@ fn DrawLed(hdc: &HDC, x: i32, led_index: u16) {
 /// Draw the bomb counter onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawBombCount(hdc: &HDC) {
+fn draw_bomb_count(hdc: &HDC) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
@@ -370,9 +373,9 @@ fn DrawBombCount(hdc: &HDC) {
     let bombs = BOMBS_LEFT.load(Relaxed);
     let x0 = scale_dpi(DX_LEFT_BOMB_96);
     let dx = scale_dpi(DX_LED_96);
-    DrawLed(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100));
-    DrawLed(hdc, x0 + dx, (bombs.unsigned_abs() % 100) / 10);
-    DrawLed(hdc, x0 + dx * 2, bombs.unsigned_abs() % 10);
+    draw_led(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100));
+    draw_led(hdc, x0 + dx, (bombs.unsigned_abs() % 100) / 10);
+    draw_led(hdc, x0 + dx * 2, bombs.unsigned_abs() % 10);
 
     // Restore the original layout if it was mirrored
     if mirrored {
@@ -387,14 +390,14 @@ fn DrawBombCount(hdc: &HDC) {
 /// * `hwnd` - Handle to the main window.
 pub fn display_bomb_count(hwnd: &HWND) {
     if let Ok(hdc) = hwnd.GetDC() {
-        DrawBombCount(&hdc);
+        draw_bomb_count(&hdc);
     }
 }
 
 /// Draw the timer onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawTime(hdc: &HDC) {
+fn draw_timer(hdc: &HDC) {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -408,18 +411,18 @@ fn DrawTime(hdc: &HDC) {
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let border = CXBORDER.load(Relaxed);
     let dx_led = scale_dpi(DX_LED_96);
-    DrawLed(
+    draw_led(
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border),
         time / 100,
     );
     time %= 100;
-    DrawLed(
+    draw_led(
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led + border),
         time / 10,
     );
-    DrawLed(
+    draw_led(
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + dx_led + border),
         time % 10,
@@ -437,7 +440,7 @@ fn DrawTime(hdc: &HDC) {
 /// * `hwnd` - Handle to the main window.
 pub fn display_time(hwnd: &HWND) {
     if let Ok(hdc) = hwnd.GetDC() {
-        DrawTime(&hdc);
+        draw_timer(&hdc);
     }
 }
 
@@ -445,7 +448,7 @@ pub fn display_time(hwnd: &HWND) {
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `sprite` - The button sprite to draw.
-fn DrawButton(hdc: &HDC, sprite: ButtonSprite) {
+fn draw_button(hdc: &HDC, sprite: ButtonSprite) {
     // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dst_w = scale_dpi(DX_BUTTON_96);
@@ -613,7 +616,7 @@ fn create_resampled_bitmap(
 /// * `sprite` - The button sprite to display.
 pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) {
     if let Ok(hdc) = hwnd.GetDC() {
-        DrawButton(&hdc, sprite);
+        draw_button(&hdc, sprite);
     }
 }
 
@@ -630,10 +633,12 @@ enum BorderStyle {
 }
 
 /// Set the pen for drawing based on the normal flag.
+///
+/// TODO: Should this be moved into an impl for BorderStyle?
 /// # Arguments
 /// * `hdc` - The device context to set the pen on.
 /// * `f_normal` - The normal flag determining the pen style.
-fn SetThePen(hdc: &HDC, border_style: BorderStyle) {
+fn set_border_pen(hdc: &HDC, border_style: BorderStyle) {
     // Select the appropriate pen based on the border style
     if border_style == BorderStyle::Sunken {
         // Use cached white pen for sunken borders
@@ -667,7 +672,7 @@ fn SetThePen(hdc: &HDC, border_style: BorderStyle) {
 /// * `y2` - The bottom Y coordinate of the rectangle.
 /// * `width` - The width of the border in pixels.
 /// * `border_style` - The border style determining the border appearance.
-fn DrawBorder(
+fn draw_border(
     hdc: &HDC,
     mut x1: i32,
     mut y1: i32,
@@ -678,7 +683,7 @@ fn DrawBorder(
 ) {
     let mut i = 0;
     // Set the initial pen style based on given border style
-    SetThePen(hdc, border_style);
+    set_border_pen(hdc, border_style);
 
     // Draw the top and left edges
     while i < width {
@@ -694,7 +699,7 @@ fn DrawBorder(
 
     // Switch pen style for bottom and right edges if not flat
     if border_style != BorderStyle::Flat {
-        SetThePen(
+        set_border_pen(
             hdc,
             if border_style == BorderStyle::Sunken {
                 BorderStyle::Raised
@@ -720,7 +725,7 @@ fn DrawBorder(
 /// Draw the entire window background and chrome elements onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn DrawBackground(hdc: &HDC) {
+fn draw_background(hdc: &HDC) {
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Relaxed);
     let border = CXBORDER.load(Relaxed);
@@ -730,12 +735,12 @@ fn DrawBackground(hdc: &HDC) {
     let b3 = scale_dpi(3);
     let b2 = scale_dpi(2);
     let b1 = scale_dpi(1);
-    DrawBorder(hdc, 0, 0, x, y, b3, BorderStyle::Sunken);
+    draw_border(hdc, 0, 0, x, y, b3, BorderStyle::Sunken);
 
     // Inner raised borders
     x -= scale_dpi(DX_RIGHT_SPACE_96) - b3;
     y -= scale_dpi(DY_BOTTOM_SPACE_96) - b3;
-    DrawBorder(
+    draw_border(
         hdc,
         scale_dpi(DX_LEFT_SPACE_96) - b3,
         scale_dpi(DY_GRID_OFF_96) - b3,
@@ -745,7 +750,7 @@ fn DrawBackground(hdc: &HDC) {
         BorderStyle::Raised,
     );
     // LED area border
-    DrawBorder(
+    draw_border(
         hdc,
         scale_dpi(DX_LEFT_SPACE_96) - b3,
         scale_dpi(DY_TOP_SPACE_96) - b3,
@@ -762,7 +767,7 @@ fn DrawBackground(hdc: &HDC) {
     let dx_led = scale_dpi(DX_LED_96);
     x = x_left_bomb + dx_led * 3;
     y = scale_dpi(DY_TOP_LED_96) + scale_dpi(DY_LED_96);
-    DrawBorder(
+    draw_border(
         hdc,
         x_left_bomb - b1,
         scale_dpi(DY_TOP_LED_96) - b1,
@@ -774,7 +779,7 @@ fn DrawBackground(hdc: &HDC) {
 
     // Timer borders
     x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border + b1);
-    DrawBorder(
+    draw_border(
         hdc,
         x,
         scale_dpi(DY_TOP_LED_96) - b1,
@@ -788,7 +793,7 @@ fn DrawBackground(hdc: &HDC) {
     let dx_button = scale_dpi(DX_BUTTON_96);
     let dy_button = scale_dpi(DY_BUTTON_96);
     x = ((dx_window - dx_button) / 2) - b1;
-    DrawBorder(
+    draw_border(
         hdc,
         x,
         scale_dpi(DY_TOP_LED_96) - b1,
@@ -802,10 +807,10 @@ fn DrawBackground(hdc: &HDC) {
 /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-pub fn DrawScreen(hdc: &HDC) {
+pub fn draw_screen(hdc: &HDC) {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
-    DrawBackground(hdc);
-    DrawBombCount(hdc);
+    draw_background(hdc);
+    draw_bomb_count(hdc);
     let sprite = match BTN_FACE_STATE.load(Relaxed) {
         0 => ButtonSprite::Happy,
         1 => ButtonSprite::Caution,
@@ -813,17 +818,19 @@ pub fn DrawScreen(hdc: &HDC) {
         3 => ButtonSprite::Win,
         _ => ButtonSprite::Down,
     };
-    DrawButton(hdc, sprite);
-    DrawTime(hdc);
-    DrawGrid(hdc);
+    draw_button(hdc, sprite);
+    draw_timer(hdc);
+    draw_grid(hdc);
 }
 
 /// Display the entire screen (background, counters, button, timer, grid).
+///
+/// TODO: Remove this function.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn DisplayScreen(hwnd: &HWND) {
+pub fn display_screen(hwnd: &HWND) {
     if let Ok(hdc) = hwnd.GetDC() {
-        DrawScreen(&hdc);
+        draw_screen(&hdc);
     }
 }
 
@@ -838,7 +845,7 @@ pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
             Ok(g) => g,
             Err(poisoned) => poisoned.into_inner(),
         };
-        prefs.fColor
+        prefs.color
     };
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
