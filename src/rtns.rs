@@ -14,7 +14,7 @@ use crate::grafix::{
     ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
 };
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
-use crate::sound::{Tune, play_sound, stop_all_sounds};
+use crate::sound::Tune;
 use crate::util::rnd;
 use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 
@@ -347,6 +347,8 @@ fn check_win() -> bool {
 }
 
 /// Play a logical tune if sound effects are enabled in preferences.
+///
+/// TODO: Move the sound check into the sound module
 /// # Arguments
 /// * `tune` - The tune to play.
 fn play_tune(hinst: &HINSTANCE, tune: Tune) {
@@ -359,7 +361,7 @@ fn play_tune(hinst: &HINSTANCE, tune: Tune) {
     };
 
     if sound_on {
-        play_sound(hinst, tune);
+        tune.play(hinst);
     }
 }
 
@@ -987,7 +989,7 @@ pub fn do_button_1_up(hwnd: &HWND) -> AnyResult<()> {
 ///
 /// TODO: Put this under a future GameState struct impl
 pub fn pause_game() {
-    stop_all_sounds();
+    SoundState::stop_all();
 
     if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) == 0 {
         F_OLD_TIMER_STATUS.store(F_TIMER.load(Ordering::Relaxed), Ordering::Relaxed);

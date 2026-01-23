@@ -8,7 +8,6 @@ use winsafe::{AnyResult, HKEY, HWND, RegistryValue};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
-use crate::sound::init_sound;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
@@ -343,7 +342,7 @@ pub fn read_preferences() {
 
     // If sound is enabled, initialize the sound system
     if prefs.sound_state == SoundState::On {
-        prefs.sound_state = init_sound();
+        prefs.sound_state = SoundState::init();
     }
 }
 

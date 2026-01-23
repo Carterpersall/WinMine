@@ -37,7 +37,6 @@ use crate::rtns::{
     AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, ID_TIMER,
     do_button_1_up, do_timer, make_guess, pause_game, preferences_mutex, resume_game, track_mouse,
 };
-use crate::sound::{init_sound, stop_all_sounds};
 use crate::util::{IconId, do_about, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
@@ -307,10 +306,10 @@ impl WinMineMainWindow {
                 if matches!(current_sound, SoundState::On | SoundState::Off) {
                     let new_sound = match current_sound {
                         SoundState::On => {
-                            stop_all_sounds();
+                            SoundState::stop_all();
                             SoundState::Off
                         }
-                        SoundState::Off => init_sound(),
+                        SoundState::Off => SoundState::init(),
                     };
 
                     let f_menu = {
@@ -530,10 +529,10 @@ impl WinMineMainWindow {
                 };
                 let new_sound = match current_sound {
                     SoundState::On => {
-                        stop_all_sounds();
+                        SoundState::stop_all();
                         SoundState::Off
                     }
-                    SoundState::Off => init_sound(),
+                    SoundState::Off => SoundState::init(),
                 };
                 let f_menu = {
                     let mut prefs = match preferences_mutex().lock() {

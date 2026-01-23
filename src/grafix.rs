@@ -1072,8 +1072,6 @@ const fn dib_header_size(color_on: bool) -> usize {
 }
 
 /// Calculate the byte size of a bitmap given its dimensions and color mode
-///
-/// TODO: Why are the width and height parameters i32 instead of u32?
 /// # Arguments
 /// * `color_on` - Whether color mode is enabled
 /// * `x` - Width of the bitmap in pixels
