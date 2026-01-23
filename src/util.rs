@@ -4,10 +4,10 @@ use core::sync::atomic::{AtomicU32, Ordering};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 
-use winsafe::co::{HELPW, KEY, MB, REG_OPTION, SM};
+use winsafe::co::{HELPW, KEY, REG_OPTION, SM};
 use winsafe::{GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, prelude::*};
 
-use crate::globals::{CXBORDER, CYCAPTION, CYMENU, ERR_TITLE, MSG_CREDIT, MSG_VERSION_NAME};
+use crate::globals::{CXBORDER, CYCAPTION, CYMENU, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
@@ -82,15 +82,6 @@ fn next_rand() -> u32 {
 /// A pseudo-random number in the [0, `rnd_max`) range
 pub fn rnd(rnd_max: u32) -> u32 {
     next_rand() % rnd_max
-}
-
-/// Display an error message box for the specified error ID.
-///
-/// TODO: Centralize error handling
-/// # Arguments
-/// * `id_err` - The error ID used for selecting the error message.
-pub fn report_error(err: &str) {
-    let _ = HWND::NULL.MessageBox(err, ERR_TITLE, MB::ICONHAND);
 }
 
 /// Initialize UI globals and seed the RNG state.
@@ -234,8 +225,6 @@ pub fn do_help(hwnd: &HWND, w_command: HELPW, l_param: u32) {
 }
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
-///
-/// TODO: Remove this function.
 /// # Arguments
 /// * `h_dlg` - Handle to the dialog window.
 /// * `dlg_id` - The dialog item ID.

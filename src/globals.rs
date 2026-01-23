@@ -18,16 +18,6 @@ pub const BASE_DPI: u32 = 96;
 /// This is used in the window title and as the window class name.
 pub const GAME_NAME: &str = "Minesweeper";
 
-/// Dialog title for error message boxes.
-pub const ERR_TITLE: &str = "Minesweeper Error";
-
-/// Error message given when allocating a timer fails.
-pub const ERR_TIMER: &str =
-    "Unable to allocate a timer.  Please exit some of your applications and try again.";
-
-/// Out-of-memory error message.
-pub const ERR_OUT_OF_MEMORY: &str = "Out of Memory";
-
 /// Default name for the best-times dialog.
 pub const DEFAULT_PLAYER_NAME: &str = "Anonymous";
 

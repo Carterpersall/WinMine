@@ -20,7 +20,7 @@ pub enum Tune {
 
 /// Initialize the sound system and determine whether sound effects are enabled.
 ///
-/// TODO: Put this under a Tune impl
+/// TODO: Put this under a `SoundState` impl
 /// # Returns
 /// A `SoundState` enum indicating whether sound effects can be played.
 pub fn init_sound() -> SoundState {

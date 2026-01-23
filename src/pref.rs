@@ -4,7 +4,7 @@
 use core::sync::atomic::Ordering;
 
 use winsafe::co::{GDC, KEY, REG_OPTION};
-use winsafe::{HKEY, HWND, RegistryValue};
+use winsafe::{AnyResult, HKEY, HWND, RegistryValue};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
@@ -200,7 +200,7 @@ pub struct Pref {
 /// TODO: Change return type to option or result so this function does not need to handle defaults.
 pub fn read_int(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val_max: u32) -> u32 {
     // Get the name of the preference key
-    let Some(key_name) = pref_key_literal(key) else {
+    let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
         return val_default;
     };
 
@@ -222,7 +222,7 @@ pub fn read_int(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val
 /// The retrieved string, or the default name on failure
 fn read_sz(handle: &HKEY, key: PrefKey) -> String {
     // Get the name of the preference key
-    let Some(key_name) = pref_key_literal(key) else {
+    let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
         return DEFAULT_PLAYER_NAME.to_string();
     };
 
@@ -349,8 +349,8 @@ pub fn read_preferences() {
 
 /// Write all user preferences from the shared PREF struct into the registry.
 /// # Returns
-/// Result indicating success or failure
-pub fn write_preferences() -> Result<(), Box<dyn core::error::Error>> {
+/// A `Result` indicating success or failure
+pub fn write_preferences() -> AnyResult<()> {
     // Create or open the preferences registry key with write access
     let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
@@ -411,10 +411,10 @@ pub fn write_preferences() -> Result<(), Box<dyn core::error::Error>> {
 /// * `key` - Preference key to write
 /// * `val` - Integer value to store
 /// # Returns
-/// Result indicating success or failure
-fn write_int(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::error::Error>> {
+/// A `Result` indicating success or failure
+fn write_int(handle: &HKEY, key: PrefKey, val: u32) -> AnyResult<()> {
     // Get the name of the preference key
-    let Some(key_name) = pref_key_literal(key) else {
+    let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
         return Err("Invalid preference key".into());
     };
 
@@ -429,26 +429,14 @@ fn write_int(handle: &HKEY, key: PrefKey, val: u32) -> Result<(), Box<dyn core::
 /// * `key` - Preference key to write
 /// * `sz` - String to store
 /// # Returns
-/// Result indicating success or failure
-fn write_sz(handle: &HKEY, key: PrefKey, sz: &String) -> Result<(), Box<dyn core::error::Error>> {
+/// A `Result` indicating success or failure
+fn write_sz(handle: &HKEY, key: PrefKey, sz: &String) -> AnyResult<()> {
     // Get the name of the preference key
-    let Some(key_name) = pref_key_literal(key) else {
+    let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
         return Err("Invalid preference key".into());
     };
 
     // Store the string value in the registry
     handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(sz.to_string()))?;
     Ok(())
-}
-
-/// Retrieve the string literal for a given preference key.
-///
-/// TODO: Remove this function.
-/// TODO: Does this need to return an Option?
-/// # Arguments
-/// * `key` - Preference key to look up
-/// # Returns
-/// Option containing the string literal, or None if the key is invalid
-pub fn pref_key_literal(key: PrefKey) -> Option<&'static str> {
-    PREF_STRINGS.get(key as usize).copied()
 }

@@ -19,15 +19,15 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, ERR_OUT_OF_MEMORY,
-    GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER,
+    BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, GAME_NAME,
+    GAME_STATUS, IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER,
     MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, StatusFlag, TIME_FORMAT, UI_DPI, WINDOW_HEIGHT,
     WINDOW_WIDTH, WND_Y_OFFSET, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
-    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, clean_up, display_button,
-    display_screen, draw_screen, free_bitmaps, init_game, load_bitmaps, scale_dpi,
+    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, display_button, draw_screen,
+    init_game, load_bitmaps, scale_dpi,
 };
 use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, SoundState, read_preferences,
@@ -38,7 +38,7 @@ use crate::rtns::{
     do_button_1_up, do_timer, make_guess, pause_game, preferences_mutex, resume_game, track_mouse,
 };
 use crate::sound::{init_sound, stop_all_sounds};
-use crate::util::{IconId, do_about, do_help, get_dlg_int, init_const, report_error};
+use crate::util::{IconId, do_about, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -270,21 +270,24 @@ impl WinMineMainWindow {
     /* Message Helper Functions */
 
     /// Begins a primary button drag operation.
-    fn begin_primary_button_drag(&self) {
+    fn begin_primary_button_drag(&self) -> AnyResult<()> {
         LEFT_CLK_DOWN.store(true, Ordering::Relaxed);
         CURSOR_X_POS.store(-1, Ordering::Relaxed);
         CURSOR_Y_POS.store(-1, Ordering::Relaxed);
-        display_button(self.wnd.hwnd(), ButtonSprite::Caution);
+        display_button(self.wnd.hwnd(), ButtonSprite::Caution)
     }
 
     /// Finishes a primary button drag operation.
-    fn finish_primary_button_drag(&self) {
+    /// # Returns
+    /// A `Result` indicating success or failure.
+    fn finish_primary_button_drag(&self) -> AnyResult<()> {
         LEFT_CLK_DOWN.store(false, Ordering::Relaxed);
         if status_play() {
-            do_button_1_up(self.wnd.hwnd());
+            do_button_1_up(self.wnd.hwnd())?;
         } else {
             track_mouse(self.wnd.hwnd(), -2, -2);
         }
+        Ok(())
     }
 
     /// Handles the `WM_KEYDOWN` message.
@@ -358,7 +361,7 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `key`: The mouse buttons currently pressed.
     /// * `point`: The coordinates of the mouse cursor.
-    fn handle_mouse_move(&self, key: MK, point: POINT) {
+    fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
             // If the left button is down, the user is dragging
             if status_play() {
@@ -368,27 +371,23 @@ impl WinMineMainWindow {
                     self.y_box_from_ypos(point.y),
                 );
             } else {
-                self.finish_primary_button_drag();
+                self.finish_primary_button_drag()?;
             }
         } else {
             // Regular mouse move
             self.handle_xyzzys_mouse(key, point);
         }
+        Ok(())
     }
 
     /// Handles right mouse button down events.
     /// # Arguments
     /// * `btn`: The mouse button that was pressed.
     /// * `point`: The coordinates of the mouse cursor.
-    fn handle_rbutton_down(&self, btn: MK, point: POINT) {
+    fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
         // Ignore right-clicks if the next click is set to be ignored
         if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) || !status_play() {
-            return;
-        }
-
-        // TODO: Is this necessary?
-        if !status_play() {
-            return;
+            return Ok(());
         }
 
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
@@ -402,13 +401,13 @@ impl WinMineMainWindow {
                     point.x as isize | ((point.y as isize) << 16),
                 ));
             }
-            return;
+            return Ok(());
         }
 
         if btn == MK::LBUTTON {
-            self.begin_primary_button_drag();
-            self.handle_mouse_move(btn, point);
-            return;
+            self.begin_primary_button_drag()?;
+            self.handle_mouse_move(btn, point)?;
+            return Ok(());
         }
 
         // Regular right-click: make a guess
@@ -416,7 +415,8 @@ impl WinMineMainWindow {
             self.wnd.hwnd(),
             self.x_box_from_xpos(point.x),
             self.y_box_from_ypos(point.y),
-        );
+        )?;
+        Ok(())
     }
 
     /// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
@@ -445,15 +445,12 @@ impl WinMineMainWindow {
             return;
         }
 
-        // TODO: Don't double lock here
-        if let Ok(mut prefs) = preferences_mutex().lock() {
-            prefs.wnd_x_pos = pos.x;
-            prefs.wnd_y_pos = pos.y;
-        } else if let Err(poisoned) = preferences_mutex().lock() {
-            let mut guard = poisoned.into_inner();
-            guard.wnd_x_pos = pos.x;
-            guard.wnd_y_pos = pos.y;
-        }
+        let mut prefs = match preferences_mutex().lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        prefs.wnd_x_pos = pos.x;
+        prefs.wnd_y_pos = pos.y;
     }
 
     /// Handles command messages from the menu and accelerators.
@@ -558,22 +555,16 @@ impl WinMineMainWindow {
                     prefs.color = !prefs.color;
                     prefs.menu_mode
                 };
-                free_bitmaps();
+
                 if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
-                    // TODO: This probably isn't necessary
                     eprintln!("Failed to reload bitmaps: {e}");
-                    report_error(ERR_OUT_OF_MEMORY);
-                    unsafe {
-                        let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
-                            WM::SYSCOMMAND,
-                            SC::CLOSE.raw() as usize,
-                            0,
-                        ));
-                    }
                 }
 
                 // Repaint immediately so toggling color off updates without restarting.
-                display_screen(self.wnd.hwnd());
+                if let Ok(hdc) = self.wnd.hwnd().GetDC() {
+                    // TODO: Handle properly after moving `handle_command` into separate closures
+                    draw_screen(&hdc).unwrap();
+                }
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.set_menu_bar(f_menu);
             }
@@ -613,7 +604,7 @@ impl WinMineMainWindow {
     /// * `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// True if the click was handled, false otherwise.
-    fn btn_click_handler(&self, point: POINT) -> bool {
+    fn btn_click_handler(&self, point: POINT) -> AnyResult<bool> {
         // Handle clicks on the smiley face button while providing the pressed animation.
         let mut msg = MSG::default();
 
@@ -634,10 +625,10 @@ impl WinMineMainWindow {
         rc.bottom = rc.top + dy_button;
 
         if !winsafe::PtInRect(rc, msg.pt) {
-            return false;
+            return Ok(false);
         }
 
-        display_button(self.wnd.hwnd(), ButtonSprite::Down);
+        display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
         let _ = self
             .wnd
             .hwnd()
@@ -656,16 +647,16 @@ impl WinMineMainWindow {
                     WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
-                            display_button(self.wnd.hwnd(), ButtonSprite::Happy);
+                            display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
                             self.start_game();
                         }
-                        return true;
+                        return Ok(true);
                     }
                     WM::MOUSEMOVE => {
                         if winsafe::PtInRect(rc, msg.pt) {
                             if !pressed {
                                 pressed = true;
-                                display_button(self.wnd.hwnd(), ButtonSprite::Down);
+                                display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
                             }
                         } else if pressed {
                             pressed = false;
@@ -678,7 +669,7 @@ impl WinMineMainWindow {
                                     3 => ButtonSprite::Win,
                                     _ => ButtonSprite::Down,
                                 },
-                            );
+                            )?;
                         }
                     }
                     _ => {}
@@ -911,11 +902,7 @@ impl WinMineMainWindow {
                 self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
 
                 // Initialize local resources.
-                if let Err(e) = init_game(self2.wnd.hwnd()) {
-                    eprintln!("Failed to initialize local resources: {e}");
-                    report_error(ERR_OUT_OF_MEMORY);
-                    return Err(std::io::Error::other(e.to_string()).into());
-                }
+                init_game(self2.wnd.hwnd())?;
 
                 // Apply menu visibility and start the game.
                 let f_menu = {
@@ -982,7 +969,6 @@ impl WinMineMainWindow {
                 }
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
-                free_bitmaps();
                 if let Err(e) = load_bitmaps(self2.wnd.hwnd()) {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
@@ -1054,9 +1040,6 @@ impl WinMineMainWindow {
                 // Stop the timer if it is still running
                 let _ = self2.wnd.hwnd().KillTimer(ID_TIMER);
 
-                // Clean up resources
-                clean_up();
-
                 // Write preferences if they have changed
                 if UPDATE_INI.load(Ordering::Relaxed)
                     && let Err(e) = write_preferences()
@@ -1072,7 +1055,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_mouse_move({
             let self2 = self.clone();
             move |msg| {
-                self2.handle_mouse_move(msg.vkey_code, msg.coords);
+                self2.handle_mouse_move(msg.vkey_code, msg.coords)?;
                 unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
                 Ok(())
             }
@@ -1081,7 +1064,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_r_button_down({
             let self2 = self.clone();
             move |r_btn| {
-                self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords);
+                self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords)?;
                 unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
                 Ok(())
             }
@@ -1090,7 +1073,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_r_button_dbl_clk({
             let self2 = self.clone();
             move |r_btn| {
-                self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords);
+                self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords)?;
                 unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
                 Ok(())
             }
@@ -1100,7 +1083,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |r_btn| {
                 if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-                    self2.finish_primary_button_drag();
+                    self2.finish_primary_button_drag()?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
                 Ok(())
@@ -1117,8 +1100,8 @@ impl WinMineMainWindow {
 
                 if status_play() {
                     set_block_flag(true);
-                    self2.begin_primary_button_drag();
-                    self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords);
+                    self2.begin_primary_button_drag()?;
+                    self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords)?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
@@ -1129,7 +1112,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |m_btn| {
                 if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-                    self2.finish_primary_button_drag();
+                    self2.finish_primary_button_drag()?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
@@ -1142,14 +1125,14 @@ impl WinMineMainWindow {
                 if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) {
                     return Ok(());
                 }
-                if self2.btn_click_handler(l_btn.coords) {
+                if self2.btn_click_handler(l_btn.coords)? {
                     return Ok(());
                 }
                 if status_play() {
                     // Mask SHIFT and RBUTTON to indicate a "chord" operation.
                     set_block_flag(l_btn.vkey_code == MK::SHIFT || l_btn.vkey_code == MK::RBUTTON);
-                    self2.begin_primary_button_drag();
-                    self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords);
+                    self2.begin_primary_button_drag()?;
+                    self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords)?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
                 Ok(())
@@ -1160,7 +1143,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |l_btn| {
                 if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-                    self2.finish_primary_button_drag();
+                    self2.finish_primary_button_drag()?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
                 Ok(())
@@ -1190,7 +1173,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 if let Ok(paint_guard) = self2.wnd.hwnd().BeginPaint() {
-                    draw_screen(&paint_guard);
+                    draw_screen(&paint_guard)?;
                 }
                 Ok(())
             }

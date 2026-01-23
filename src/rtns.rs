@@ -7,15 +7,15 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::co::WM;
 use winsafe::msg::WndMsg;
-use winsafe::{HINSTANCE, HWND, prelude::*};
+use winsafe::{AnyResult, HINSTANCE, HWND, prelude::*};
 
-use crate::globals::{BLK_BTN_INPUT, ERR_TIMER, GAME_STATUS, StatusFlag};
+use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag};
 use crate::grafix::{
     ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
 };
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
 use crate::sound::{Tune, play_sound, stop_all_sounds};
-use crate::util::{report_error, rnd};
+use crate::util::rnd;
 use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 
 /// Encoded board values used to track each tile state.
@@ -312,7 +312,7 @@ fn guessed_mark(x: i32, y: i32) -> bool {
 /// * `y` - The Y coordinate.
 /// # Returns
 /// `true` if the coordinates are within range, `false` otherwise.
-fn f_in_range(x: i32, y: i32) -> bool {
+fn in_range(x: i32, y: i32) -> bool {
     let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
     let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
     x > 0 && y > 0 && x <= x_max && y <= y_max
@@ -411,14 +411,17 @@ fn count_marks(x_center: i32, y_center: i32) -> u8 {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `win` - `true` if the player has won, `false` otherwise.
-fn update_button_for_result(hwnd: &HWND, win: bool) {
+/// # Returns
+/// A `Result` indicating success or failure.
+fn update_button_for_result(hwnd: &HWND, win: bool) -> AnyResult<()> {
     let state = if win {
         ButtonSprite::Win
     } else {
         ButtonSprite::Lose
     };
     BTN_FACE_STATE.store(state as u8, Ordering::Relaxed);
-    display_button(hwnd, state);
+    display_button(hwnd, state)?;
+    Ok(())
 }
 
 /// Record a new win time if it is a personal best.
@@ -538,9 +541,11 @@ fn step_box(hwnd: &HWND, x: i32, y: i32) {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `win` - `true` if the player has won, `false` otherwise
-fn game_over(hwnd: &HWND, win: bool) {
+/// # Returns
+/// A `Result` indicating success or failure.
+fn game_over(hwnd: &HWND, win: bool) -> AnyResult<()> {
     F_TIMER.store(false, Ordering::Relaxed);
-    update_button_for_result(hwnd, win);
+    update_button_for_result(hwnd, win)?;
     show_bombs(
         hwnd,
         if win {
@@ -561,6 +566,8 @@ fn game_over(hwnd: &HWND, win: bool) {
     if win {
         record_win_if_needed(hwnd);
     }
+
+    Ok(())
 }
 
 /// Handle a user click on a single square (first-click safety included).
@@ -568,7 +575,9 @@ fn game_over(hwnd: &HWND, win: bool) {
 /// * `hwnd` - Handle to the main window.
 /// * `x` - The X coordinate of the clicked square.
 /// * `y` - The Y coordinate of the clicked square.
-fn step_square(hwnd: &HWND, x: i32, y: i32) {
+/// # Returns
+/// A `Result` indicating success or failure.
+fn step_square(hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
     if is_bomb(x, y) {
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         if visits == 0 {
@@ -580,7 +589,7 @@ fn step_square(hwnd: &HWND, x: i32, y: i32) {
                         clear_bomb(x, y);
                         set_bomb(x_t, y_t);
                         step_box(hwnd, x, y);
-                        return;
+                        return Ok(());
                     }
                 }
             }
@@ -591,14 +600,16 @@ fn step_square(hwnd: &HWND, x: i32, y: i32) {
                 y,
                 BlockMask::Visit as u8 | BlockCell::Explode as u8,
             );
-            game_over(hwnd, false);
+            game_over(hwnd, false)?;
         }
     } else {
         step_box(hwnd, x, y);
         if check_win() {
-            game_over(hwnd, true);
+            game_over(hwnd, true)?;
         }
     }
+
+    Ok(())
 }
 
 /// Handle a chord action on a revealed number square.
@@ -606,12 +617,14 @@ fn step_square(hwnd: &HWND, x: i32, y: i32) {
 /// * `hwnd` - Handle to the main window.
 /// * `x_center` - The X coordinate of the center square.
 /// * `y_center` - The Y coordinate of the center square.
-fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
+/// # Returns
+/// A `Result` indicating success or failure.
+fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) -> AnyResult<()> {
     if !is_visit(x_center, y_center)
         || block_data(x_center, y_center) != count_marks(x_center, y_center)
     {
         track_mouse(hwnd, -2, -2);
-        return;
+        return Ok(());
     }
 
     let mut lose = false;
@@ -636,10 +649,12 @@ fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
     }
 
     if lose {
-        game_over(hwnd, false);
+        game_over(hwnd, false)?;
     } else if check_win() {
-        game_over(hwnd, true);
+        game_over(hwnd, true)?;
     }
+
+    Ok(())
 }
 
 /// Handle a user guess (flag or question mark) on a square.
@@ -647,12 +662,14 @@ fn step_block(hwnd: &HWND, x_center: i32, y_center: i32) {
 /// * `hwnd` - Handle to the main window.
 /// * `x` - The X coordinate of the square.
 /// * `y` - The Y coordinate of the square.
-pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
+/// # Returns
+/// A `Result` indicating success or failure.
+pub fn make_guess(hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
     // Cycle through blank -> flag -> question mark states depending on preferences.
 
     // Return if the square is out of range or already visited.
-    if !f_in_range(x, y) || is_visit(x, y) {
-        return;
+    if !in_range(x, y) || is_visit(x, y) {
+        return Ok(());
     }
 
     let allow_marks = {
@@ -680,8 +697,10 @@ pub fn make_guess(hwnd: &HWND, x: i32, y: i32) {
     change_blk(hwnd, x, y, block);
 
     if guessed_bomb(x, y) && check_win() {
-        game_over(hwnd, true);
+        game_over(hwnd, true)?;
     }
+
+    Ok(())
 }
 
 /// Depress a box visually.
@@ -734,7 +753,7 @@ fn update_bomb_count_internal(hwnd: &HWND, delta: i16) {
 /// # Returns
 /// `true` if the coordinate is valid for flood-fill, `false` otherwise.
 fn in_range_step(x: i32, y: i32) -> bool {
-    f_in_range(x, y) && !is_visit(x, y) && !guessed_bomb(x, y)
+    in_range(x, y) && !is_visit(x, y) && !guessed_bomb(x, y)
 }
 
 /// Reset the game field to its initial blank state and rebuild the border.
@@ -855,8 +874,8 @@ pub fn track_mouse(hwnd: &HWND, x_new: i32, y_new: i32) {
     let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
 
     if BLK_BTN_INPUT.load(Ordering::Relaxed) {
-        let valid_new = f_in_range(x_new, y_new);
-        let valid_old = f_in_range(x_old, y_old);
+        let valid_new = in_range(x_new, y_new);
+        let valid_old = in_range(x_old, y_old);
 
         let y_old_min = max(y_old - 1, 1);
         let y_old_max = min(y_old + 1, y_max);
@@ -903,11 +922,11 @@ pub fn track_mouse(hwnd: &HWND, x_new: i32, y_new: i32) {
             }
         }
     } else {
-        if f_in_range(x_old, y_old) && !is_visit(x_old, y_old) {
+        if in_range(x_old, y_old) && !is_visit(x_old, y_old) {
             pop_box_up(x_old, y_old);
             display_block(hwnd, x_old, y_old);
         }
-        if f_in_range(x_new, y_new) && in_range_step(x_new, y_new) {
+        if in_range(x_new, y_new) && in_range_step(x_new, y_new) {
             push_box_down(x_new, y_new);
             display_block(hwnd, x_new, y_new);
         }
@@ -917,22 +936,26 @@ pub fn track_mouse(hwnd: &HWND, x_new: i32, y_new: i32) {
 /// Handle a left-button release: start the timer, then either chord or step.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn do_button_1_up(hwnd: &HWND) {
+/// # Returns
+/// A `Result` indicating success or failure.
+pub fn do_button_1_up(hwnd: &HWND) -> AnyResult<()> {
+    // Get the current cursor position
     let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
     let y_pos = CURSOR_Y_POS.load(Ordering::Relaxed);
 
-    if f_in_range(x_pos, y_pos) {
+    // Check if the cursor is within the valid range of the board
+    if in_range(x_pos, y_pos) {
+        // If the number of visits and elapsed seconds are both zero, the game has not started yet
         let visits = C_BOX_VISIT.load(Ordering::Relaxed);
         let secs = SECS_ELAPSED.load(Ordering::Relaxed);
         if visits == 0 && secs == 0 {
+            // Play the tick sound, display the initial time, and start the timer
             play_tune(&hwnd.hinstance(), Tune::Tick);
             SECS_ELAPSED.store(1, Ordering::Relaxed);
             display_time(hwnd);
             F_TIMER.store(true, Ordering::Relaxed);
-            if let Some(hwnd) = hwnd.as_opt()
-                && hwnd.SetTimer(ID_TIMER, 1000, None).is_err()
-            {
-                report_error(ERR_TIMER);
+            if let Some(hwnd) = hwnd.as_opt() {
+                hwnd.SetTimer(ID_TIMER, 1000, None)?;
             }
         }
 
@@ -942,9 +965,9 @@ pub fn do_button_1_up(hwnd: &HWND) {
         }
 
         if BLK_BTN_INPUT.load(Ordering::Relaxed) {
-            step_block(hwnd, x_pos, y_pos);
+            step_block(hwnd, x_pos, y_pos)?;
         } else if in_range_step(x_pos, y_pos) {
-            step_square(hwnd, x_pos, y_pos);
+            step_square(hwnd, x_pos, y_pos)?;
         }
     }
 
@@ -955,7 +978,9 @@ pub fn do_button_1_up(hwnd: &HWND) {
         3 => ButtonSprite::Win,
         _ => ButtonSprite::Down,
     };
-    display_button(hwnd, button);
+    display_button(hwnd, button)?;
+
+    Ok(())
 }
 
 /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.

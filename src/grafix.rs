@@ -8,8 +8,8 @@ use std::sync::{Mutex, OnceLock};
 
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 use winsafe::{
-    self as w, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
-    HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, SysResult,
+    self as w, AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN,
+    HRSRCMEM, HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, SysResult,
     co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE},
     guard::{DeleteDCGuard, DeleteObjectGuard},
     prelude::*,
@@ -20,7 +20,6 @@ use crate::rtns::{
     BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
     SECS_ELAPSED, board_mutex, clear_field, preferences_mutex,
 };
-use crate::sound::stop_all_sounds;
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -180,68 +179,11 @@ fn grafix_state() -> &'static Mutex<GrafixState> {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// # Returns
-/// Ok(()) if successful, or an error if loading resources failed.
-pub fn init_game(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
+/// `Ok(())` if successful, or an error if loading resources failed.
+pub fn init_game(hwnd: &HWND) -> AnyResult<()> {
     load_bitmaps(hwnd)?;
     clear_field();
     Ok(())
-}
-
-/// Free all loaded bitmap resources and cached DCs.
-///
-/// TODO: This function is no longer needed, it can be completely removed.
-pub fn free_bitmaps() {
-    let mut state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-
-    state.h_gray_pen = None;
-    state.h_white_pen = None;
-
-    state.h_res_blks = HRSRCMEM::NULL;
-    state.h_res_led = HRSRCMEM::NULL;
-    state.h_res_button = HRSRCMEM::NULL;
-
-    state.lp_dib_blks = null();
-    state.lp_dib_led = null();
-    state.lp_dib_button = null();
-
-    for i in 0..I_BLK_MAX {
-        if state.mem_blk_dc[i].is_some() {
-            let _ = state.mem_blk_dc[i].take();
-        }
-        if state.mem_blk_bitmap[i].is_some() {
-            let _ = state.mem_blk_bitmap[i].take();
-        }
-    }
-
-    for i in 0..I_LED_MAX {
-        if state.mem_led_dc[i].is_some() {
-            let _ = state.mem_led_dc[i].take();
-        }
-        if state.mem_led_bitmap[i].is_some() {
-            let _ = state.mem_led_bitmap[i].take();
-        }
-    }
-
-    for i in 0..BUTTON_SPRITE_COUNT {
-        if state.mem_button_dc[i].is_some() {
-            let _ = state.mem_button_dc[i].take();
-        }
-        if state.mem_button_bitmap[i].is_some() {
-            let _ = state.mem_button_bitmap[i].take();
-        }
-    }
-}
-
-/// Clean up graphics resources and silence audio on exit.
-///
-/// TODO: Is this function still needed?
-/// TODO: If it is needed, remove the function since its only called once and is not complex.
-pub fn clean_up() {
-    free_bitmaps();
-    stop_all_sounds();
 }
 
 /// Draw a single block at the specified board coordinates.
@@ -448,7 +390,9 @@ pub fn display_time(hwnd: &HWND) {
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `sprite` - The button sprite to draw.
-fn draw_button(hdc: &HDC, sprite: ButtonSprite) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+fn draw_button(hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
     // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dst_w = scale_dpi(DX_BUTTON_96);
@@ -461,20 +405,22 @@ fn draw_button(hdc: &HDC, sprite: ButtonSprite) {
     };
     let idx = sprite as usize;
     if idx >= BUTTON_SPRITE_COUNT {
-        return;
+        return Ok(());
     }
 
     let Some(src) = state.mem_button_dc[idx].as_ref() else {
-        return;
+        return Ok(());
     };
 
-    let _ = hdc.BitBlt(
+    hdc.BitBlt(
         POINT::with(x, scale_dpi(DY_TOP_LED_96)),
         SIZE::with(dst_w, dst_h),
         src,
         POINT::new(),
         ROP::SRCCOPY,
-    );
+    )?;
+
+    Ok(())
 }
 
 /// Create a resampled bitmap using area averaging to avoid aliasing artifacts when using fractional scaling.
@@ -614,10 +560,11 @@ fn create_resampled_bitmap(
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `sprite` - The button sprite to display.
-pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) {
-    if let Ok(hdc) = hwnd.GetDC() {
-        draw_button(&hdc, sprite);
-    }
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) -> AnyResult<()> {
+    hwnd.GetDC()
+        .map_or_else(|e| Err(e.into()), |hdc| draw_button(&hdc, sprite))
 }
 
 /// Border styles for drawing beveled borders.
@@ -807,7 +754,9 @@ fn draw_background(hdc: &HDC) {
 /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-pub fn draw_screen(hdc: &HDC) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+pub fn draw_screen(hdc: &HDC) -> AnyResult<()> {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     draw_background(hdc);
     draw_bomb_count(hdc);
@@ -818,20 +767,11 @@ pub fn draw_screen(hdc: &HDC) {
         3 => ButtonSprite::Win,
         _ => ButtonSprite::Down,
     };
-    draw_button(hdc, sprite);
+    draw_button(hdc, sprite)?;
     draw_timer(hdc);
     draw_grid(hdc);
-}
 
-/// Display the entire screen (background, counters, button, timer, grid).
-///
-/// TODO: Remove this function.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-pub fn display_screen(hwnd: &HWND) {
-    if let Ok(hdc) = hwnd.GetDC() {
-        draw_screen(&hdc);
-    }
+    Ok(())
 }
 
 /// Load the bitmap resources and prepare cached DCs for rendering.
@@ -839,7 +779,7 @@ pub fn display_screen(hwnd: &HWND) {
 /// * `hwnd` - Handle to the main window.
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
-pub fn load_bitmaps(hwnd: &HWND) -> Result<(), Box<dyn core::error::Error>> {
+pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
     let color_on = {
         let prefs = match preferences_mutex().lock() {
             Ok(g) => g,
