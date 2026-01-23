@@ -18,7 +18,7 @@ use winsafe::{
 use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
 use crate::rtns::{
     BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
-    SECS_ELAPSED, board_mutex, clear_field, preferences_mutex,
+    SECS_ELAPSED, board_mutex, preferences_mutex,
 };
 
 /*
@@ -166,17 +166,6 @@ static GRAFIX_STATE: OnceLock<Mutex<GrafixState>> = OnceLock::new();
 /// Reference to the Mutex protecting the `GrafixState`
 fn grafix_state() -> &'static Mutex<GrafixState> {
     GRAFIX_STATE.get_or_init(|| Mutex::new(GrafixState::default()))
-}
-
-/// Initialize local graphics resources and reset the minefield before the game starts.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-/// # Returns
-/// `Ok(())` if successful, or an error if loading resources failed.
-pub fn init_game(hwnd: &HWND) -> AnyResult<()> {
-    load_bitmaps(hwnd)?;
-    clear_field();
-    Ok(())
 }
 
 /// Draw a single block at the specified board coordinates.

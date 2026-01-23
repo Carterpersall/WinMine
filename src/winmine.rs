@@ -3,6 +3,7 @@
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
@@ -27,17 +28,17 @@ use crate::globals::{
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
     DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, display_button, draw_screen,
-    init_game, load_bitmaps, scale_dpi,
+    load_bitmaps, scale_dpi,
 };
 use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, SoundState, read_preferences,
     write_preferences,
 };
 use crate::rtns::{
-    AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, ID_TIMER,
-    do_button_1_up, do_timer, make_guess, pause_game, preferences_mutex, resume_game, track_mouse,
+    AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, GameState,
+    ID_TIMER, preferences_mutex,
 };
-use crate::util::{IconId, do_about, do_help, get_dlg_int, init_const};
+use crate::util::{IconId, StateLock, do_about, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -252,6 +253,8 @@ const BEST_HELP_IDS: [u32; 22] = [
 pub struct WinMineMainWindow {
     /// The main window, containing the HWND and event callbacks
     pub wnd: gui::WindowMain,
+    /// Shared state for the game
+    pub state: Arc<StateLock<GameState>>,
 }
 
 impl WinMineMainWindow {
@@ -261,7 +264,10 @@ impl WinMineMainWindow {
     /// # Returns
     /// The wrapped main window with events hooked.
     fn new(wnd: gui::WindowMain) -> Self {
-        let new_self = Self { wnd };
+        let new_self = Self {
+            wnd,
+            state: Arc::new(StateLock::new(GameState::new())),
+        };
         new_self.events();
         new_self
     }
@@ -282,9 +288,9 @@ impl WinMineMainWindow {
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
         LEFT_CLK_DOWN.store(false, Ordering::Relaxed);
         if status_play() {
-            do_button_1_up(self.wnd.hwnd())?;
+            self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
-            track_mouse(self.wnd.hwnd(), -2, -2);
+            self.state.write().track_mouse(self.wnd.hwnd(), -2, -2);
         }
         Ok(())
     }
@@ -364,7 +370,7 @@ impl WinMineMainWindow {
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
             // If the left button is down, the user is dragging
             if status_play() {
-                track_mouse(
+                self.state.write().track_mouse(
                     self.wnd.hwnd(),
                     self.x_box_from_xpos(point.x),
                     self.y_box_from_ypos(point.y),
@@ -390,7 +396,7 @@ impl WinMineMainWindow {
         }
 
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-            track_mouse(self.wnd.hwnd(), -3, -3);
+            self.state.write().track_mouse(self.wnd.hwnd(), -3, -3);
             set_block_flag(true);
             unsafe {
                 // TODO: Change this
@@ -410,7 +416,7 @@ impl WinMineMainWindow {
         }
 
         // Regular right-click: make a guess
-        make_guess(
+        self.state.write().make_guess(
             self.wnd.hwnd(),
             self.x_box_from_xpos(point.x),
             self.y_box_from_ypos(point.y),
@@ -425,13 +431,13 @@ impl WinMineMainWindow {
         // Isolate the system command identifier by masking out the lower 4 bits.
         //let command = (sys_cmd & 0xFFF0) as u32;
         if command == SC::MINIMIZE {
-            pause_game();
+            self.state.write().pause_game();
             set_status_pause();
             set_status_icon();
         } else if command == SC::RESTORE {
             clr_status_pause();
             clr_status_icon();
-            resume_game();
+            self.state.write().resume_game();
             IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
         }
     }
@@ -464,7 +470,8 @@ impl WinMineMainWindow {
     /// a `Result` type with an error, as unhandled commands are simply passed to the default handler.
     fn handle_command(&self, w_param: usize) -> Option<isize> {
         match MenuCommand::try_from(w_param) {
-            Ok(MenuCommand::New) => self.start_game(),
+            // TODO: Handle properly after moving `handle_command` into separate closures
+            Ok(MenuCommand::New) => self.start_game().unwrap(),
             Ok(MenuCommand::Exit) => {
                 self.wnd.hwnd().ShowWindow(SW::HIDE);
                 unsafe {
@@ -496,7 +503,8 @@ impl WinMineMainWindow {
                     }
                     prefs.menu_mode
                 };
-                self.start_game();
+                // TODO: Handle properly after moving `handle_command` into separate closures
+                self.start_game().unwrap();
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.set_menu_bar(f_menu);
             }
@@ -517,7 +525,8 @@ impl WinMineMainWindow {
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.set_menu_bar(fmenu);
-                self.start_game();
+                // TODO: Handle properly after moving `handle_command` into separate closures
+                self.start_game().unwrap();
             }
             Ok(MenuCommand::Sound) => {
                 let current_sound = {
@@ -647,7 +656,7 @@ impl WinMineMainWindow {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
                             display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
-                            self.start_game();
+                            self.start_game()?;
                         }
                         return Ok(true);
                     }
@@ -883,7 +892,7 @@ impl WinMineMainWindow {
                 self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
 
                 // Initialize local resources.
-                init_game(self2.wnd.hwnd())?;
+                self2.state.write().init_game(self2.wnd.hwnd())?;
 
                 // Apply menu visibility and start the game.
                 let f_menu = {
@@ -894,7 +903,7 @@ impl WinMineMainWindow {
                     prefs_guard.menu_mode
                 };
                 self2.set_menu_bar(f_menu);
-                self2.start_game();
+                self2.start_game()?;
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
                 Ok(0)
@@ -1145,7 +1154,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_timer(ID_TIMER, {
             let self2 = self.clone();
             move || {
-                do_timer(self2.wnd.hwnd());
+                self2.state.write().do_timer(self2.wnd.hwnd());
                 Ok(())
             }
         });

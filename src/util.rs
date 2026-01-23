@@ -1,6 +1,7 @@
 //! Utility functions and helpers used across the application.
 
 use core::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 
@@ -11,6 +12,34 @@ use crate::globals::{CXBORDER, CYCAPTION, CYMENU, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
+
+/// A wrapper around `RwLock` that handles poisoning by returning the inner data.
+pub struct StateLock<T>(RwLock<T>);
+
+impl<T> StateLock<T> {
+    /// Create a new `StateLock` wrapping the given value.
+    /// # Arguments
+    /// * `value` - The value to wrap in the `RwLock`.
+    pub const fn new(value: T) -> Self {
+        Self(RwLock::new(value))
+    }
+
+    /// Get a read lock on the inner value, handling poisoning.
+    pub fn read(&self) -> RwLockReadGuard<'_, T> {
+        match self.0.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+
+    /// Get a write lock on the inner value, handling poisoning.
+    pub fn write(&self) -> RwLockWriteGuard<'_, T> {
+        match self.0.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        }
+    }
+}
 
 /// Multiplier used by the linear congruential generator that produces the app's RNG values.
 const RNG_MULTIPLIER: u32 = 1_103_515_245;
