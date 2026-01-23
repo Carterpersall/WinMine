@@ -5,7 +5,7 @@ use core::ptr::{null, null_mut};
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 use winsafe::HINSTANCE;
 
-use crate::pref::SoundState;
+use crate::{pref::SoundState, rtns::preferences_mutex};
 
 /// Logical UI tunes that map to embedded wave resources.
 #[repr(u16)]
@@ -19,20 +19,30 @@ pub enum Tune {
 }
 
 impl Tune {
-    /// Play a specific UI tune using the sounds in the resource file
+    /// Play a specific UI tune using the sounds in the resource file, if sound effects are enabled.
     /// # Arguments
     /// * `tune` - The tune to play
     pub fn play(self, hinst: &HINSTANCE) {
-        let resource_ptr = self as usize as *const u16;
-        // Playback uses the async flag so the UI thread is never blocked.
-        unsafe {
-            PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
+        let sound_on = {
+            let prefs = match preferences_mutex().lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            prefs.sound_state == SoundState::On
+        };
+
+        if sound_on {
+            let resource_ptr = self as usize as *const u16;
+            // Playback uses the async flag so the UI thread is never blocked.
+            unsafe {
+                PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
+            }
         }
     }
 }
 
 impl SoundState {
-    /// Initialize the sound system and determine whether sound effects are enabled.
+    /// Initialize the sound system and determine whether sound effects can be played.
     /// # Returns
     /// A `SoundState` enum indicating whether sound effects can be played.
     pub fn init() -> SoundState {

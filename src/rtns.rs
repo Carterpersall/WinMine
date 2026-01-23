@@ -7,7 +7,7 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use winsafe::co::WM;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HINSTANCE, HWND, prelude::*};
+use winsafe::{AnyResult, HWND, prelude::*};
 
 use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag};
 use crate::grafix::{
@@ -346,25 +346,6 @@ fn check_win() -> bool {
     C_BOX_VISIT.load(Ordering::Relaxed) == CBOX_VISIT_MAC.load(Ordering::Relaxed)
 }
 
-/// Play a logical tune if sound effects are enabled in preferences.
-///
-/// TODO: Move the sound check into the sound module
-/// # Arguments
-/// * `tune` - The tune to play.
-fn play_tune(hinst: &HINSTANCE, tune: Tune) {
-    let sound_on = {
-        let prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        prefs.sound_state == SoundState::On
-    };
-
-    if sound_on {
-        tune.play(hinst);
-    }
-}
-
 /// Reveal all bombs on the board and mark incorrect guesses.
 ///
 /// This is called when the game ends to show the final board state.
@@ -558,11 +539,10 @@ fn game_over(hwnd: &HWND, win: bool) -> AnyResult<()> {
     );
     if win {
         BOMBS_LEFT.store(0, Ordering::Relaxed);
+        Tune::WinGame.play(&hwnd.hinstance());
+    } else {
+        Tune::LoseGame.play(&hwnd.hinstance());
     }
-    play_tune(
-        &hwnd.hinstance(),
-        if win { Tune::WinGame } else { Tune::LoseGame },
-    );
     GAME_STATUS.store(StatusFlag::Demo as i32, Ordering::Relaxed);
 
     if win {
@@ -786,7 +766,7 @@ pub fn do_timer(hwnd: &HWND) {
     if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
         SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
         display_time(hwnd);
-        play_tune(&hwnd.hinstance(), Tune::Tick);
+        Tune::Tick.play(&hwnd.hinstance());
     }
 }
 
@@ -952,7 +932,7 @@ pub fn do_button_1_up(hwnd: &HWND) -> AnyResult<()> {
         let secs = SECS_ELAPSED.load(Ordering::Relaxed);
         if visits == 0 && secs == 0 {
             // Play the tick sound, display the initial time, and start the timer
-            play_tune(&hwnd.hinstance(), Tune::Tick);
+            Tune::Tick.play(&hwnd.hinstance());
             SECS_ELAPSED.store(1, Ordering::Relaxed);
             display_time(hwnd);
             F_TIMER.store(true, Ordering::Relaxed);
