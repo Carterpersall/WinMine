@@ -2,8 +2,8 @@
 //! This includes board representation, game status tracking, and related utilities.
 
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicBool, AtomicI16, AtomicI32, AtomicU8, AtomicU16, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use core::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use winsafe::co::WM;
 use winsafe::msg::WndMsg;
@@ -24,7 +24,7 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 /// These values are used to get the visual representation of each cell, in reverse order.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
-enum BlockCell {
+pub enum BlockCell {
     /// A blank cell with no adjacent bombs.
     Blank = 0,
     /// The depressed version of the guess (?) mark.
@@ -112,8 +112,6 @@ pub fn preferences_mutex() -> &'static Mutex<Pref> {
     })
 }
 
-// TODO: Remove this after migrating globals into GameState
-#[allow(dead_code)]
 /// Represents the current state of the game.
 #[derive(Clone)]
 pub struct GameState {
@@ -122,32 +120,32 @@ pub struct GameState {
     /// Current board height in cells (excluding border)
     pub board_height: i32,
     /// Current button face sprite
-    btn_face_state: ButtonSprite,
+    pub btn_face_state: ButtonSprite,
     /// Current number of bombs left to mark
     ///
     /// Note: The bomb count can go negative if the user marks more squares than there are bombs.
-    bombs_left: i16,
+    pub bombs_left: i16,
     /// Current elapsed time in seconds.
     ///
     /// The timer should never exceed 999 seconds, so u16 is sufficient.
-    secs_elapsed: u16,
+    pub secs_elapsed: u16,
     /// Number of visited boxes (revealed non-bomb cells).
     ///
     /// Note: Maximum value is 2<sup>16</sup>, or a 256 x 256 board with no bombs.
-    boxes_visited: u16,
+    pub boxes_visited: u16,
     /// Current cursor position in board coordinates
-    cursor_pos: POINT,
+    pub cursor_pos: POINT,
     /// Packed board cell values stored row-major including border
     ///
     /// TODO: Replace with a better data structure, perhaps using a struct?
     /// TODO: Use an enum for the cell values instead of i8
-    board_cells: [i8; C_BLK_MAX],
+    pub board_cells: [i8; C_BLK_MAX],
     /// Initial number of bombs at the start of the game
-    total_bombs: i16,
+    pub total_bombs: i16,
     /// Total number of visited boxes needed to win
-    boxes_to_win: u16,
+    pub boxes_to_win: u16,
     /// Indicates whether the game timer is running
-    timer_running: bool,
+    pub timer_running: bool,
 }
 
 impl GameState {
@@ -168,63 +166,6 @@ impl GameState {
         }
     }
 }
-
-/// Current board width in cells (excluding border)
-pub static BOARD_WIDTH: AtomicI32 = AtomicI32::new(0);
-
-/// Current board height in cells (excluding border)
-pub static BOARD_HEIGHT: AtomicI32 = AtomicI32::new(0);
-
-/// Current button face sprite
-pub static BTN_FACE_STATE: AtomicU8 = AtomicU8::new(ButtonSprite::Happy as u8);
-
-/// Current number of bombs left to mark
-///
-/// Note: The bomb count can go negative if the user marks more squares than there are bombs.
-pub static BOMBS_LEFT: AtomicI16 = AtomicI16::new(0);
-
-/// Current elapsed time in seconds.
-///
-/// The timer should never exceed 999 seconds, so u16 is sufficient.
-pub static SECS_ELAPSED: AtomicU16 = AtomicU16::new(0);
-
-/// Number of visited boxes (revealed non-bomb cells).
-///
-/// Note: Maximum value is 2<sup>16</sup>, or a 256 x 256 board with no bombs.
-pub static C_BOX_VISIT: AtomicU16 = AtomicU16::new(0);
-
-/// Current cursor X position in board coordinates
-pub static CURSOR_X_POS: AtomicI32 = AtomicI32::new(-1);
-
-/// Current cursor Y position in board coordinates
-pub static CURSOR_Y_POS: AtomicI32 = AtomicI32::new(-1);
-
-/// Packed board cell values stored row-major including border
-///
-/// TODO: Replace with a better data structure, perhaps using a struct?
-/// TODO: Use an enum for the cell values instead of i8
-static RG_BLK: OnceLock<Mutex<[i8; C_BLK_MAX]>> = OnceLock::new();
-
-/// Accessor for the packed board cell array.
-/// # Returns
-/// A mutex guard for the packed board cell array.
-///
-/// TODO: Use an enum for the cell values instead of i8
-pub fn board_mutex() -> MutexGuard<'static, [i8; C_BLK_MAX]> {
-    match RG_BLK
-        .get_or_init(|| Mutex::new([BlockCell::BlankUp as i8; C_BLK_MAX]))
-        .lock()
-    {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
-}
-
-/// Total number of visited boxes needed to win
-static CBOX_VISIT_MAC: AtomicU16 = AtomicU16::new(0);
-
-/// Indicates whether the game timer is running
-static F_TIMER: AtomicBool = AtomicBool::new(false);
 
 /// Previous timer running state used to detect changes
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
@@ -261,7 +202,7 @@ impl GameState {
 
     /// Retrieve the value of a block at the specified coordinates.
     ///
-    /// TODO: Return an enum instead of an u8
+    /// TODO: Return a `BlockCell` instead of an u8
     /// TODO: Does this function need to exist?
     /// # Arguments
     /// * `x` - The X coordinate.
@@ -269,38 +210,39 @@ impl GameState {
     /// # Returns
     /// The value of the block, or 0 if out of range.
     fn block_value(&self, x: i32, y: i32) -> u8 {
-        let guard = board_mutex();
         board_index(x, y)
-            .and_then(|idx| guard.get(idx).copied())
-            .unwrap_or(0) as u8
+            .and_then(|idx| self.board_cells.get(idx).copied())
+            .unwrap_or(BlockCell::Blank as i8) as u8
     }
 
     /// Set the value of a block at the specified coordinates.
+    ///
+    /// TODO: Make value a `BlockCell` instead of u8
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// * `value` - The value to set.
-    fn set_block_value(&mut self, x: i32, y: i32, value: u8) {
+    const fn set_block_value(&mut self, x: i32, y: i32, value: u8) {
         if let Some(idx) = board_index(x, y) {
-            let mut guard = board_mutex();
-            let prev = guard[idx] as u8;
+            let prev = self.board_cells[idx] as u8;
 
             // Preserve existing flag bits, but allow callers to explicitly set the Visit bit.
             // (Bomb placement is handled separately via set_bomb/clear_bomb.)
             let flags = (prev & BlockMask::Flags as u8) | (value & BlockMask::Visit as u8);
             let data = value & BlockMask::Data as u8;
-            guard[idx] = (flags | data) as i8;
+            self.board_cells[idx] = (flags | data) as i8;
         }
     }
 
     /// Set a block as a border at the specified coordinates.
+    ///
+    /// TODO: Is this function needed?
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
-    fn set_border(&mut self, x: i32, y: i32) {
+    const fn set_border(&mut self, x: i32, y: i32) {
         if let Some(idx) = board_index(x, y) {
-            let mut guard = board_mutex();
-            guard[idx] = BlockCell::Border as i8;
+            self.board_cells[idx] = BlockCell::Border as i8;
         }
     }
 
@@ -308,11 +250,10 @@ impl GameState {
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
-    fn set_bomb(&mut self, x: i32, y: i32) {
+    const fn set_bomb(&mut self, x: i32, y: i32) {
         if let Some(idx) = board_index(x, y) {
-            let mut guard = board_mutex();
-            let prev = guard[idx];
-            guard[idx] = prev | BlockMask::Bomb as i8;
+            let prev = self.board_cells[idx];
+            self.board_cells[idx] = prev | BlockMask::Bomb as i8;
         }
     }
 
@@ -320,11 +261,10 @@ impl GameState {
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
-    fn clear_bomb(&mut self, x: i32, y: i32) {
+    const fn clear_bomb(&mut self, x: i32, y: i32) {
         if let Some(idx) = board_index(x, y) {
-            let mut guard = board_mutex();
-            let prev = guard[idx] as u8;
-            guard[idx] = (prev & BlockMask::NotBomb as u8) as i8;
+            let prev = self.board_cells[idx] as u8;
+            self.board_cells[idx] = (prev & BlockMask::NotBomb as u8) as i8;
         }
     }
 
@@ -374,10 +314,8 @@ impl GameState {
     /// * `y` - The Y coordinate.
     /// # Returns
     /// `true` if the coordinates are within range, `false` otherwise.
-    fn in_range(&self, x: i32, y: i32) -> bool {
-        let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
-        let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
-        x > 0 && y > 0 && x <= x_max && y <= y_max
+    const fn in_range(&self, x: i32, y: i32) -> bool {
+        x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
     }
 
     /// Set a raw block value at the specified coordinates, preserving only data and visit bits.
@@ -385,7 +323,7 @@ impl GameState {
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// * `block` - The raw block value to set.
-    fn set_raw_block(&mut self, x: i32, y: i32, block: u8) {
+    const fn set_raw_block(&mut self, x: i32, y: i32, block: u8) {
         // Keep only the data bits plus the Visit bit (when present).
         let masked = block & (BlockMask::Data as u8 | BlockMask::Visit as u8);
         self.set_block_value(x, y, masked);
@@ -402,10 +340,12 @@ impl GameState {
     }
 
     /// Check if the player has won the game.
+    ///
+    /// TODO: Remove this function.
     /// # Returns
     /// `true` if the player has won, `false` otherwise.
-    fn check_win(&self) -> bool {
-        C_BOX_VISIT.load(Ordering::Relaxed) == CBOX_VISIT_MAC.load(Ordering::Relaxed)
+    const fn check_win(&self) -> bool {
+        self.boxes_visited == self.boxes_to_win
     }
 
     /// Reveal all bombs on the board and mark incorrect guesses.
@@ -415,11 +355,8 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `cell` - The block cell type to use for revealed bombs.
     fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) {
-        let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
-        let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
-
-        for y in 1..=y_max {
-            for x in 1..=x_max {
+        for y in 1..=self.board_height {
+            for x in 1..=self.board_width {
                 if !self.is_visit(x, y) {
                     if self.is_bomb(x, y) {
                         if !self.guessed_bomb(x, y) {
@@ -431,7 +368,7 @@ impl GameState {
                 }
             }
         }
-        display_grid(hwnd);
+        display_grid(hwnd, self.board_width, self.board_height, &self.board_cells);
     }
 
     /// Count the number of adjacent marked squares around the specified coordinates.
@@ -464,7 +401,7 @@ impl GameState {
         } else {
             ButtonSprite::Lose
         };
-        BTN_FACE_STATE.store(state as u8, Ordering::Relaxed);
+        self.btn_face_state = state;
         display_button(hwnd, state)?;
         Ok(())
     }
@@ -473,7 +410,6 @@ impl GameState {
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     fn record_win_if_needed(&mut self, hwnd: &HWND) {
-        let elapsed = SECS_ELAPSED.load(Ordering::Relaxed);
         let mut prefs = match preferences_mutex().lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -481,9 +417,10 @@ impl GameState {
         let game = prefs.game_type;
         if game != GameType::Other {
             let game_idx = game as usize;
-            if game_idx < prefs.best_times.len() && elapsed < prefs.best_times[game_idx] {
-                prefs.best_times[game_idx] = elapsed;
-                drop(prefs);
+            if game_idx < prefs.best_times.len() && self.secs_elapsed < prefs.best_times[game_idx] {
+                {
+                    prefs.best_times[game_idx] = self.secs_elapsed;
+                }
 
                 if hwnd.as_opt().is_some() {
                     unsafe {
@@ -502,7 +439,7 @@ impl GameState {
     /// * `block` - The new block value.
     fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: u8) {
         self.set_raw_block(x, y, block);
-        display_block(hwnd, x, y);
+        display_block(hwnd, x, y, &self.board_cells);
     }
 
     /// Enqueue a square for flood-fill processing if it is empty.
@@ -522,8 +459,7 @@ impl GameState {
     ) {
         // Visit a square; enqueue it when empty so we flood-fill neighbors later.
         if let Some(idx) = board_index(x, y) {
-            let mut board = board_mutex();
-            let mut blk = board[idx] as u8;
+            let mut blk = self.board_cells[idx] as u8;
             if (blk & BlockMask::Visit as u8) != 0 {
                 return;
             }
@@ -533,12 +469,12 @@ impl GameState {
                 return;
             }
 
-            C_BOX_VISIT.fetch_add(1, Ordering::Relaxed);
+            self.boxes_visited += 1;
             let mut bombs = 0;
             for y_n in (y - 1)..=(y + 1) {
                 for x_n in (x - 1)..=(x + 1) {
                     if let Some(nidx) = board_index(x_n, y_n) {
-                        let cell = board[nidx] as u8;
+                        let cell = self.board_cells[nidx] as u8;
                         if (cell & BlockMask::Bomb as u8) != 0 {
                             bombs += 1;
                         }
@@ -546,9 +482,8 @@ impl GameState {
                 }
             }
             blk = BlockMask::Visit as u8 | ((bombs as u8) & BlockMask::Data as u8);
-            board[idx] = blk as i8;
-            drop(board);
-            display_block(hwnd, x, y);
+            self.board_cells[idx] = blk as i8;
+            display_block(hwnd, x, y, &self.board_cells);
 
             if bombs == 0 && *tail < I_STEP_MAX {
                 queue[*tail] = (x, y);
@@ -595,7 +530,7 @@ impl GameState {
     /// # Returns
     /// A `Result` indicating success or failure.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
-        F_TIMER.store(false, Ordering::Relaxed);
+        self.timer_running = false;
         self.update_button_for_result(hwnd, win)?;
         self.show_bombs(
             hwnd,
@@ -606,7 +541,7 @@ impl GameState {
             },
         );
         if win {
-            BOMBS_LEFT.store(0, Ordering::Relaxed);
+            self.bombs_left = 0;
             Tune::WinGame.play(&hwnd.hinstance());
         } else {
             Tune::LoseGame.play(&hwnd.hinstance());
@@ -629,12 +564,10 @@ impl GameState {
     /// A `Result` indicating success or failure.
     fn step_square(&mut self, hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
         if self.is_bomb(x, y) {
-            let visits = C_BOX_VISIT.load(Ordering::Relaxed);
+            let visits = self.boxes_visited;
             if visits == 0 {
-                let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
-                let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
-                for y_t in 1..y_max {
-                    for x_t in 1..x_max {
+                for y_t in 1..self.board_height {
+                    for x_t in 1..self.board_width {
                         if !self.is_bomb(x_t, y_t) {
                             self.clear_bomb(x, y);
                             self.set_bomb(x_t, y_t);
@@ -792,8 +725,8 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `delta` - The change in bomb count (positive or negative).
     fn update_bomb_count_internal(&mut self, hwnd: &HWND, delta: i16) {
-        BOMBS_LEFT.fetch_add(delta, Ordering::Relaxed);
-        display_bomb_count(hwnd);
+        self.bombs_left += delta;
+        display_bomb_count(hwnd, self.bombs_left);
     }
 
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
@@ -808,13 +741,12 @@ impl GameState {
 
     /// Reset the game field to its initial blank state and rebuild the border.
     pub fn clear_field(&mut self) {
-        {
-            let mut board = board_mutex();
-            board.iter_mut().for_each(|b| *b = BlockCell::BlankUp as i8);
-        }
+        self.board_cells
+            .iter_mut()
+            .for_each(|b| *b = BlockCell::BlankUp as i8);
 
-        let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
-        let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
+        let x_max = self.board_width;
+        let y_max = self.board_height;
 
         for x in 0..=(x_max + 1) {
             self.set_border(x, 0);
@@ -830,10 +762,9 @@ impl GameState {
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     pub fn do_timer(&mut self, hwnd: &HWND) {
-        let secs = SECS_ELAPSED.load(Ordering::Relaxed);
-        if F_TIMER.load(Ordering::Relaxed) && secs < 999 {
-            SECS_ELAPSED.store(secs + 1, Ordering::Relaxed);
-            display_time(hwnd);
+        if self.timer_running && self.secs_elapsed < 999 {
+            self.secs_elapsed += 1;
+            display_time(hwnd, self.secs_elapsed);
             Tune::Tick.play(&hwnd.hinstance());
         }
     }
@@ -844,10 +775,10 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     pub fn start_game(&self) -> AnyResult<()> {
-        F_TIMER.store(false, Ordering::Relaxed);
+        self.state.write().timer_running = false;
 
-        let x_prev = BOARD_WIDTH.load(Ordering::Relaxed);
-        let y_prev = BOARD_HEIGHT.load(Ordering::Relaxed);
+        let x_prev = self.state.read().board_width;
+        let y_prev = self.state.read().board_height;
 
         let (pref_width, pref_height, total_bombs) = {
             let prefs = match preferences_mutex().lock() {
@@ -863,16 +794,17 @@ impl WinMineMainWindow {
             AdjustFlag::Display as i32
         };
 
-        BOARD_WIDTH.store(pref_width, Ordering::Relaxed);
-        BOARD_HEIGHT.store(pref_height, Ordering::Relaxed);
+        self.state.write().board_width = pref_width;
+        self.state.write().board_height = pref_height;
 
         self.state.write().clear_field();
-        BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
+        self.state.write().btn_face_state = ButtonSprite::Happy;
+        self.state.write().timer_running = false;
 
         self.state.write().total_bombs = total_bombs;
 
-        let width = BOARD_WIDTH.load(Ordering::Relaxed);
-        let height = BOARD_HEIGHT.load(Ordering::Relaxed);
+        let width = self.state.read().board_width;
+        let height = self.state.read().board_height;
 
         let mut bombs = total_bombs;
         while bombs > 0 {
@@ -889,16 +821,13 @@ impl WinMineMainWindow {
             bombs -= 1;
         }
 
-        SECS_ELAPSED.store(0, Ordering::Relaxed);
-        BOMBS_LEFT.store(total_bombs, Ordering::Relaxed);
-        C_BOX_VISIT.store(0, Ordering::Relaxed);
-        CBOX_VISIT_MAC.store(
-            (width * height) as u16 - total_bombs as u16,
-            Ordering::Relaxed,
-        );
+        self.state.write().secs_elapsed = 0;
+        self.state.write().bombs_left = total_bombs;
+        self.state.write().boxes_visited = 0;
+        self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
         GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
 
-        display_bomb_count(self.wnd.hwnd());
+        display_bomb_count(self.wnd.hwnd(), self.state.read().bombs_left);
 
         self.adjust_window(f_adjust);
 
@@ -913,31 +842,28 @@ impl GameState {
     /// * `x_new` - The new X coordinate of the mouse.
     /// * `y_new` - The new Y coordinate of the mouse.
     pub fn track_mouse(&mut self, hwnd: &HWND, x_new: i32, y_new: i32) {
-        let x_old = CURSOR_X_POS.load(Ordering::Relaxed);
-        let y_old = CURSOR_Y_POS.load(Ordering::Relaxed);
-
-        if x_new == x_old && y_new == y_old {
+        let pt_new = POINT { x: x_new, y: y_new };
+        if pt_new == self.cursor_pos {
             return;
         }
 
-        CURSOR_X_POS.store(x_new, Ordering::Relaxed);
-        CURSOR_Y_POS.store(y_new, Ordering::Relaxed);
+        self.cursor_pos = pt_new;
 
-        let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
-        let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
+        let y_max = self.board_height;
+        let x_max = self.board_width;
 
         if BLK_BTN_INPUT.load(Ordering::Relaxed) {
-            let valid_new = self.in_range(x_new, y_new);
-            let valid_old = self.in_range(x_old, y_old);
+            let valid_new = self.in_range(pt_new.x, pt_new.y);
+            let valid_old = self.in_range(self.cursor_pos.x, self.cursor_pos.y);
 
-            let y_old_min = max(y_old - 1, 1);
-            let y_old_max = min(y_old + 1, y_max);
-            let y_cur_min = max(y_new - 1, 1);
-            let y_cur_max = min(y_new + 1, y_max);
-            let x_old_min = max(x_old - 1, 1);
-            let x_old_max = min(x_old + 1, x_max);
-            let x_cur_min = max(x_new - 1, 1);
-            let x_cur_max = min(x_new + 1, x_max);
+            let y_old_min = max(self.cursor_pos.y - 1, 1);
+            let y_old_max = min(self.cursor_pos.y + 1, y_max);
+            let y_cur_min = max(pt_new.y - 1, 1);
+            let y_cur_max = min(pt_new.y + 1, y_max);
+            let x_old_min = max(self.cursor_pos.x - 1, 1);
+            let x_old_max = min(self.cursor_pos.x + 1, x_max);
+            let x_cur_min = max(pt_new.x - 1, 1);
+            let x_cur_max = min(pt_new.x + 1, x_max);
 
             if valid_old {
                 for y in y_old_min..=y_old_max {
@@ -962,7 +888,7 @@ impl GameState {
             if valid_old {
                 for y in y_old_min..=y_old_max {
                     for x in x_old_min..=x_old_max {
-                        display_block(hwnd, x, y);
+                        display_block(hwnd, x, y, &self.board_cells);
                     }
                 }
             }
@@ -970,18 +896,25 @@ impl GameState {
             if valid_new {
                 for y in y_cur_min..=y_cur_max {
                     for x in x_cur_min..=x_cur_max {
-                        display_block(hwnd, x, y);
+                        display_block(hwnd, x, y, &self.board_cells);
                     }
                 }
             }
         } else {
-            if self.in_range(x_old, y_old) && !self.is_visit(x_old, y_old) {
-                self.pop_box_up(x_old, y_old);
-                display_block(hwnd, x_old, y_old);
+            if self.in_range(self.cursor_pos.x, self.cursor_pos.y)
+                && !self.is_visit(self.cursor_pos.x, self.cursor_pos.y)
+            {
+                self.pop_box_up(self.cursor_pos.x, self.cursor_pos.y);
+                display_block(
+                    hwnd,
+                    self.cursor_pos.x,
+                    self.cursor_pos.y,
+                    &self.board_cells,
+                );
             }
-            if self.in_range(x_new, y_new) && self.in_range_step(x_new, y_new) {
-                self.push_box_down(x_new, y_new);
-                display_block(hwnd, x_new, y_new);
+            if self.in_range(pt_new.x, pt_new.y) && self.in_range_step(pt_new.x, pt_new.y) {
+                self.push_box_down(pt_new.x, pt_new.y);
+                display_block(hwnd, pt_new.x, pt_new.y, &self.board_cells);
             }
         }
     }
@@ -993,28 +926,25 @@ impl GameState {
     /// A `Result` indicating success or failure.
     pub fn do_button_1_up(&mut self, hwnd: &HWND) -> AnyResult<()> {
         // Get the current cursor position
-        let x_pos = CURSOR_X_POS.load(Ordering::Relaxed);
-        let y_pos = CURSOR_Y_POS.load(Ordering::Relaxed);
+        let x_pos = self.cursor_pos.x;
+        let y_pos = self.cursor_pos.y;
 
         // Check if the cursor is within the valid range of the board
         if self.in_range(x_pos, y_pos) {
             // If the number of visits and elapsed seconds are both zero, the game has not started yet
-            let visits = C_BOX_VISIT.load(Ordering::Relaxed);
-            let secs = SECS_ELAPSED.load(Ordering::Relaxed);
-            if visits == 0 && secs == 0 {
+            if self.boxes_visited == 0 && self.secs_elapsed == 0 {
                 // Play the tick sound, display the initial time, and start the timer
                 Tune::Tick.play(&hwnd.hinstance());
-                SECS_ELAPSED.store(1, Ordering::Relaxed);
-                display_time(hwnd);
-                F_TIMER.store(true, Ordering::Relaxed);
+                self.secs_elapsed = 1;
+                display_time(hwnd, self.secs_elapsed);
+                self.timer_running = true;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
                 }
             }
 
             if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) == 0 {
-                CURSOR_X_POS.store(-2, Ordering::Relaxed);
-                CURSOR_Y_POS.store(-2, Ordering::Relaxed);
+                self.cursor_pos = POINT { x: -2, y: -2 };
             }
 
             if BLK_BTN_INPUT.load(Ordering::Relaxed) {
@@ -1024,14 +954,7 @@ impl GameState {
             }
         }
 
-        let button = match BTN_FACE_STATE.load(Ordering::Relaxed) {
-            0 => ButtonSprite::Happy,
-            1 => ButtonSprite::Caution,
-            2 => ButtonSprite::Lose,
-            3 => ButtonSprite::Win,
-            _ => ButtonSprite::Down,
-        };
-        display_button(hwnd, button)?;
+        display_button(hwnd, self.btn_face_state)?;
 
         Ok(())
     }
@@ -1041,10 +964,10 @@ impl GameState {
         SoundState::stop_all();
 
         if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) == 0 {
-            F_OLD_TIMER_STATUS.store(F_TIMER.load(Ordering::Relaxed), Ordering::Relaxed);
+            F_OLD_TIMER_STATUS.store(self.timer_running, Ordering::Relaxed);
         }
         if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
-            F_TIMER.store(false, Ordering::Relaxed);
+            self.timer_running = false;
         }
 
         GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
@@ -1053,10 +976,7 @@ impl GameState {
     /// Resume the game by restoring the timer state and clearing the pause flag.
     pub fn resume_game(&mut self) {
         if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
-            F_TIMER.store(
-                F_OLD_TIMER_STATUS.load(Ordering::Relaxed),
-                Ordering::Relaxed,
-            );
+            self.timer_running = F_OLD_TIMER_STATUS.load(Ordering::Relaxed);
         }
         GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
     }

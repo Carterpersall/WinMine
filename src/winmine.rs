@@ -34,10 +34,7 @@ use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, SoundState, read_preferences,
     write_preferences,
 };
-use crate::rtns::{
-    AdjustFlag, BOARD_HEIGHT, BOARD_WIDTH, BTN_FACE_STATE, CURSOR_X_POS, CURSOR_Y_POS, GameState,
-    ID_TIMER, preferences_mutex,
-};
+use crate::rtns::{AdjustFlag, GameState, ID_TIMER, preferences_mutex};
 use crate::util::{IconId, StateLock, do_about, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
@@ -277,8 +274,7 @@ impl WinMineMainWindow {
     /// Begins a primary button drag operation.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         LEFT_CLK_DOWN.store(true, Ordering::Relaxed);
-        CURSOR_X_POS.store(-1, Ordering::Relaxed);
-        CURSOR_Y_POS.store(-1, Ordering::Relaxed);
+        self.state.write().cursor_pos = POINT { x: -1, y: -1 };
         display_button(self.wnd.hwnd(), ButtonSprite::Caution)
     }
 
@@ -571,7 +567,7 @@ impl WinMineMainWindow {
                 // Repaint immediately so toggling color off updates without restarting.
                 if let Ok(hdc) = self.wnd.hwnd().GetDC() {
                     // TODO: Handle properly after moving `handle_command` into separate closures
-                    draw_screen(&hdc).unwrap();
+                    draw_screen(&hdc, &self.state.read()).unwrap();
                 }
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self.set_menu_bar(f_menu);
@@ -654,7 +650,7 @@ impl WinMineMainWindow {
                 match msg.message {
                     WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
-                            BTN_FACE_STATE.store(ButtonSprite::Happy as u8, Ordering::Relaxed);
+                            self.state.write().btn_face_state = ButtonSprite::Happy;
                             display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
                             self.start_game()?;
                         }
@@ -668,16 +664,7 @@ impl WinMineMainWindow {
                             }
                         } else if pressed {
                             pressed = false;
-                            display_button(
-                                self.wnd.hwnd(),
-                                match BTN_FACE_STATE.load(Ordering::Relaxed) {
-                                    0 => ButtonSprite::Happy,
-                                    1 => ButtonSprite::Caution,
-                                    2 => ButtonSprite::Lose,
-                                    3 => ButtonSprite::Win,
-                                    _ => ButtonSprite::Down,
-                                },
-                            )?;
+                            display_button(self.wnd.hwnd(), self.state.read().btn_face_state)?;
                         }
                     }
                     _ => {}
@@ -699,12 +686,10 @@ impl WinMineMainWindow {
     pub fn adjust_window(&self, mut f_adjust: i32) {
         let menu_handle = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
 
-        let x_boxes = BOARD_WIDTH.load(Ordering::Relaxed);
-        let y_boxes = BOARD_HEIGHT.load(Ordering::Relaxed);
-        let dx_window = scale_dpi(DX_BLK_96) * x_boxes
+        let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width
             + scale_dpi(DX_LEFT_SPACE_96)
             + scale_dpi(DX_RIGHT_SPACE_96);
-        let dy_window = scale_dpi(DY_BLK_96) * y_boxes
+        let dy_window = scale_dpi(DY_BLK_96) * self.state.read().board_height
             + scale_dpi(DY_GRID_OFF_96)
             + scale_dpi(DY_BOTTOM_SPACE_96);
         WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
@@ -1163,7 +1148,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 if let Ok(paint_guard) = self2.wnd.hwnd().BeginPaint() {
-                    draw_screen(&paint_guard)?;
+                    draw_screen(&paint_guard, &self2.state.read())?;
                 }
                 Ok(())
             }

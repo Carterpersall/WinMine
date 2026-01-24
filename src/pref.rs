@@ -1,13 +1,11 @@
 //! Preference management for the Minesweeper game, including reading and writing
 //! settings to the Windows registry.
 
-use core::sync::atomic::Ordering;
-
 use winsafe::co::{GDC, KEY, REG_OPTION};
 use winsafe::{AnyResult, HKEY, HWND, RegistryValue};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
-use crate::rtns::{BOARD_HEIGHT, BOARD_WIDTH, preferences_mutex};
+use crate::rtns::preferences_mutex;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
@@ -254,14 +252,10 @@ pub fn read_preferences() {
     };
 
     // Get the height of the board
-    let height = read_int(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25) as i32;
-    BOARD_HEIGHT.store(height, Ordering::Relaxed);
-    prefs.height = height;
+    prefs.height = read_int(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25) as i32;
 
     // Get the width of the board
-    let width = read_int(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30) as i32;
-    BOARD_WIDTH.store(width, Ordering::Relaxed);
-    prefs.width = width;
+    prefs.width = read_int(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30) as i32;
 
     // Get the game difficulty
     let game_raw = read_int(

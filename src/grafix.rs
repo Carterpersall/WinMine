@@ -16,10 +16,7 @@ use winsafe::{
 };
 
 use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
-use crate::rtns::{
-    BOARD_HEIGHT, BOARD_INDEX_SHIFT, BOARD_WIDTH, BOMBS_LEFT, BTN_FACE_STATE, BlockMask,
-    SECS_ELAPSED, board_mutex, preferences_mutex,
-};
+use crate::rtns::{BOARD_INDEX_SHIFT, BlockMask, GameState, preferences_mutex};
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -173,12 +170,13 @@ fn grafix_state() -> &'static Mutex<GrafixState> {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-fn draw_block(hdc: &HDC, x: i32, y: i32) {
+/// * `board` - Slice representing the board state.
+fn draw_block(hdc: &HDC, x: i32, y: i32, board: &[i8]) {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let Some(src) = block_dc(&state, x, y) else {
+    let Some(src) = block_dc(&state, x, y, board) else {
         return;
     };
 
@@ -198,33 +196,38 @@ fn draw_block(hdc: &HDC, x: i32, y: i32) {
 }
 
 /// Display a single block at the specified board coordinates.
+///
+/// TODO: Remove this function.
 /// # Arguments
+/// * `hwnd` - Handle to the main window.
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-pub fn display_block(hwnd: &HWND, x: i32, y: i32) {
+/// * `board` - Slice representing the board state.
+pub fn display_block(hwnd: &HWND, x: i32, y: i32, board: &[i8]) {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_block(&hdc, x, y);
+        draw_block(&hdc, x, y, board);
     }
 }
 
 /// Draw the entire minefield grid onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn draw_grid(hdc: &HDC) {
+/// * `width` - The width of the board in blocks.
+/// * `height` - The height of the board in blocks.
+/// * `board` - Slice representing the board state.
+fn draw_grid(hdc: &HDC, width: i32, height: i32, board: &[i8]) {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
-    let y_max = BOARD_HEIGHT.load(Relaxed);
-    let x_max = BOARD_WIDTH.load(Relaxed);
     let dst_w = scale_dpi(DX_BLK_96);
     let dst_h = scale_dpi(DY_BLK_96);
 
     let mut dy = scale_dpi(DY_GRID_OFF_96);
-    for y in 1..=y_max {
+    for y in 1..=height {
         let mut dx = scale_dpi(DX_LEFT_SPACE_96);
-        for x in 1..=x_max {
-            if let Some(src) = block_dc(&state, x, y) {
+        for x in 1..=width {
+            if let Some(src) = block_dc(&state, x, y, board) {
                 let _ = hdc.BitBlt(
                     POINT::with(dx, dy),
                     SIZE::with(dst_w, dst_h),
@@ -242,9 +245,12 @@ fn draw_grid(hdc: &HDC) {
 /// Display the entire minefield grid.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn display_grid(hwnd: &HWND) {
+/// * `width` - The width of the board in blocks.
+/// * `height` - The height of the board in blocks.
+/// * `board` - Slice representing the board state.
+pub fn display_grid(hwnd: &HWND, width: i32, height: i32, board: &[i8]) {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_grid(&hdc);
+        draw_grid(&hdc, width, height, board);
     }
 }
 
@@ -282,7 +288,8 @@ fn draw_led(hdc: &HDC, x: i32, led_index: u16) {
 /// Draw the bomb counter onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn draw_bomb_count(hdc: &HDC) {
+/// * `bombs` - The number of bombs left to display.
+fn draw_bomb_count(hdc: &HDC, bombs: i16) {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
@@ -294,7 +301,6 @@ fn draw_bomb_count(hdc: &HDC) {
     }
 
     // Draw each of the three digits in sequence
-    let bombs = BOMBS_LEFT.load(Relaxed);
     let x0 = scale_dpi(DX_LEFT_BOMB_96);
     let dx = scale_dpi(DX_LED_96);
     draw_led(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100));
@@ -310,18 +316,22 @@ fn draw_bomb_count(hdc: &HDC) {
 }
 
 /// Display the bomb counter.
+///
+/// TODO: Remove this function.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn display_bomb_count(hwnd: &HWND) {
+/// * `bombs` - The number of bombs left to display.
+pub fn display_bomb_count(hwnd: &HWND, bombs: i16) {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_bomb_count(&hdc);
+        draw_bomb_count(&hdc, bombs);
     }
 }
 
 /// Draw the timer onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn draw_timer(hdc: &HDC) {
+/// * `time` - The time in seconds to display.
+fn draw_timer(hdc: &HDC, time: u16) {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -331,7 +341,6 @@ fn draw_timer(hdc: &HDC) {
         }
     }
 
-    let mut time = SECS_ELAPSED.load(Relaxed);
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let border = CXBORDER.load(Relaxed);
     let dx_led = scale_dpi(DX_LED_96);
@@ -340,7 +349,7 @@ fn draw_timer(hdc: &HDC) {
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border),
         time / 100,
     );
-    time %= 100;
+    let time = time % 100;
     draw_led(
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led + border),
@@ -360,11 +369,14 @@ fn draw_timer(hdc: &HDC) {
 }
 
 /// Display the timer.
+///
+/// TODO: Remove this function.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
-pub fn display_time(hwnd: &HWND) {
+/// * `time` - The time in seconds to display.
+pub fn display_time(hwnd: &HWND, time: u16) {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_timer(&hdc);
+        draw_timer(&hdc, time);
     }
 }
 
@@ -736,22 +748,21 @@ fn draw_background(hdc: &HDC) {
 /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
+/// * `state` - The current game state containing board and UI information.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-pub fn draw_screen(hdc: &HDC) -> AnyResult<()> {
+pub fn draw_screen(hdc: &HDC, state: &GameState) -> AnyResult<()> {
     // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
     draw_background(hdc);
-    draw_bomb_count(hdc);
-    let sprite = match BTN_FACE_STATE.load(Relaxed) {
-        0 => ButtonSprite::Happy,
-        1 => ButtonSprite::Caution,
-        2 => ButtonSprite::Lose,
-        3 => ButtonSprite::Win,
-        _ => ButtonSprite::Down,
-    };
-    draw_button(hdc, sprite)?;
-    draw_timer(hdc);
-    draw_grid(hdc);
+    draw_bomb_count(hdc, state.bombs_left);
+    draw_button(hdc, state.btn_face_state)?;
+    draw_timer(hdc, state.secs_elapsed);
+    draw_grid(
+        hdc,
+        state.board_width,
+        state.board_height,
+        &state.board_cells,
+    );
 
     Ok(())
 }
@@ -1045,10 +1056,11 @@ const fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
 /// * `state` - Reference to the current `GrafixState`
 /// * `x` - X coordinate on the board
 /// * `y` - Y coordinate on the board
+/// * `board` - Slice representing the board state
 /// # Returns
 /// Optionally, a reference to the compatible DC for the block sprite
-fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
-    let idx = block_sprite_index(x, y);
+fn block_dc<'a>(state: &'a GrafixState, x: i32, y: i32, board: &[i8]) -> Option<&'a DeleteDCGuard> {
+    let idx = block_sprite_index(x, y, board);
     if idx >= I_BLK_MAX {
         return None;
     }
@@ -1060,18 +1072,18 @@ fn block_dc(state: &GrafixState, x: i32, y: i32) -> Option<&DeleteDCGuard> {
 /// # Arguments
 /// * `x` - X coordinate on the board
 /// * `y` - Y coordinate on the board
+/// * `board` - Slice representing the board state
 /// # Returns
 /// The sprite index for the block at the specified coordinates
 /// # Notes
 /// The x and y values are stored as `i32` due to much of the Win32 API using `i32` for coordinates. (`POINT`, `SIZE`, `RECT`, etc.)
-fn block_sprite_index(x: i32, y: i32) -> usize {
+fn block_sprite_index(x: i32, y: i32, board: &[i8]) -> usize {
     // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
         return 0;
     }
     let idx = offset as usize;
-    let board = board_mutex();
     board
         .get(idx)
         .copied()

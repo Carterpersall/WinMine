@@ -14,10 +14,7 @@ use core::sync::atomic::{AtomicI32, Ordering};
 use winsafe::co::{MK, PS, VK};
 use winsafe::{COLORREF, HPEN, HWND, POINT};
 
-use crate::rtns::{
-    BOARD_HEIGHT, BOARD_WIDTH, BlockMask, C_BLK_MAX, CURSOR_X_POS, CURSOR_Y_POS, board_index,
-    board_mutex,
-};
+use crate::rtns::{BlockMask, C_BLK_MAX, board_index};
 use crate::winmine::WinMineMainWindow;
 
 /// Length of the XYZZY cheat code sequence.
@@ -78,14 +75,12 @@ impl WinMineMainWindow {
         if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
             let x_pos = self.x_box_from_xpos(point.x);
             let y_pos = self.y_box_from_ypos(point.y);
-            CURSOR_X_POS.store(x_pos, Ordering::Relaxed);
-            CURSOR_Y_POS.store(y_pos, Ordering::Relaxed);
+            self.state.write().cursor_pos = POINT { x: x_pos, y: y_pos };
             // Check if the cursor is within the board's range
-            let in_range = {
-                let x_max = BOARD_WIDTH.load(Ordering::Relaxed);
-                let y_max = BOARD_HEIGHT.load(Ordering::Relaxed);
-                x_pos > 0 && y_pos > 0 && x_pos <= x_max && y_pos <= y_max
-            };
+            let in_range = x_pos > 0
+                && y_pos > 0
+                && x_pos <= self.state.read().board_width
+                && y_pos <= self.state.read().board_height;
             if in_range && let Ok(hdc) = HWND::DESKTOP.GetDC() {
                 let is_bomb = {
                     // Get the mouse cursor's position in the board
@@ -93,7 +88,7 @@ impl WinMineMainWindow {
                         && index < C_BLK_MAX
                     {
                         // Check if the block at the calculated index is a bomb
-                        (board_mutex()[index] as u8 & BlockMask::Bomb as u8) != 0
+                        (self.state.read().board_cells[index] as u8 & BlockMask::Bomb as u8) != 0
                     } else {
                         // If the mouse is not in the game board, the mouse is not over a bomb
                         false
