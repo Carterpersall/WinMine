@@ -73,18 +73,11 @@ pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 pub fn update_ui_metrics_for_dpi(dpi: u32) {
     let dpi = if dpi == 0 { BASE_DPI } else { dpi };
 
-    let caption = GetSystemMetricsForDpi(w::co::SM::CYCAPTION, dpi)
-        .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CYCAPTION));
-    let menu = GetSystemMetricsForDpi(w::co::SM::CYMENU, dpi)
-        .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CYMENU));
     let border = GetSystemMetricsForDpi(w::co::SM::CXBORDER, dpi)
         .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CXBORDER));
-    // Preserve the historical +1 fudge used throughout the codebase.
-    // TODO: Why is this done?
-    // TODO: Rename these so that they don't conflict with the `SM_` constants.
-    CYCAPTION.store(caption + 1, Ordering::Relaxed);
-    CYMENU.store(menu + 1, Ordering::Relaxed);
-    CXBORDER.store(border + 1, Ordering::Relaxed);
+    // TODO: Rename this so that they don't conflict with the `SM_` constants.
+    // Move the timer to the right by one pixel to make sure it is symmetric with the bomb count
+    CXBORDER.store(border - 1, Ordering::Relaxed);
 }
 
 /// True while the process starts minimized.
@@ -98,12 +91,6 @@ pub static BLK_BTN_INPUT: AtomicBool = AtomicBool::new(false);
 
 /// Signals that the next click should be ignored (used after window activation).
 pub static IGNORE_NEXT_CLICK: AtomicBool = AtomicBool::new(false);
-
-/// Cached system caption height used during window sizing.
-pub static CYCAPTION: AtomicI32 = AtomicI32::new(0);
-
-/// Cached system menu height used during window sizing.
-pub static CYMENU: AtomicI32 = AtomicI32::new(0);
 
 /// Cached system border width used during window sizing.
 pub static CXBORDER: AtomicI32 = AtomicI32::new(0);

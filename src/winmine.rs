@@ -20,10 +20,10 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, BLK_BTN_INPUT, CXBORDER, CYCAPTION, CYMENU, DEFAULT_PLAYER_NAME, GAME_NAME,
-    GAME_STATUS, IGNORE_NEXT_CLICK, INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER,
-    MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
-    WND_Y_OFFSET, update_ui_metrics_for_dpi,
+    BASE_DPI, BLK_BTN_INPUT, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
+    INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
+    MSG_FASTEST_INTERMEDIATE, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH, WND_Y_OFFSET,
+    update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -294,7 +294,7 @@ impl WinMineMainWindow {
     /// Handles the `WM_KEYDOWN` message.
     /// # Arguments
     /// * `key`: The virtual key code of the key that was pressed.
-    fn handle_keydown(&self, key: VK) {
+    fn handle_keydown(&self, key: VK) -> AnyResult<()> {
         match key {
             code if code == VK::F4 => {
                 let current_sound = {
@@ -324,7 +324,7 @@ impl WinMineMainWindow {
                     };
 
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    self.set_menu_bar(f_menu);
+                    self.set_menu_bar(f_menu)?;
                 }
             }
             code if code == VK::F5 => {
@@ -337,7 +337,7 @@ impl WinMineMainWindow {
                 };
 
                 if !matches!(menu_value, MenuMode::AlwaysOn) {
-                    self.set_menu_bar(MenuMode::Hidden);
+                    self.set_menu_bar(MenuMode::Hidden)?;
                 }
             }
             code if code == VK::F6 => {
@@ -350,12 +350,14 @@ impl WinMineMainWindow {
                 };
 
                 if !matches!(menu_value, MenuMode::AlwaysOn) {
-                    self.set_menu_bar(MenuMode::On);
+                    self.set_menu_bar(MenuMode::On)?;
                 }
             }
             code if code == VK::SHIFT => self.handle_xyzzys_shift(),
             _ => self.handle_xyzzys_default_key(key),
         }
+
+        Ok(())
     }
 
     /// Handles mouse move events.
@@ -502,7 +504,7 @@ impl WinMineMainWindow {
                 // TODO: Handle properly after moving `handle_command` into separate closures
                 self.start_game().unwrap();
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(f_menu);
+                self.set_menu_bar(f_menu).unwrap();
             }
             Ok(MenuCommand::Custom) => {
                 // TODO: The way that the preferences dialog is handled causes a custom game to always
@@ -520,8 +522,8 @@ impl WinMineMainWindow {
                     prefs.menu_mode
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(fmenu);
                 // TODO: Handle properly after moving `handle_command` into separate closures
+                self.set_menu_bar(fmenu).unwrap();
                 self.start_game().unwrap();
             }
             Ok(MenuCommand::Sound) => {
@@ -548,7 +550,8 @@ impl WinMineMainWindow {
                     prefs.menu_mode
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(f_menu);
+                // TODO: Handle properly after moving `handle_command` into separate closures
+                self.set_menu_bar(f_menu).unwrap();
             }
             Ok(MenuCommand::Color) => {
                 let f_menu = {
@@ -570,7 +573,8 @@ impl WinMineMainWindow {
                     draw_screen(&hdc, &self.state.read()).unwrap();
                 }
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(f_menu);
+                // TODO: Handle properly after moving `handle_command` into separate closures
+                self.set_menu_bar(f_menu).unwrap();
             }
             Ok(MenuCommand::Mark) => {
                 let f_menu = {
@@ -582,7 +586,8 @@ impl WinMineMainWindow {
                     prefs.menu_mode
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(f_menu);
+                // TODO: Handle properly after moving `handle_command` into separate closures
+                self.set_menu_bar(f_menu).unwrap();
             }
             Ok(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
             Ok(MenuCommand::Help) => {
@@ -683,9 +688,12 @@ impl WinMineMainWindow {
     /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
     ///
     /// TODO: Make `f_adjust` an enum
-    pub fn adjust_window(&self, mut f_adjust: i32) {
+    /// TODO: This function is a mess full of unreachable branches, clean it up.
+    pub fn adjust_window(&self, mut f_adjust: i32) -> AnyResult<()> {
+        // Get the current menu handle
         let menu_handle = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
 
+        // Calculate desired window size based on board dimensions and DPI scaling
         let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width
             + scale_dpi(DX_LEFT_SPACE_96)
             + scale_dpi(DX_RIGHT_SPACE_96);
@@ -695,6 +703,7 @@ impl WinMineMainWindow {
         WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
         WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
 
+        // Get the current window position and menu mode from preferences
         let (mut x_window, mut y_window, f_menu) = {
             let prefs = match preferences_mutex().lock() {
                 Ok(guard) => guard,
@@ -703,19 +712,8 @@ impl WinMineMainWindow {
             (prefs.wnd_x_pos, prefs.wnd_y_pos, prefs.menu_mode)
         };
 
+        // Determine if the menu is visible based on preferences and menu handle availability
         let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.as_opt().is_some();
-        let mut menu_extra = 0;
-        let mut diff_level = false;
-        if menu_visible
-            && let Some(hwnd) = self.wnd.hwnd().as_opt()
-            && let Some(menu) = menu_handle.as_opt()
-            && let (Ok(game_rect), Ok(help_rect)) =
-                (hwnd.GetMenuItemRect(menu, 0), hwnd.GetMenuItemRect(menu, 1))
-            && game_rect.top != help_rect.top
-        {
-            diff_level = true;
-            menu_extra = CYMENU.load(Ordering::Relaxed);
-        }
 
         let desired = RECT {
             left: 0,
@@ -723,29 +721,23 @@ impl WinMineMainWindow {
             right: dx_window,
             bottom: dy_window,
         };
+        // Get the current window styles
         let dw_style = self.wnd.hwnd().GetWindowLongPtr(GWLP::STYLE);
         let dw_ex_style = self.wnd.hwnd().GetWindowLongPtr(GWLP::EXSTYLE);
-        let mut frame_extra = CXBORDER.load(Ordering::Relaxed);
-        let mut dyp_adjust;
-        if let Ok(adjusted) = AdjustWindowRectExForDpi(
+        // Adjust the window rect for the current DPI
+        let adjusted = AdjustWindowRectExForDpi(
             desired,
             unsafe { WS::from_raw(dw_style as _) },
             menu_visible,
             unsafe { WS_EX::from_raw(dw_ex_style as _) },
             UI_DPI.load(Ordering::Relaxed),
-        ) {
-            let cx_total = adjusted.right - adjusted.left;
-            let cy_total = adjusted.bottom - adjusted.top;
-            frame_extra = max(0, cx_total - dx_window);
-            dyp_adjust = max(0, cy_total - dy_window);
-        } else {
-            dyp_adjust = CYCAPTION.load(Ordering::Relaxed);
-            if menu_visible {
-                dyp_adjust += CYMENU.load(Ordering::Relaxed);
-            }
-        }
+        )?;
 
-        dyp_adjust += menu_extra;
+        let cx_total = adjusted.right - adjusted.left;
+        let cy_total = adjusted.bottom - adjusted.top;
+        let frame_extra = max(0, cx_total - dx_window);
+        let dyp_adjust = max(0, cy_total - dy_window);
+
         WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
         let cx_screen = {
             let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
@@ -787,35 +779,6 @@ impl WinMineMainWindow {
                 );
             }
 
-            if diff_level
-                && menu_visible
-                && menu_handle.as_opt().is_some()
-                && menu_handle
-                    .as_opt()
-                    .and_then(|menu| {
-                        self.wnd
-                            .hwnd()
-                            .GetMenuItemRect(menu, 0)
-                            .ok()
-                            .zip(self.wnd.hwnd().GetMenuItemRect(menu, 1).ok())
-                    })
-                    .is_some_and(|(g, h)| g.top == h.top)
-            {
-                dyp_adjust -= CYMENU.load(Ordering::Relaxed);
-                WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
-                let _ = self.wnd.hwnd().MoveWindow(
-                    POINT {
-                        x: x_window,
-                        y: y_window,
-                    },
-                    SIZE {
-                        cx: dx_window + frame_extra,
-                        cy: dy_window + dyp_adjust,
-                    },
-                    true,
-                );
-            }
-
             if (f_adjust & AdjustFlag::Display as i32) != 0 {
                 let rect = RECT {
                     left: 0,
@@ -833,6 +796,8 @@ impl WinMineMainWindow {
         };
         prefs.wnd_x_pos = x_window;
         prefs.wnd_y_pos = y_window;
+
+        Ok(())
     }
 
     /// Converts an x-coordinate in pixels to a box index.
@@ -874,7 +839,7 @@ impl WinMineMainWindow {
                 update_ui_metrics_for_dpi(dpi);
 
                 // Ensure the client area matches the board size for the active DPI.
-                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32)?;
 
                 // Initialize local resources.
                 self2.state.write().init_game(self2.wnd.hwnd())?;
@@ -887,7 +852,7 @@ impl WinMineMainWindow {
                     };
                     prefs_guard.menu_mode
                 };
-                self2.set_menu_bar(f_menu);
+                self2.set_menu_bar(f_menu)?;
                 self2.start_game()?;
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
@@ -948,7 +913,7 @@ impl WinMineMainWindow {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
-                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32);
+                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32)?;
                 Ok(0)
             }
         });
@@ -1003,7 +968,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_key_down({
             let self2 = self.clone();
             move |key| {
-                self2.handle_keydown(key.vkey_code);
+                self2.handle_keydown(key.vkey_code)?;
                 unsafe { self2.wnd.hwnd().DefWindowProc(key) };
                 Ok(())
             }

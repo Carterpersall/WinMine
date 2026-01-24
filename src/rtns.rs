@@ -829,7 +829,7 @@ impl WinMineMainWindow {
 
         display_bomb_count(self.wnd.hwnd(), self.state.read().bombs_left);
 
-        self.adjust_window(f_adjust);
+        self.adjust_window(f_adjust)?;
 
         Ok(())
     }

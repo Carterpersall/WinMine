@@ -6,9 +6,11 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 
 use winsafe::co::{HELPW, KEY, REG_OPTION, SM};
-use winsafe::{GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, prelude::*};
+use winsafe::{
+    AnyResult, GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, prelude::*,
+};
 
-use crate::globals::{CXBORDER, CYCAPTION, CYMENU, MSG_CREDIT, MSG_VERSION_NAME};
+use crate::globals::{CXBORDER, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
@@ -121,9 +123,7 @@ pub fn init_const() {
     let ticks = (GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
 
-    // Get the system metrics for caption height, menu height, and border width
-    CYCAPTION.store(GetSystemMetrics(SM::CYCAPTION) + 1, Ordering::Relaxed);
-    CYMENU.store(GetSystemMetrics(SM::CYMENU) + 1, Ordering::Relaxed);
+    // Get the system metrics for border width
     CXBORDER.store(GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
     // Create or open the registry key for storing preferences
@@ -154,7 +154,7 @@ impl WinMineMainWindow {
     /// Show or hide the menu bar based on the specified mode.
     /// # Arguments
     /// * `f_active` - The desired menu mode.
-    pub fn set_menu_bar(&self, f_active: MenuMode) {
+    pub fn set_menu_bar(&self, f_active: MenuMode) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (menu_on, game_type, color, mark, sound) = {
             let mut prefs = match preferences_mutex().lock() {
@@ -186,7 +186,9 @@ impl WinMineMainWindow {
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
         let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
         let _ = self.wnd.hwnd().SetMenu(menu_arg);
-        self.adjust_window(AdjustFlag::Resize as i32);
+        self.adjust_window(AdjustFlag::Resize as i32)?;
+
+        Ok(())
     }
 }
 
