@@ -456,158 +456,6 @@ impl WinMineMainWindow {
         prefs.wnd_y_pos = pos.y;
     }
 
-    /// Handles command messages from the menu and accelerators.
-    /// # Arguments
-    /// * `w_param`: The wParam from the `WM_COMMAND` message.
-    /// # Returns
-    /// `Some(isize)` if the command was handled, `None` otherwise.
-    /// # Notes
-    /// This function returns an `Option` to indicate whether the command was handled.
-    /// If the command was handled, it returns `Some(0)` to indicate success. If the command was not handled,
-    /// it returns `None` to allow the default handler to process it. This means that there is no need to return
-    /// a `Result` type with an error, as unhandled commands are simply passed to the default handler.
-    fn handle_command(&self, w_param: usize) -> Option<isize> {
-        match MenuCommand::try_from(w_param) {
-            // TODO: Handle properly after moving `handle_command` into separate closures
-            Ok(MenuCommand::New) => self.start_game().unwrap(),
-            Ok(MenuCommand::Exit) => {
-                self.wnd.hwnd().ShowWindow(SW::HIDE);
-                unsafe {
-                    let _ = self.wnd.hwnd().SendMessage(WndMsg::new(
-                        WM::SYSCOMMAND,
-                        SC::CLOSE.raw() as usize,
-                        0,
-                    ));
-                }
-            }
-            Ok(command @ (MenuCommand::Begin | MenuCommand::Inter | MenuCommand::Expert)) => {
-                let game = match command {
-                    MenuCommand::Begin => GameType::Begin,
-                    MenuCommand::Inter => GameType::Inter,
-                    MenuCommand::Expert => GameType::Expert,
-                    _ => GameType::Other,
-                };
-
-                let f_menu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    if let Some(data) = game.preset_data() {
-                        prefs.game_type = game;
-                        prefs.mines = data.0;
-                        prefs.height = data.1 as i32;
-                        prefs.width = data.2 as i32;
-                    }
-                    prefs.menu_mode
-                };
-                // TODO: Handle properly after moving `handle_command` into separate closures
-                self.start_game().unwrap();
-                UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(f_menu).unwrap();
-            }
-            Ok(MenuCommand::Custom) => {
-                // TODO: The way that the preferences dialog is handled causes a custom game to always
-                // be started when the dialog is closed, even if the user clicked "Cancel". Fix this.
-
-                // Show the preferences dialog
-                PrefDialog::new().show_modal(&self.wnd);
-
-                let fmenu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.game_type = GameType::Other;
-                    prefs.menu_mode
-                };
-                UPDATE_INI.store(true, Ordering::Relaxed);
-                // TODO: Handle properly after moving `handle_command` into separate closures
-                self.set_menu_bar(fmenu).unwrap();
-                self.start_game().unwrap();
-            }
-            Ok(MenuCommand::Sound) => {
-                let current_sound = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.sound_state
-                };
-                let new_sound = match current_sound {
-                    SoundState::On => {
-                        SoundState::stop_all();
-                        SoundState::Off
-                    }
-                    SoundState::Off => SoundState::init(),
-                };
-                let f_menu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.sound_state = new_sound;
-                    prefs.menu_mode
-                };
-                UPDATE_INI.store(true, Ordering::Relaxed);
-                // TODO: Handle properly after moving `handle_command` into separate closures
-                self.set_menu_bar(f_menu).unwrap();
-            }
-            Ok(MenuCommand::Color) => {
-                let f_menu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.color = !prefs.color;
-                    prefs.menu_mode
-                };
-
-                if let Err(e) = load_bitmaps(self.wnd.hwnd()) {
-                    eprintln!("Failed to reload bitmaps: {e}");
-                }
-
-                // Repaint immediately so toggling color off updates without restarting.
-                if let Ok(hdc) = self.wnd.hwnd().GetDC() {
-                    // TODO: Handle properly after moving `handle_command` into separate closures
-                    draw_screen(&hdc, &self.state.read()).unwrap();
-                }
-                UPDATE_INI.store(true, Ordering::Relaxed);
-                // TODO: Handle properly after moving `handle_command` into separate closures
-                self.set_menu_bar(f_menu).unwrap();
-            }
-            Ok(MenuCommand::Mark) => {
-                let f_menu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(g) => g,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.mark_enabled = !prefs.mark_enabled;
-                    prefs.menu_mode
-                };
-                UPDATE_INI.store(true, Ordering::Relaxed);
-                // TODO: Handle properly after moving `handle_command` into separate closures
-                self.set_menu_bar(f_menu).unwrap();
-            }
-            Ok(MenuCommand::Best) => BestDialog::new().show_modal(&self.wnd),
-            Ok(MenuCommand::Help) => {
-                do_help(self.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
-            }
-            Ok(MenuCommand::HowToPlay) => {
-                do_help(self.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
-            }
-            Ok(MenuCommand::HelpHelp) => {
-                do_help(self.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
-            }
-            Ok(MenuCommand::HelpAbout) => {
-                do_about(self.wnd.hwnd());
-            }
-            Err(_) => return None,
-        }
-
-        Some(0)
-    }
-
     /// Handles clicks on the smiley face button.
     /// # Arguments
     /// * `point`: The coordinates of the mouse cursor.
@@ -936,19 +784,6 @@ impl WinMineMainWindow {
             }
         });
 
-        // TODO: Move the handle_command logic into separate wm_command closures
-        self.wnd.on().wm(WM::COMMAND, {
-            let self2 = self.clone();
-            move |msg: WndMsg| {
-                // If we have a handler for the command, execute it. Otherwise, run the default handler
-                if let Some(result) = self2.handle_command(msg.wparam) {
-                    return Ok(result);
-                }
-                unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
-                Ok(0)
-            }
-        });
-
         // Handle `WM_APP` requests posted from non-UI modules.
         self.wnd.on().wm(WM::APP, {
             let self2 = self.clone();
@@ -1118,6 +953,242 @@ impl WinMineMainWindow {
                 Ok(())
             }
         });
+
+        /* Menu Commands */
+
+        self.wnd.on().wm_command_acc_menu(MenuCommand::New as u16, {
+            let self2 = self.clone();
+            move || {
+                self2.start_game()?;
+                Ok(())
+            }
+        });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Exit as u16, {
+                let self2 = self.clone();
+                move || {
+                    self2.wnd.hwnd().ShowWindow(SW::HIDE);
+                    unsafe {
+                        let _ = self2.wnd.hwnd().SendMessage(WndMsg::new(
+                            WM::SYSCOMMAND,
+                            SC::CLOSE.raw() as usize,
+                            0,
+                        ));
+                    }
+                    Ok(())
+                }
+            });
+
+        // Function to be shared between difficulty menu commands
+        let difficulty_command = {
+            let self2 = self.clone();
+            move |command: MenuCommand| {
+                let game = match command {
+                    MenuCommand::Begin => GameType::Begin,
+                    MenuCommand::Inter => GameType::Inter,
+                    MenuCommand::Expert => GameType::Expert,
+                    _ => GameType::Other,
+                };
+
+                let f_menu = {
+                    let mut prefs = match preferences_mutex().lock() {
+                        Ok(guard) => guard,
+                        Err(poisoned) => poisoned.into_inner(),
+                    };
+                    if let Some(data) = game.preset_data() {
+                        prefs.game_type = game;
+                        prefs.mines = data.0;
+                        prefs.height = data.1 as i32;
+                        prefs.width = data.2 as i32;
+                    }
+                    prefs.menu_mode
+                };
+                UPDATE_INI.store(true, Ordering::Relaxed);
+                self2.set_menu_bar(f_menu)?;
+                self2.start_game()?;
+                Ok(())
+            }
+        };
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Begin as u16, {
+                let difficulty_command = difficulty_command.clone();
+                move || difficulty_command.clone()(MenuCommand::Begin)
+            });
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Inter as u16, {
+                let difficulty_command = difficulty_command.clone();
+                move || difficulty_command.clone()(MenuCommand::Inter)
+            });
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Expert as u16, {
+                let difficulty_command = difficulty_command.clone();
+                move || difficulty_command.clone()(MenuCommand::Expert)
+            });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Custom as u16, {
+                let self2 = self.clone();
+                move || {
+                    // TODO: The way that the preferences dialog is handled causes a custom game to always
+                    // be started when the dialog is closed, even if the user clicked "Cancel". Fix
+
+                    // Show the preferences dialog
+                    PrefDialog::new().show_modal(&self2.wnd);
+
+                    let fmenu = {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(g) => g,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.game_type = GameType::Other;
+                        prefs.menu_mode
+                    };
+                    UPDATE_INI.store(true, Ordering::Relaxed);
+                    self2.set_menu_bar(fmenu)?;
+                    self2.start_game()?;
+                    Ok(())
+                }
+            });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Sound as u16, {
+                let self2 = self.clone();
+                move || {
+                    let current_sound = {
+                        let prefs = match preferences_mutex().lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.sound_state
+                    };
+                    let new_sound = match current_sound {
+                        SoundState::On => {
+                            SoundState::stop_all();
+                            SoundState::Off
+                        }
+                        SoundState::Off => SoundState::init(),
+                    };
+                    let f_menu = {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(guard) => guard,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.sound_state = new_sound;
+                        prefs.menu_mode
+                    };
+                    UPDATE_INI.store(true, Ordering::Relaxed);
+                    self2.set_menu_bar(f_menu)?;
+                    Ok(())
+                }
+            });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Color as u16, {
+                let self2 = self.clone();
+                move || {
+                    let f_menu = {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(g) => g,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.color = !prefs.color;
+                        prefs.menu_mode
+                    };
+
+                    if let Err(e) = load_bitmaps(self2.wnd.hwnd()) {
+                        eprintln!("Failed to reload bitmaps: {e}");
+                    }
+
+                    // Repaint immediately so toggling color off updates without restarting.
+                    if let Ok(hdc) = self2.wnd.hwnd().GetDC() {
+                        draw_screen(&hdc, &self2.state.read())?;
+                    }
+                    UPDATE_INI.store(true, Ordering::Relaxed);
+                    self2.set_menu_bar(f_menu)?;
+                    Ok(())
+                }
+            });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Mark as u16, {
+                let self2 = self.clone();
+                move || {
+                    let f_menu = {
+                        let mut prefs = match preferences_mutex().lock() {
+                            Ok(g) => g,
+                            Err(poisoned) => poisoned.into_inner(),
+                        };
+                        prefs.mark_enabled = !prefs.mark_enabled;
+                        prefs.menu_mode
+                    };
+                    UPDATE_INI.store(true, Ordering::Relaxed);
+                    self2.set_menu_bar(f_menu)?;
+                    Ok(())
+                }
+            });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Best as u16, {
+                let self2 = self.clone();
+                move || {
+                    BestDialog::new().show_modal(&self2.wnd);
+                    Ok(())
+                }
+            });
+
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::Help as u16, {
+                let self2 = self.clone();
+                move || {
+                    do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
+                    Ok(())
+                }
+            });
+
+        // TODO: Rename to something to match "search for help topics"
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::HowToPlay as u16, {
+                let self2 = self.clone();
+                move || {
+                    do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
+                    Ok(())
+                }
+            });
+
+        // TODO: Rename to something to match "Using help"
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::HelpHelp as u16, {
+                let self2 = self.clone();
+                move || {
+                    do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
+                    Ok(())
+                }
+            });
+
+        // TODO: Rename to something to match "About WinMine"
+        self.wnd
+            .on()
+            .wm_command_acc_menu(MenuCommand::HelpAbout as u16, {
+                let self2 = self.clone();
+                move || {
+                    do_about(self2.wnd.hwnd());
+                    Ok(())
+                }
+            });
     }
 }
 
