@@ -15,15 +15,15 @@ use winsafe::co::{
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HMENU,
-    HWND, INITCOMMONCONTROLSEX, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PtsRc, RECT,
-    SIZE, WINDOWPOS, gui, prelude::*,
+    HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage,
+    PtsRc, RECT, SIZE, WINDOWPOS, gui, prelude::*,
 };
 
 use crate::globals::{
     BASE_DPI, BLK_BTN_INPUT, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
-    INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
-    MSG_FASTEST_INTERMEDIATE, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH, WND_Y_OFFSET,
-    update_ui_metrics_for_dpi,
+    INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
+    MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
+    WND_Y_OFFSET, update_ui_metrics_for_dpi,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -35,7 +35,7 @@ use crate::pref::{
     write_preferences,
 };
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, preferences_mutex};
-use crate::util::{IconId, StateLock, do_about, do_help, get_dlg_int, init_const};
+use crate::util::{IconId, StateLock, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -83,12 +83,12 @@ pub enum MenuCommand {
     Color = 529,
     /// Open help.
     Help = 590,
-    /// Show "How to play" help.
-    HowToPlay = 591,
+    /// Show "search for help topics" entry.
+    SearchHelp = 591,
     /// Open the help-about-help entry.
-    HelpHelp = 592,
+    UsingHelp = 592,
     /// Show the About dialog.
-    HelpAbout = 593,
+    AboutMinesweeper = 593,
 }
 
 impl TryFrom<usize> for MenuCommand {
@@ -106,9 +106,9 @@ impl TryFrom<usize> for MenuCommand {
             528 => Ok(MenuCommand::Best),
             529 => Ok(MenuCommand::Color),
             590 => Ok(MenuCommand::Help),
-            591 => Ok(MenuCommand::HowToPlay),
-            592 => Ok(MenuCommand::HelpHelp),
-            593 => Ok(MenuCommand::HelpAbout),
+            591 => Ok(MenuCommand::SearchHelp),
+            592 => Ok(MenuCommand::UsingHelp),
+            593 => Ok(MenuCommand::AboutMinesweeper),
             val => Err(format!("Invalid MenuCommand value: {}", val).into()),
         }
     }
@@ -398,11 +398,11 @@ impl WinMineMainWindow {
             set_block_flag(true);
             unsafe {
                 // TODO: Change this
-                let _ = self.wnd.hwnd().PostMessage(WndMsg::new(
+                self.wnd.hwnd().PostMessage(WndMsg::new(
                     WM::MOUSEMOVE,
                     btn.raw() as usize,
                     point.x as isize | ((point.y as isize) << 16),
-                ));
+                ))?;
             }
             return Ok(());
         }
@@ -486,10 +486,9 @@ impl WinMineMainWindow {
         }
 
         display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
-        let _ = self
-            .wnd
+        self.wnd
             .hwnd()
-            .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc));
+            .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
 
         let mut pressed = true;
         loop {
@@ -614,7 +613,7 @@ impl WinMineMainWindow {
 
         if !INIT_MINIMIZED.load(Ordering::Relaxed) {
             if (f_adjust & AdjustFlag::Resize as i32) != 0 {
-                let _ = self.wnd.hwnd().MoveWindow(
+                self.wnd.hwnd().MoveWindow(
                     POINT {
                         x: x_window,
                         y: y_window,
@@ -624,7 +623,7 @@ impl WinMineMainWindow {
                         cy: dy_window + dyp_adjust,
                     },
                     true,
-                );
+                )?;
             }
 
             if (f_adjust & AdjustFlag::Display as i32) != 0 {
@@ -634,7 +633,7 @@ impl WinMineMainWindow {
                     right: dx_window,
                     bottom: dy_window,
                 };
-                let _ = self.wnd.hwnd().InvalidateRect(Some(&rect), true);
+                self.wnd.hwnd().InvalidateRect(Some(&rect), true)?;
             }
         }
 
@@ -743,7 +742,7 @@ impl WinMineMainWindow {
 
                     let width = max(0, rc.right - rc.left);
                     let height = max(0, rc.bottom - rc.top);
-                    let _ = self2.wnd.hwnd().MoveWindow(
+                    self2.wnd.hwnd().MoveWindow(
                         POINT {
                             x: rc.left,
                             y: rc.top,
@@ -753,7 +752,7 @@ impl WinMineMainWindow {
                             cy: height,
                         },
                         true,
-                    );
+                    )?;
                 }
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
@@ -813,7 +812,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 // Stop the timer if it is still running
-                let _ = self2.wnd.hwnd().KillTimer(ID_TIMER);
+                self2.wnd.hwnd().KillTimer(ID_TIMER)?;
 
                 // Write preferences if they have changed
                 if UPDATE_INI.load(Ordering::Relaxed)
@@ -970,6 +969,7 @@ impl WinMineMainWindow {
                 let self2 = self.clone();
                 move || {
                     self2.wnd.hwnd().ShowWindow(SW::HIDE);
+                    // TODO: Replace this with a safer method of closing the window
                     unsafe {
                         let _ = self2.wnd.hwnd().SendMessage(WndMsg::new(
                             WM::SYSCOMMAND,
@@ -1157,10 +1157,9 @@ impl WinMineMainWindow {
                 }
             });
 
-        // TODO: Rename to something to match "search for help topics"
         self.wnd
             .on()
-            .wm_command_acc_menu(MenuCommand::HowToPlay as u16, {
+            .wm_command_acc_menu(MenuCommand::SearchHelp as u16, {
                 let self2 = self.clone();
                 move || {
                     do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
@@ -1168,10 +1167,9 @@ impl WinMineMainWindow {
                 }
             });
 
-        // TODO: Rename to something to match "Using help"
         self.wnd
             .on()
-            .wm_command_acc_menu(MenuCommand::HelpHelp as u16, {
+            .wm_command_acc_menu(MenuCommand::UsingHelp as u16, {
                 let self2 = self.clone();
                 move || {
                     do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
@@ -1179,13 +1177,23 @@ impl WinMineMainWindow {
                 }
             });
 
-        // TODO: Rename to something to match "About WinMine"
         self.wnd
             .on()
-            .wm_command_acc_menu(MenuCommand::HelpAbout as u16, {
+            .wm_command_acc_menu(MenuCommand::AboutMinesweeper as u16, {
                 let self2 = self.clone();
                 move || {
-                    do_about(self2.wnd.hwnd());
+                    let icon = self2
+                        .wnd
+                        .hwnd()
+                        .hinstance()
+                        .LoadIcon(IdIdiStr::Id(IconId::Main as u16))?;
+
+                    self2.wnd.hwnd().ShellAbout(
+                        MSG_VERSION_NAME,
+                        None,
+                        Some(MSG_CREDIT),
+                        icon.as_opt(),
+                    )?;
                     Ok(())
                 }
             });
@@ -1380,7 +1388,7 @@ impl PrefDialog {
                 prefs.mines = mines as i16;
 
                 // Close the dialog
-                let _ = dlg.hwnd().EndDialog(1);
+                dlg.hwnd().EndDialog(1)?;
                 Ok(())
             }
         });
@@ -1389,7 +1397,7 @@ impl PrefDialog {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
                 // Close the dialog without saving changes
-                let _ = dlg.hwnd().EndDialog(1);
+                dlg.hwnd().EndDialog(1)?;
                 Ok(())
             }
         });
@@ -1441,27 +1449,6 @@ impl BestDialog {
 
     /* Helper Functions */
 
-    /// Sets the dialog text for a given time and name in the best scores dialog.
-    ///
-    /// TODO: Remove this function
-    /// # Arguments
-    /// * `id` - The control ID for the time text.
-    /// * `time` - The time value to display.
-    /// * `name` - The name associated with the time.
-    /// # Returns
-    /// A `Result` indicating success or failure.
-    fn set_dtext(&self, id: i32, time: u16, name: &str) -> AnyResult<()> {
-        self.dlg
-            .hwnd()
-            .GetDlgItem(id as u16)
-            .and_then(|hwnd| hwnd.SetWindowText(&format!("{time} seconds")))?;
-        self.dlg
-            .hwnd()
-            .GetDlgItem((id + 1) as u16)
-            .and_then(|hwnd| hwnd.SetWindowText(name))?;
-        Ok(())
-    }
-
     /// Resets the best scores dialog with the provided times and names.
     /// # Arguments
     /// * `time_begin` - The best time for the beginner level.
@@ -1481,9 +1468,36 @@ impl BestDialog {
         name_inter: &str,
         name_expert: &str,
     ) -> AnyResult<()> {
-        self.set_dtext(ControlId::TimeBegin as i32, time_begin, name_begin)?;
-        self.set_dtext(ControlId::TimeInter as i32, time_inter, name_inter)?;
-        self.set_dtext(ControlId::TimeExpert as i32, time_expert, name_expert)?;
+        // Set the beginner time and name
+        self.dlg
+            .hwnd()
+            .GetDlgItem(ControlId::TimeBegin as u16)
+            .and_then(|hwnd| hwnd.SetWindowText(&format!("{time_begin} seconds")))?;
+        self.dlg
+            .hwnd()
+            .GetDlgItem(ControlId::TimeBegin as u16 + 1)
+            .and_then(|hwnd| hwnd.SetWindowText(name_begin))?;
+
+        // Set the intermediate time and name
+        self.dlg
+            .hwnd()
+            .GetDlgItem(ControlId::TimeInter as u16)
+            .and_then(|hwnd| hwnd.SetWindowText(&format!("{time_inter} seconds")))?;
+        self.dlg
+            .hwnd()
+            .GetDlgItem(ControlId::TimeInter as u16 + 1)
+            .and_then(|hwnd| hwnd.SetWindowText(name_inter))?;
+
+        // Set the expert time and name
+        self.dlg
+            .hwnd()
+            .GetDlgItem(ControlId::TimeExpert as u16)
+            .and_then(|hwnd| hwnd.SetWindowText(&format!("{time_expert} seconds")))?;
+        self.dlg
+            .hwnd()
+            .GetDlgItem(ControlId::TimeExpert as u16 + 1)
+            .and_then(|hwnd| hwnd.SetWindowText(name_expert))?;
+
         Ok(())
     }
 
@@ -1548,7 +1562,7 @@ impl BestDialog {
         self.dlg.on().wm_command(DLGID::OK.raw(), BN::CLICKED, {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
-                let _ = dlg.hwnd().EndDialog(1);
+                dlg.hwnd().EndDialog(1)?;
                 Ok(())
             }
         });
@@ -1556,7 +1570,7 @@ impl BestDialog {
         self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
-                let _ = dlg.hwnd().EndDialog(1);
+                dlg.hwnd().EndDialog(1)?;
                 Ok(())
             }
         });
@@ -1682,7 +1696,7 @@ impl EnterDialog {
                 let self2 = self.clone();
                 move || -> AnyResult<()> {
                     self2.save_high_score_name()?;
-                    let _ = self2.dlg.hwnd().EndDialog(1);
+                    self2.dlg.hwnd().EndDialog(1)?;
                     Ok(())
                 }
             });
@@ -1691,7 +1705,7 @@ impl EnterDialog {
             let self2 = self.clone();
             move || -> AnyResult<()> {
                 self2.save_high_score_name()?;
-                let _ = self2.dlg.hwnd().EndDialog(1);
+                self2.dlg.hwnd().EndDialog(1)?;
                 Ok(())
             }
         });

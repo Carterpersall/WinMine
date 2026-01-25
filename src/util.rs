@@ -6,11 +6,9 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 
 use winsafe::co::{HELPW, KEY, REG_OPTION, SM};
-use winsafe::{
-    AnyResult, GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdIdiStr, IdPos, prelude::*,
-};
+use winsafe::{AnyResult, GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
-use crate::globals::{CXBORDER, MSG_CREDIT, MSG_VERSION_NAME};
+use crate::globals::CXBORDER;
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
@@ -185,26 +183,11 @@ impl WinMineMainWindow {
         // Show or hide the menu bar as set in preferences
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
         let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
-        let _ = self.wnd.hwnd().SetMenu(menu_arg);
+        self.wnd.hwnd().SetMenu(menu_arg)?;
         self.adjust_window(AdjustFlag::Resize as i32)?;
 
         Ok(())
     }
-}
-
-/// Display the About dialog box with version and credit information.
-///
-/// TODO: Remove this function
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-pub fn do_about(hwnd: &HWND) {
-    let icon_guard = hwnd
-        .hinstance()
-        .LoadIcon(IdIdiStr::Id(IconId::Main as u16))
-        .ok();
-    let icon = icon_guard.as_deref();
-
-    let _ = hwnd.ShellAbout(MSG_VERSION_NAME, None, Some(MSG_CREDIT), icon);
 }
 
 /// Display the Help dialog for the given command.
