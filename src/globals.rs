@@ -1,8 +1,6 @@
 //! Global constants and variables used throughout the application.
 
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
-
-use winsafe::{self as w, GetSystemMetrics, GetSystemMetricsForDpi};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32};
 
 /* -------------------- */
 /* Constant Definitions */
@@ -64,22 +62,6 @@ pub enum StatusFlag {
 /// classic WinMine assets are scaled from 96 DPI to this value.
 pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 
-/// Update cached system metrics which vary with DPI.
-///
-/// These values are consumed during window sizing in order to keep the non-client
-/// area calculations stable under Per-Monitor DPI.
-/// # Arguments
-/// * `dpi`: The new DPI to use. If zero, `BASE_DPI` is used
-pub fn update_ui_metrics_for_dpi(dpi: u32) {
-    let dpi = if dpi == 0 { BASE_DPI } else { dpi };
-
-    let border = GetSystemMetricsForDpi(w::co::SM::CXBORDER, dpi)
-        .unwrap_or_else(|_| GetSystemMetrics(w::co::SM::CXBORDER));
-    // TODO: Rename this so that they don't conflict with the `SM_` constants.
-    // Move the timer to the right by one pixel to make sure it is symmetric with the bomb count
-    CXBORDER.store(border - 1, Ordering::Relaxed);
-}
-
 /// True while the process starts minimized.
 pub static INIT_MINIMIZED: AtomicBool = AtomicBool::new(false);
 
@@ -91,9 +73,6 @@ pub static BLK_BTN_INPUT: AtomicBool = AtomicBool::new(false);
 
 /// Signals that the next click should be ignored (used after window activation).
 pub static IGNORE_NEXT_CLICK: AtomicBool = AtomicBool::new(false);
-
-/// Cached system border width used during window sizing.
-pub static CXBORDER: AtomicI32 = AtomicI32::new(0);
 
 /// Current client width of the main window.
 pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);

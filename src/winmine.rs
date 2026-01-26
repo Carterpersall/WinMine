@@ -23,7 +23,7 @@ use crate::globals::{
     BASE_DPI, BLK_BTN_INPUT, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
     INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
     MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
-    WND_Y_OFFSET, update_ui_metrics_for_dpi,
+    WND_Y_OFFSET,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -695,7 +695,6 @@ impl WinMineMainWindow {
                 // Sync global DPI state to the actual monitor DPI where the window was created.
                 let dpi = self2.wnd.hwnd().GetDpiForWindow();
                 UI_DPI.store(if dpi == 0 { BASE_DPI } else { dpi }, Ordering::Relaxed);
-                update_ui_metrics_for_dpi(dpi);
 
                 // Ensure the client area matches the board size for the active DPI.
                 self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32)?;
@@ -737,7 +736,6 @@ impl WinMineMainWindow {
                 let dpi = (msg.wparam) & 0xFFFF;
                 if dpi > 0 {
                     UI_DPI.store(dpi as u32, Ordering::Relaxed);
-                    update_ui_metrics_for_dpi(dpi as u32);
                 }
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
 
@@ -1224,7 +1222,6 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> Result<(), Box<dyn cor
 
     // Initialize DPI to 96 (default) before creating the window
     UI_DPI.store(96, Ordering::Relaxed);
-    update_ui_metrics_for_dpi(UI_DPI.load(Ordering::Relaxed));
 
     // Initialize common controls
     let mut icc = INITCOMMONCONTROLSEX::default();

@@ -5,10 +5,9 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 
-use winsafe::co::{HELPW, KEY, REG_OPTION, SM};
-use winsafe::{AnyResult, GetSystemMetrics, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
+use winsafe::co::{HELPW, KEY, REG_OPTION};
+use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
-use crate::globals::CXBORDER;
 use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
@@ -120,9 +119,6 @@ pub fn init_const() {
     // Seed the RNG using the low 16 bits of the current tick count
     let ticks = (GetTickCount64() as u32) & 0xFFFF;
     seed_rng(ticks as u32);
-
-    // Get the system metrics for border width
-    CXBORDER.store(GetSystemMetrics(SM::CXBORDER) + 1, Ordering::Relaxed);
 
     // Create or open the registry key for storing preferences
     // TODO: Handle errors

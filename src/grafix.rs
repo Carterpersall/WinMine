@@ -15,7 +15,7 @@ use winsafe::{
     prelude::*,
 };
 
-use crate::globals::{BASE_DPI, CXBORDER, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
+use crate::globals::{BASE_DPI, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
 use crate::rtns::{BOARD_INDEX_SHIFT, BlockMask, GameState, preferences_mutex};
 
 /*
@@ -350,22 +350,21 @@ fn draw_timer(hdc: &HDC, time: u16) -> AnyResult<()> {
     }
 
     let dx_window = WINDOW_WIDTH.load(Relaxed);
-    let border = CXBORDER.load(Relaxed);
     let dx_led = scale_dpi(DX_LED_96);
     draw_led(
         hdc,
-        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border),
+        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led),
         time / 100,
     )?;
     let time = time % 100;
     draw_led(
         hdc,
-        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led + border),
+        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led),
         time / 10,
     )?;
     draw_led(
         hdc,
-        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + dx_led + border),
+        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + dx_led),
         time % 10,
     )?;
 
@@ -691,7 +690,6 @@ fn draw_border(
 fn draw_background(hdc: &HDC) -> AnyResult<()> {
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Relaxed);
-    let border = CXBORDER.load(Relaxed);
     // Outer sunken border
     let mut x = dx_window - 1;
     let mut y = dy_window - 1;
@@ -741,7 +739,7 @@ fn draw_background(hdc: &HDC) -> AnyResult<()> {
     )?;
 
     // Timer borders
-    x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border + b1);
+    x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + b1);
     draw_border(
         hdc,
         x,
