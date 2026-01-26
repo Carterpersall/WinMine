@@ -21,9 +21,8 @@ use winsafe::{
 
 use crate::globals::{
     BASE_DPI, BLK_BTN_INPUT, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
-    INIT_MINIMIZED, LEFT_CLK_DOWN, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
-    MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
-    WND_Y_OFFSET,
+    LEFT_CLK_DOWN, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE,
+    MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -597,7 +596,6 @@ impl WinMineMainWindow {
         let frame_extra = max(0, cx_total - dx_window);
         let dyp_adjust = max(0, cy_total - dy_window);
 
-        WND_Y_OFFSET.store(dyp_adjust, Ordering::Relaxed);
         let cx_screen = {
             let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
             if result == 0 {
@@ -623,30 +621,28 @@ impl WinMineMainWindow {
             y_window -= excess;
         }
 
-        if !INIT_MINIMIZED.load(Ordering::Relaxed) {
-            if (f_adjust & AdjustFlag::Resize as i32) != 0 {
-                self.wnd.hwnd().MoveWindow(
-                    POINT {
-                        x: x_window,
-                        y: y_window,
-                    },
-                    SIZE {
-                        cx: dx_window + frame_extra,
-                        cy: dy_window + dyp_adjust,
-                    },
-                    true,
-                )?;
-            }
+        if (f_adjust & AdjustFlag::Resize as i32) != 0 {
+            self.wnd.hwnd().MoveWindow(
+                POINT {
+                    x: x_window,
+                    y: y_window,
+                },
+                SIZE {
+                    cx: dx_window + frame_extra,
+                    cy: dy_window + dyp_adjust,
+                },
+                true,
+            )?;
+        }
 
-            if (f_adjust & AdjustFlag::Display as i32) != 0 {
-                let rect = RECT {
-                    left: 0,
-                    top: 0,
-                    right: dx_window,
-                    bottom: dy_window,
-                };
-                self.wnd.hwnd().InvalidateRect(Some(&rect), true)?;
-            }
+        if (f_adjust & AdjustFlag::Display as i32) != 0 {
+            let rect = RECT {
+                left: 0,
+                top: 0,
+                right: dx_window,
+                bottom: dy_window,
+            };
+            self.wnd.hwnd().InvalidateRect(Some(&rect), true)?;
         }
 
         let mut prefs = match preferences_mutex().lock() {
@@ -715,17 +711,6 @@ impl WinMineMainWindow {
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
                 Ok(0)
-            }
-        });
-
-        // Mark the process as no longer "initially minimized" once shown.
-        // TODO: Is this necessary?
-        self.wnd.on().wm_show_window({
-            move |show_window| {
-                if show_window.being_shown {
-                    INIT_MINIMIZED.store(false, Ordering::Relaxed);
-                }
-                Ok(())
             }
         });
 
@@ -1213,10 +1198,9 @@ impl WinMineMainWindow {
 /// Runs the WinMine application.
 /// # Arguments
 /// * `h_instance`: The application instance handle.
-/// * `n_cmd_show`: The initial window show command.
 /// # Returns
 /// Ok(()) on success, or an error on failure.
-pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> Result<(), Box<dyn core::error::Error>> {
+pub fn run_winmine(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
     // Seed the RNG, initialize global values, and ensure the preferences registry key exists
     init_const();
 
@@ -1266,18 +1250,8 @@ pub fn run_winmine(hinst: &HINSTANCE, n_cmd_show: i32) -> Result<(), Box<dyn cor
     // Create the main application state
     let app = WinMineMainWindow::new(wnd);
 
-    // Determine whether to start minimized
-    let cmd_show =
-        if n_cmd_show == SW::SHOWMINNOACTIVE.raw() || n_cmd_show == SW::SHOWMINIMIZED.raw() {
-            INIT_MINIMIZED.store(true, Ordering::Relaxed);
-            Some(SW::SHOWMINIMIZED)
-        } else {
-            INIT_MINIMIZED.store(false, Ordering::Relaxed);
-            Some(SW::SHOWNORMAL)
-        };
-
     // Run the main application window, blocking until exit
-    match app.wnd.run_main(cmd_show) {
+    match app.wnd.run_main(None) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Unhandled error during main window execution: {e}").into()),
     }

@@ -62,9 +62,6 @@ pub enum StatusFlag {
 /// classic WinMine assets are scaled from 96 DPI to this value.
 pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 
-/// True while the process starts minimized.
-pub static INIT_MINIMIZED: AtomicBool = AtomicBool::new(false);
-
 /// Tracks whether the left mouse button is currently held.
 pub static LEFT_CLK_DOWN: AtomicBool = AtomicBool::new(false);
 
@@ -79,9 +76,6 @@ pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);
 
 /// Current client height of the main window.
 pub static WINDOW_HEIGHT: AtomicI32 = AtomicI32::new(0);
-
-/// Additional vertical adjustment applied during window sizing.
-pub static WND_Y_OFFSET: AtomicI32 = AtomicI32::new(0);
 
 /// Aggregated status flags shared between modules.
 pub static GAME_STATUS: AtomicI32 =
