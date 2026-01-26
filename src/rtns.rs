@@ -11,7 +11,7 @@ use winsafe::{AnyResult, HWND, POINT, prelude::*};
 
 use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag};
 use crate::grafix::{
-    ButtonSprite, display_block, display_bomb_count, display_button, display_grid, display_time,
+    ButtonSprite, display_bomb_count, display_button, display_grid, display_time, draw_block,
     load_bitmaps,
 };
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
@@ -354,7 +354,9 @@ impl GameState {
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     /// * `cell` - The block cell type to use for revealed bombs.
-    fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
+    fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) -> AnyResult<()> {
         for y in 1..=self.board_height {
             for x in 1..=self.board_width {
                 if !self.is_visit(x, y) {
@@ -368,7 +370,8 @@ impl GameState {
                 }
             }
         }
-        display_grid(hwnd, self.board_width, self.board_height, &self.board_cells);
+        display_grid(hwnd, self.board_width, self.board_height, &self.board_cells)?;
+        Ok(())
     }
 
     /// Count the number of adjacent marked squares around the specified coordinates.
@@ -394,7 +397,7 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `win` - `true` if the player has won, `false` otherwise.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn update_button_for_result(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
         let state = if win {
             ButtonSprite::Win
@@ -437,9 +440,12 @@ impl GameState {
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// * `block` - The new block value.
-    fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: u8) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
+    fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: u8) -> AnyResult<()> {
         self.set_raw_block(x, y, block);
-        display_block(hwnd, x, y, &self.board_cells);
+        draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+        Ok(())
     }
 
     /// Enqueue a square for flood-fill processing if it is empty.
@@ -449,6 +455,8 @@ impl GameState {
     /// * `tail` - The current tail index of the queue.
     /// * `x` - The X coordinate of the square.
     /// * `y` - The Y coordinate of the square.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_xy(
         &mut self,
         hwnd: &HWND,
@@ -456,17 +464,17 @@ impl GameState {
         tail: &mut usize,
         x: i32,
         y: i32,
-    ) {
+    ) -> AnyResult<()> {
         // Visit a square; enqueue it when empty so we flood-fill neighbors later.
         if let Some(idx) = board_index(x, y) {
             let mut blk = self.board_cells[idx] as u8;
             if (blk & BlockMask::Visit as u8) != 0 {
-                return;
+                return Ok(());
             }
 
             let data = blk & BlockMask::Data as u8;
             if data == BlockCell::Border as u8 || data == BlockCell::BombUp as u8 {
-                return;
+                return Ok(());
             }
 
             self.boxes_visited += 1;
@@ -483,13 +491,14 @@ impl GameState {
             }
             blk = BlockMask::Visit as u8 | ((bombs as u8) & BlockMask::Data as u8);
             self.board_cells[idx] = blk as i8;
-            display_block(hwnd, x, y, &self.board_cells);
+            draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
 
             if bombs == 0 && *tail < I_STEP_MAX {
                 queue[*tail] = (x, y);
                 *tail += 1;
             }
         }
+        Ok(())
     }
 
     /// Flood-fill contiguous empty squares starting from (x, y).
@@ -497,30 +506,33 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `x` - X coordinate of the starting square
     /// * `y` - Y coordinate of the starting square
-    fn step_box(&mut self, hwnd: &HWND, x: i32, y: i32) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
+    fn step_box(&mut self, hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
         let mut queue = [(0, 0); I_STEP_MAX];
         let mut head = 0usize;
         let mut tail = 0usize;
 
-        self.step_xy(hwnd, &mut queue, &mut tail, x, y);
+        self.step_xy(hwnd, &mut queue, &mut tail, x, y)?;
 
         while head < tail {
             let (sx, sy) = queue[head];
             head += 1;
 
             let mut ty = sy - 1;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty);
-            self.step_xy(hwnd, &mut queue, &mut tail, sx, ty);
-            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty);
+            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty)?;
+            self.step_xy(hwnd, &mut queue, &mut tail, sx, ty)?;
+            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty)?;
             ty += 1;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty);
-            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty);
+            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty)?;
+            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty)?;
 
             ty += 1;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty);
-            self.step_xy(hwnd, &mut queue, &mut tail, sx, ty);
-            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty);
+            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty)?;
+            self.step_xy(hwnd, &mut queue, &mut tail, sx, ty)?;
+            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty)?;
         }
+        Ok(())
     }
 
     /// Handle the end of the game - stopping the timer, revealing bombs, updating the face, and recording wins.
@@ -528,7 +540,7 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `win` - `true` if the player has won, `false` otherwise
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
         self.timer_running = false;
         self.update_button_for_result(hwnd, win)?;
@@ -539,7 +551,7 @@ impl GameState {
             } else {
                 BlockCell::BombDown
             },
-        );
+        )?;
         if win {
             self.bombs_left = 0;
             Tune::WinGame.play(&hwnd.hinstance());
@@ -561,7 +573,7 @@ impl GameState {
     /// * `x` - The X coordinate of the clicked square.
     /// * `y` - The Y coordinate of the clicked square.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_square(&mut self, hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
         if self.is_bomb(x, y) {
             let visits = self.boxes_visited;
@@ -571,7 +583,7 @@ impl GameState {
                         if !self.is_bomb(x_t, y_t) {
                             self.clear_bomb(x, y);
                             self.set_bomb(x_t, y_t);
-                            self.step_box(hwnd, x, y);
+                            self.step_box(hwnd, x, y)?;
                             return Ok(());
                         }
                     }
@@ -582,11 +594,11 @@ impl GameState {
                     x,
                     y,
                     BlockMask::Visit as u8 | BlockCell::Explode as u8,
-                );
+                )?;
                 self.game_over(hwnd, false)?;
             }
         } else {
-            self.step_box(hwnd, x, y);
+            self.step_box(hwnd, x, y)?;
             if self.check_win() {
                 self.game_over(hwnd, true)?;
             }
@@ -601,12 +613,12 @@ impl GameState {
     /// * `x_center` - The X coordinate of the center square.
     /// * `y_center` - The Y coordinate of the center square.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_block(&mut self, hwnd: &HWND, x_center: i32, y_center: i32) -> AnyResult<()> {
         if !self.is_visit(x_center, y_center)
             || self.block_data(x_center, y_center) != self.count_marks(x_center, y_center)
         {
-            self.track_mouse(hwnd, -2, -2);
+            self.track_mouse(hwnd, -2, -2)?;
             return Ok(());
         }
 
@@ -624,9 +636,9 @@ impl GameState {
                         x,
                         y,
                         BlockMask::Visit as u8 | BlockCell::Explode as u8,
-                    );
+                    )?;
                 } else {
-                    self.step_box(hwnd, x, y);
+                    self.step_box(hwnd, x, y)?;
                 }
             }
         }
@@ -646,7 +658,7 @@ impl GameState {
     /// * `x` - The X coordinate of the square.
     /// * `y` - The Y coordinate of the square.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn make_guess(&mut self, hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
         // Cycle through blank -> flag -> question mark states depending on preferences.
 
@@ -664,7 +676,7 @@ impl GameState {
         };
 
         let block = if self.guessed_bomb(x, y) {
-            self.update_bomb_count_internal(hwnd, 1);
+            self.update_bomb_count_internal(hwnd, 1)?;
             if allow_marks {
                 BlockCell::GuessUp as u8
             } else {
@@ -673,11 +685,11 @@ impl GameState {
         } else if self.guessed_mark(x, y) {
             BlockCell::BlankUp as u8
         } else {
-            self.update_bomb_count_internal(hwnd, -1);
+            self.update_bomb_count_internal(hwnd, -1)?;
             BlockCell::BombUp as u8
         };
 
-        self.change_blk(hwnd, x, y, block);
+        self.change_blk(hwnd, x, y, block)?;
 
         if self.guessed_bomb(x, y) && self.check_win() {
             self.game_over(hwnd, true)?;
@@ -721,12 +733,17 @@ impl GameState {
     }
 
     /// Change the bomb count by the specified delta and update the display.
+    ///
+    /// TODO: Does this function need to exist?
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     /// * `delta` - The change in bomb count (positive or negative).
-    fn update_bomb_count_internal(&mut self, hwnd: &HWND, delta: i16) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
+    fn update_bomb_count_internal(&mut self, hwnd: &HWND, delta: i16) -> AnyResult<()> {
         self.bombs_left += delta;
-        display_bomb_count(hwnd, self.bombs_left);
+        display_bomb_count(hwnd, self.bombs_left)?;
+        Ok(())
     }
 
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
@@ -761,12 +778,15 @@ impl GameState {
     /// Handle the per-second game timer tick.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
-    pub fn do_timer(&mut self, hwnd: &HWND) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if updating the display failed
+    pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
-            display_time(hwnd, self.secs_elapsed);
+            display_time(hwnd, self.secs_elapsed)?;
             Tune::Tick.play(&hwnd.hinstance());
         }
+        Ok(())
     }
 }
 
@@ -774,6 +794,8 @@ impl WinMineMainWindow {
     /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if resizing or updating the display failed.
     pub fn start_game(&self) -> AnyResult<()> {
         self.state.write().timer_running = false;
 
@@ -827,7 +849,7 @@ impl WinMineMainWindow {
         self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
         GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
 
-        display_bomb_count(self.wnd.hwnd(), self.state.read().bombs_left);
+        display_bomb_count(self.wnd.hwnd(), self.state.read().bombs_left)?;
 
         self.adjust_window(f_adjust)?;
 
@@ -841,10 +863,12 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `x_new` - The new X coordinate of the mouse.
     /// * `y_new` - The new Y coordinate of the mouse.
-    pub fn track_mouse(&mut self, hwnd: &HWND, x_new: i32, y_new: i32) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
+    pub fn track_mouse(&mut self, hwnd: &HWND, x_new: i32, y_new: i32) -> AnyResult<()> {
         let pt_new = POINT { x: x_new, y: y_new };
         if pt_new == self.cursor_pos {
-            return;
+            return Ok(());
         }
 
         self.cursor_pos = pt_new;
@@ -888,7 +912,7 @@ impl GameState {
             if valid_old {
                 for y in y_old_min..=y_old_max {
                     for x in x_old_min..=x_old_max {
-                        display_block(hwnd, x, y, &self.board_cells);
+                        draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                     }
                 }
             }
@@ -896,7 +920,7 @@ impl GameState {
             if valid_new {
                 for y in y_cur_min..=y_cur_max {
                     for x in x_cur_min..=x_cur_max {
-                        display_block(hwnd, x, y, &self.board_cells);
+                        draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                     }
                 }
             }
@@ -905,25 +929,26 @@ impl GameState {
                 && !self.is_visit(self.cursor_pos.x, self.cursor_pos.y)
             {
                 self.pop_box_up(self.cursor_pos.x, self.cursor_pos.y);
-                display_block(
-                    hwnd,
+                draw_block(
+                    &hwnd.GetDC()?,
                     self.cursor_pos.x,
                     self.cursor_pos.y,
                     &self.board_cells,
-                );
+                )?;
             }
             if self.in_range(pt_new.x, pt_new.y) && self.in_range_step(pt_new.x, pt_new.y) {
                 self.push_box_down(pt_new.x, pt_new.y);
-                display_block(hwnd, pt_new.x, pt_new.y, &self.board_cells);
+                draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
             }
         }
+        Ok(())
     }
 
     /// Handle a left-button release: start the timer, then either chord or step.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn do_button_1_up(&mut self, hwnd: &HWND) -> AnyResult<()> {
         // Get the current cursor position
         let x_pos = self.cursor_pos.x;
@@ -936,7 +961,7 @@ impl GameState {
                 // Play the tick sound, display the initial time, and start the timer
                 Tune::Tick.play(&hwnd.hinstance());
                 self.secs_elapsed = 1;
-                display_time(hwnd, self.secs_elapsed);
+                display_time(hwnd, self.secs_elapsed)?;
                 self.timer_running = true;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;

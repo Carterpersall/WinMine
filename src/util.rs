@@ -142,16 +142,21 @@ pub fn init_const() {
 /// # Arguments
 /// * `idm` - The menu command ID.
 /// * `f_check` - `true` to check the item, `false` to uncheck it.
-pub fn menu_check(hmenu: &HMENU, idm: MenuCommand, f_check: bool) {
+/// # Returns
+/// An `Ok(())` if successful, or an error if checking/unchecking failed.
+pub fn menu_check(hmenu: &HMENU, idm: MenuCommand, f_check: bool) -> AnyResult<()> {
     if let Some(menu) = hmenu.as_opt() {
-        let _ = menu.CheckMenuItem(IdPos::Id(idm as u16), f_check);
+        menu.CheckMenuItem(IdPos::Id(idm as u16), f_check)?;
     }
+    Ok(())
 }
 
 impl WinMineMainWindow {
     /// Show or hide the menu bar based on the specified mode.
     /// # Arguments
     /// * `f_active` - The desired menu mode.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if updating the menu bar failed.
     pub fn set_menu_bar(&self, f_active: MenuMode) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (menu_on, game_type, color, mark, sound) = {
@@ -171,14 +176,14 @@ impl WinMineMainWindow {
 
         // Update the menu checkmarks to reflect the current preferences
         let hmenu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
-        menu_check(&hmenu, MenuCommand::Begin, game_type == GameType::Begin);
-        menu_check(&hmenu, MenuCommand::Inter, game_type == GameType::Inter);
-        menu_check(&hmenu, MenuCommand::Expert, game_type == GameType::Expert);
-        menu_check(&hmenu, MenuCommand::Custom, game_type == GameType::Other);
+        menu_check(&hmenu, MenuCommand::Begin, game_type == GameType::Begin)?;
+        menu_check(&hmenu, MenuCommand::Inter, game_type == GameType::Inter)?;
+        menu_check(&hmenu, MenuCommand::Expert, game_type == GameType::Expert)?;
+        menu_check(&hmenu, MenuCommand::Custom, game_type == GameType::Other)?;
 
-        menu_check(&hmenu, MenuCommand::Color, color);
-        menu_check(&hmenu, MenuCommand::Mark, mark);
-        menu_check(&hmenu, MenuCommand::Sound, sound == SoundState::On);
+        menu_check(&hmenu, MenuCommand::Color, color)?;
+        menu_check(&hmenu, MenuCommand::Mark, mark)?;
+        menu_check(&hmenu, MenuCommand::Sound, sound == SoundState::On)?;
 
         // Show or hide the menu bar as set in preferences
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);

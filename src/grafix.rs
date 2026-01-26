@@ -9,9 +9,9 @@ use std::sync::{Mutex, OnceLock};
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 use winsafe::{
     self as w, AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN,
-    HRSRCMEM, HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, SysResult,
+    HRSRCMEM, HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE,
     co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE},
-    guard::{DeleteDCGuard, DeleteObjectGuard},
+    guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard},
     prelude::*,
 };
 
@@ -171,13 +171,15 @@ fn grafix_state() -> &'static Mutex<GrafixState> {
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
 /// * `board` - Slice representing the board state.
-fn draw_block(hdc: &HDC, x: i32, y: i32, board: &[i8]) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[i8]) -> AnyResult<()> {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
     let Some(src) = block_dc(&state, x, y, board) else {
-        return;
+        return Ok(());
     };
 
     let dst_w = scale_dpi(DX_BLK_96);
@@ -186,27 +188,14 @@ fn draw_block(hdc: &HDC, x: i32, y: i32, board: &[i8]) {
     let dst_y = (y * dst_h) + (scale_dpi(DY_GRID_OFF_96) - dst_h);
 
     // Blocks are cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
-    let _ = hdc.BitBlt(
+    hdc.BitBlt(
         POINT::with(dst_x, dst_y),
         SIZE::with(dst_w, dst_h),
         src,
         POINT::new(),
         ROP::SRCCOPY,
-    );
-}
-
-/// Display a single block at the specified board coordinates.
-///
-/// TODO: Remove this function.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-/// * `x` - The X coordinate of the block (1-based).
-/// * `y` - The Y coordinate of the block (1-based).
-/// * `board` - Slice representing the board state.
-pub fn display_block(hwnd: &HWND, x: i32, y: i32, board: &[i8]) {
-    if let Ok(hdc) = hwnd.GetDC() {
-        draw_block(&hdc, x, y, board);
-    }
+    )?;
+    Ok(())
 }
 
 /// Draw the entire minefield grid onto the provided device context.
@@ -215,7 +204,9 @@ pub fn display_block(hwnd: &HWND, x: i32, y: i32, board: &[i8]) {
 /// * `width` - The width of the board in blocks.
 /// * `height` - The height of the board in blocks.
 /// * `board` - Slice representing the board state.
-fn draw_grid(hdc: &HDC, width: i32, height: i32, board: &[i8]) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+fn draw_grid(hdc: &HDC, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -228,30 +219,36 @@ fn draw_grid(hdc: &HDC, width: i32, height: i32, board: &[i8]) {
         let mut dx = scale_dpi(DX_LEFT_SPACE_96);
         for x in 1..=width {
             if let Some(src) = block_dc(&state, x, y, board) {
-                let _ = hdc.BitBlt(
+                hdc.BitBlt(
                     POINT::with(dx, dy),
                     SIZE::with(dst_w, dst_h),
                     src,
                     POINT::new(),
                     ROP::SRCCOPY,
-                );
+                )?;
             }
             dx += dst_w;
         }
         dy += dst_h;
     }
+    Ok(())
 }
 
 /// Display the entire minefield grid.
+///
+/// TODO: Remove this function.
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `width` - The width of the board in blocks.
 /// * `height` - The height of the board in blocks.
 /// * `board` - Slice representing the board state.
-pub fn display_grid(hwnd: &HWND, width: i32, height: i32, board: &[i8]) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+pub fn display_grid(hwnd: &HWND, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_grid(&hdc, width, height, board);
+        draw_grid(&hdc, width, height, board)?;
     }
+    Ok(())
 }
 
 /// Draw a single LED digit at the specified X coordinate.
@@ -259,37 +256,42 @@ pub fn display_grid(hwnd: &HWND, width: i32, height: i32, board: &[i8]) {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate to draw the LED digit.
 /// * `led_index` - The index of the LED digit to draw.
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
 ///
 /// TODO: Could `led_index` be an enum?
-fn draw_led(hdc: &HDC, x: i32, led_index: u16) {
+fn draw_led(hdc: &HDC, x: i32, led_index: u16) -> AnyResult<()> {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
     };
     if led_index >= I_LED_MAX as u16 {
-        return;
+        return Ok(());
     }
     let Some(src) = state.mem_led_dc[led_index as usize].as_ref() else {
-        return;
+        return Ok(());
     };
 
-    let _ = hdc.SetStretchBltMode(STRETCH_MODE::COLORONCOLOR);
-    let _ = hdc.StretchBlt(
+    hdc.SetStretchBltMode(STRETCH_MODE::COLORONCOLOR)?;
+    hdc.StretchBlt(
         POINT::with(x, scale_dpi(DY_TOP_LED_96)),
         SIZE::with(scale_dpi(DX_LED_96), scale_dpi(DY_LED_96)),
         src,
         POINT::new(),
         SIZE::with(DX_LED_96, DY_LED_96),
         ROP::SRCCOPY,
-    );
+    )?;
+    Ok(())
 }
 
 /// Draw the bomb counter onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `bombs` - The number of bombs left to display.
-fn draw_bomb_count(hdc: &HDC, bombs: i16) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+fn draw_bomb_count(hdc: &HDC, bombs: i16) -> AnyResult<()> {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
@@ -303,9 +305,9 @@ fn draw_bomb_count(hdc: &HDC, bombs: i16) {
     // Draw each of the three digits in sequence
     let x0 = scale_dpi(DX_LEFT_BOMB_96);
     let dx = scale_dpi(DX_LED_96);
-    draw_led(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100));
-    draw_led(hdc, x0 + dx, (bombs.unsigned_abs() % 100) / 10);
-    draw_led(hdc, x0 + dx * 2, bombs.unsigned_abs() % 10);
+    draw_led(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100))?;
+    draw_led(hdc, x0 + dx, (bombs.unsigned_abs() % 100) / 10)?;
+    draw_led(hdc, x0 + dx * 2, bombs.unsigned_abs() % 10)?;
 
     // Restore the original layout if it was mirrored
     if mirrored {
@@ -313,6 +315,7 @@ fn draw_bomb_count(hdc: &HDC, bombs: i16) {
             SetLayout(hdc.ptr(), layout);
         }
     }
+    Ok(())
 }
 
 /// Display the bomb counter.
@@ -321,17 +324,22 @@ fn draw_bomb_count(hdc: &HDC, bombs: i16) {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `bombs` - The number of bombs left to display.
-pub fn display_bomb_count(hwnd: &HWND, bombs: i16) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+pub fn display_bomb_count(hwnd: &HWND, bombs: i16) -> AnyResult<()> {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_bomb_count(&hdc, bombs);
+        draw_bomb_count(&hdc, bombs)?;
     }
+    Ok(())
 }
 
 /// Draw the timer onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `time` - The time in seconds to display.
-fn draw_timer(hdc: &HDC, time: u16) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+fn draw_timer(hdc: &HDC, time: u16) -> AnyResult<()> {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -348,24 +356,25 @@ fn draw_timer(hdc: &HDC, time: u16) {
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border),
         time / 100,
-    );
+    )?;
     let time = time % 100;
     draw_led(
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led + border),
         time / 10,
-    );
+    )?;
     draw_led(
         hdc,
         dx_window - (scale_dpi(DX_RIGHT_TIME_96) + dx_led + border),
         time % 10,
-    );
+    )?;
 
     if mirrored {
         unsafe {
             SetLayout(hdc.ptr(), layout);
         }
     }
+    Ok(())
 }
 
 /// Display the timer.
@@ -374,10 +383,13 @@ fn draw_timer(hdc: &HDC, time: u16) {
 /// # Arguments
 /// * `hwnd` - Handle to the main window.
 /// * `time` - The time in seconds to display.
-pub fn display_time(hwnd: &HWND, time: u16) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+pub fn display_time(hwnd: &HWND, time: u16) -> AnyResult<()> {
     if let Ok(hdc) = hwnd.GetDC() {
-        draw_timer(&hdc, time);
+        draw_timer(&hdc, time)?;
     }
+    Ok(())
 }
 
 /// Draw the face button onto the provided device context.
@@ -429,7 +441,7 @@ fn draw_button(hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
 /// * `dst_w` - The desired width of the destination bitmap in pixels.
 /// * `dst_h` - The desired height of the destination bitmap in pixels.
 /// # Returns
-/// A `SysResult` containing a guard for the newly created resampled bitmap.
+/// An `AnyResult` containing a guard for the newly created resampled bitmap.
 fn create_resampled_bitmap(
     hdc: &HDC,
     src_bmp: &HBITMAP,
@@ -437,7 +449,7 @@ fn create_resampled_bitmap(
     src_h: i32,
     dst_w: i32,
     dst_h: i32,
-) -> SysResult<DeleteObjectGuard<HBITMAP>> {
+) -> AnyResult<DeleteObjectGuard<HBITMAP>> {
     // 1. Prepare BITMAPINFO
     let mut bmi_header = BITMAPINFOHEADER::default();
     bmi_header.biWidth = src_w;
@@ -579,7 +591,9 @@ enum BorderStyle {
 /// # Arguments
 /// * `hdc` - The device context to set the pen on.
 /// * `f_normal` - The normal flag determining the pen style.
-fn set_border_pen(hdc: &HDC, border_style: BorderStyle) {
+/// # Returns
+/// `Ok(())` if successful, or an error if setting the pen failed.
+fn set_border_pen(hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
     // Select the appropriate pen based on the border style
     if border_style == BorderStyle::Sunken {
         // Use cached white pen for sunken borders
@@ -589,7 +603,8 @@ fn set_border_pen(hdc: &HDC, border_style: BorderStyle) {
         };
         if let Some(ref white_pen) = state.h_white_pen {
             // Note: This somehow does not cause a resource leak
-            let _ = hdc.SelectObject(&**white_pen).map(|mut guard| guard.leak());
+            hdc.SelectObject(&**white_pen)
+                .map(|mut guard| guard.leak())?;
         }
     } else {
         // Use cached gray pen for raised and flat borders
@@ -599,9 +614,11 @@ fn set_border_pen(hdc: &HDC, border_style: BorderStyle) {
         };
         if let Some(ref gray_pen) = state.h_gray_pen {
             // Note: This somehow does not cause a resource leak
-            let _ = hdc.SelectObject(&**gray_pen).map(|mut guard| guard.leak());
+            hdc.SelectObject(&**gray_pen)
+                .map(|mut guard| guard.leak())?;
         }
     }
+    Ok(())
 }
 
 /// Draw a beveled border rectangle onto the provided device context.
@@ -613,6 +630,8 @@ fn set_border_pen(hdc: &HDC, border_style: BorderStyle) {
 /// * `y2` - The bottom Y coordinate of the rectangle.
 /// * `width` - The width of the border in pixels.
 /// * `border_style` - The border style determining the border appearance.
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
 fn draw_border(
     hdc: &HDC,
     mut x1: i32,
@@ -621,18 +640,18 @@ fn draw_border(
     mut y2: i32,
     width: i32,
     border_style: BorderStyle,
-) {
+) -> AnyResult<()> {
     let mut i = 0;
     // Set the initial pen style based on given border style
-    set_border_pen(hdc, border_style);
+    set_border_pen(hdc, border_style)?;
 
     // Draw the top and left edges
     while i < width {
         y2 -= 1;
-        let _ = hdc.MoveToEx(x1, y2, None);
-        let _ = hdc.LineTo(x1, y1);
+        hdc.MoveToEx(x1, y2, None)?;
+        hdc.LineTo(x1, y1)?;
         x1 += 1;
-        let _ = hdc.LineTo(x2, y1);
+        hdc.LineTo(x2, y1)?;
         x2 -= 1;
         y1 += 1;
         i += 1;
@@ -647,26 +666,29 @@ fn draw_border(
             } else {
                 BorderStyle::Sunken
             },
-        );
+        )?;
     }
 
     // Draw the bottom and right edges
     while i > 0 {
         y2 += 1;
-        let _ = hdc.MoveToEx(x1, y2, None);
+        hdc.MoveToEx(x1, y2, None)?;
         x1 -= 1;
         x2 += 1;
-        let _ = hdc.LineTo(x2, y2);
+        hdc.LineTo(x2, y2)?;
         y1 -= 1;
-        let _ = hdc.LineTo(x2, y1);
+        hdc.LineTo(x2, y1)?;
         i -= 1;
     }
+    Ok(())
 }
 
 /// Draw the entire window background and chrome elements onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
-fn draw_background(hdc: &HDC) {
+/// # Returns
+/// `Ok(())` if successful, or an error if drawing failed.
+fn draw_background(hdc: &HDC) -> AnyResult<()> {
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Relaxed);
     let border = CXBORDER.load(Relaxed);
@@ -676,7 +698,7 @@ fn draw_background(hdc: &HDC) {
     let b3 = scale_dpi(3);
     let b2 = scale_dpi(2);
     let b1 = scale_dpi(1);
-    draw_border(hdc, 0, 0, x, y, b3, BorderStyle::Sunken);
+    draw_border(hdc, 0, 0, x, y, b3, BorderStyle::Sunken)?;
 
     // Inner raised borders
     x -= scale_dpi(DX_RIGHT_SPACE_96) - b3;
@@ -689,7 +711,7 @@ fn draw_background(hdc: &HDC) {
         y,
         b3,
         BorderStyle::Raised,
-    );
+    )?;
     // LED area border
     draw_border(
         hdc,
@@ -701,7 +723,7 @@ fn draw_background(hdc: &HDC) {
             + (scale_dpi(DY_BOTTOM_SPACE_96) - scale_dpi(6)),
         b2,
         BorderStyle::Raised,
-    );
+    )?;
 
     // LED borders
     let x_left_bomb = scale_dpi(DX_LEFT_BOMB_96);
@@ -716,7 +738,7 @@ fn draw_background(hdc: &HDC) {
         y,
         b1,
         BorderStyle::Raised,
-    );
+    )?;
 
     // Timer borders
     x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + border + b1);
@@ -728,7 +750,7 @@ fn draw_background(hdc: &HDC) {
         y,
         b1,
         BorderStyle::Raised,
-    );
+    )?;
 
     // Button border
     let dx_button = scale_dpi(DX_BUTTON_96);
@@ -742,7 +764,8 @@ fn draw_background(hdc: &HDC) {
         scale_dpi(DY_TOP_LED_96) + dy_button,
         b1,
         BorderStyle::Flat,
-    );
+    )?;
+    Ok(())
 }
 
 /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
@@ -752,17 +775,21 @@ fn draw_background(hdc: &HDC) {
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
 pub fn draw_screen(hdc: &HDC, state: &GameState) -> AnyResult<()> {
-    // Full-screen refresh that mirrors the original InvalidateRect/WM_PAINT handler.
-    draw_background(hdc);
-    draw_bomb_count(hdc, state.bombs_left);
+    // 1. Draw background and borders
+    draw_background(hdc)?;
+    // 2. Draw bomb counter
+    draw_bomb_count(hdc, state.bombs_left)?;
+    // 3. Draw face button
     draw_button(hdc, state.btn_face_state)?;
-    draw_timer(hdc, state.secs_elapsed);
+    // 4. Draw timer
+    draw_timer(hdc, state.secs_elapsed)?;
+    // 5. Draw minefield grid
     draw_grid(
         hdc,
         state.board_width,
         state.board_height,
         &state.board_cells,
-    );
+    )?;
 
     Ok(())
 }

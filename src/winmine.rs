@@ -14,9 +14,9 @@ use winsafe::co::{
 };
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
-    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HMENU,
-    HWND, INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage,
-    PtsRc, RECT, SIZE, WINDOWPOS, gui, prelude::*,
+    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HWND,
+    INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PtsRc,
+    RECT, SIZE, WINDOWPOS, gui, prelude::*,
 };
 
 use crate::globals::{
@@ -272,6 +272,8 @@ impl WinMineMainWindow {
     /* Message Helper Functions */
 
     /// Begins a primary button drag operation.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         LEFT_CLK_DOWN.store(true, Ordering::Relaxed);
         self.state.write().cursor_pos = POINT { x: -1, y: -1 };
@@ -280,13 +282,13 @@ impl WinMineMainWindow {
 
     /// Finishes a primary button drag operation.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// An `Ok(())` if successful, or an error if drawing failed.
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
         LEFT_CLK_DOWN.store(false, Ordering::Relaxed);
         if status_play() {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
-            self.state.write().track_mouse(self.wnd.hwnd(), -2, -2);
+            self.state.write().track_mouse(self.wnd.hwnd(), -2, -2)?;
         }
         Ok(())
     }
@@ -294,6 +296,8 @@ impl WinMineMainWindow {
     /// Handles the `WM_KEYDOWN` message.
     /// # Arguments
     /// * `key`: The virtual key code of the key that was pressed.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if handling the key failed.
     fn handle_keydown(&self, key: VK) -> AnyResult<()> {
         match key {
             code if code == VK::F4 => {
@@ -364,6 +368,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `key`: The mouse buttons currently pressed.
     /// * `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
             // If the left button is down, the user is dragging
@@ -372,13 +378,13 @@ impl WinMineMainWindow {
                     self.wnd.hwnd(),
                     self.x_box_from_xpos(point.x),
                     self.y_box_from_ypos(point.y),
-                );
+                )?;
             } else {
                 self.finish_primary_button_drag()?;
             }
         } else {
             // Regular mouse move
-            self.handle_xyzzys_mouse(key, point);
+            self.handle_xyzzys_mouse(key, point)?;
         }
         Ok(())
     }
@@ -387,6 +393,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `btn`: The mouse button that was pressed.
     /// * `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if handling the right button down failed.
     fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
         // Ignore right-clicks if the next click is set to be ignored
         if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) || !status_play() {
@@ -394,7 +402,7 @@ impl WinMineMainWindow {
         }
 
         if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-            self.state.write().track_mouse(self.wnd.hwnd(), -3, -3);
+            self.state.write().track_mouse(self.wnd.hwnd(), -3, -3)?;
             set_block_flag(true);
             unsafe {
                 // TODO: Change this
@@ -460,7 +468,9 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// True if the click was handled, false otherwise.
+    /// An `AnyResult<bool>` indicating whether the click was handled.
+    ///
+    /// TODO: Does it need to return a bool and a result?
     fn btn_click_handler(&self, point: POINT) -> AnyResult<bool> {
         // Handle clicks on the smiley face button while providing the pressed animation.
         let mut msg = MSG::default();
@@ -533,12 +543,14 @@ impl WinMineMainWindow {
     /// that the main window is appropriately sized and positioned on the screen.
     /// # Arguments
     /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if adjustment failed.
     ///
     /// TODO: Make `f_adjust` an enum
     /// TODO: This function is a mess full of unreachable branches, clean it up.
     pub fn adjust_window(&self, mut f_adjust: i32) -> AnyResult<()> {
         // Get the current menu handle
-        let menu_handle = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
+        let menu_handle = self.wnd.hwnd().GetMenu();
 
         // Calculate desired window size based on board dimensions and DPI scaling
         let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width
@@ -560,7 +572,7 @@ impl WinMineMainWindow {
         };
 
         // Determine if the menu is visible based on preferences and menu handle availability
-        let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.as_opt().is_some();
+        let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.is_some();
 
         let desired = RECT {
             left: 0,
@@ -938,7 +950,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_timer(ID_TIMER, {
             let self2 = self.clone();
             move || {
-                self2.state.write().do_timer(self2.wnd.hwnd());
+                self2.state.write().do_timer(self2.wnd.hwnd())?;
                 Ok(())
             }
         });

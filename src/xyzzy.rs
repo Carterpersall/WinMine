@@ -12,7 +12,7 @@
 use core::sync::atomic::{AtomicI32, Ordering};
 
 use winsafe::co::{MK, PS, VK};
-use winsafe::{COLORREF, HPEN, HWND, POINT};
+use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
 
 use crate::rtns::{BlockMask, C_BLK_MAX, board_index};
 use crate::winmine::WinMineMainWindow;
@@ -63,11 +63,13 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `key` - The WPARAM from the mouse move message, containing key states.
     /// * `point` - The LPARAM from the mouse move message, containing cursor position.
-    pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) {
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if handling the mouse move failed.
+    pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) -> AnyResult<()> {
         // Check if the XYZZY cheat code is active
         let state = I_XYZZY.load(Ordering::Relaxed);
         if state == 0 {
-            return;
+            return Ok(());
         }
 
         // Check if the Control key is held down.
@@ -105,19 +107,16 @@ impl WinMineMainWindow {
                 };
 
                 // Set the pixel at (0,0) to indicate bomb status.
-                HPEN::CreatePen(PS::SOLID, 0, color)
-                    .and_then(|mut pen| {
-                        let mut old_pen = hdc.SelectObject(&pen.leak())?;
-                        hdc.MoveToEx(0, 0, None)?;
-                        // LineTo excludes the endpoint, so drawing to (1,0) sets pixel (0,0)
-                        hdc.LineTo(1, 0)?;
-                        hdc.SelectObject(&old_pen.leak())?;
-                        Ok(())
-                    })
-                    .unwrap_or_else(|e| {
-                        eprintln!("Failed to draw pixel at (0,0): {e}");
-                    });
+                HPEN::CreatePen(PS::SOLID, 0, color).and_then(|mut pen| {
+                    let mut old_pen = hdc.SelectObject(&pen.leak())?;
+                    hdc.MoveToEx(0, 0, None)?;
+                    // LineTo excludes the endpoint, so drawing to (1,0) sets pixel (0,0)
+                    hdc.LineTo(1, 0)?;
+                    hdc.SelectObject(&old_pen.leak())?;
+                    Ok(())
+                })?;
             }
         }
+        Ok(())
     }
 }

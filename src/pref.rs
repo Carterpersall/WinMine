@@ -342,7 +342,7 @@ pub fn read_preferences() {
 
 /// Write all user preferences from the shared PREF struct into the registry.
 /// # Returns
-/// A `Result` indicating success or failure
+/// An `Ok(())` if successful, or an error if writing failed.
 pub fn write_preferences() -> AnyResult<()> {
     // Create or open the preferences registry key with write access
     let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
@@ -404,7 +404,7 @@ pub fn write_preferences() -> AnyResult<()> {
 /// * `key` - Preference key to write
 /// * `val` - Integer value to store
 /// # Returns
-/// A `Result` indicating success or failure
+/// An `Ok(())` if successful, or an error if writing failed.
 fn write_int(handle: &HKEY, key: PrefKey, val: u32) -> AnyResult<()> {
     // Get the name of the preference key
     let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
@@ -422,7 +422,7 @@ fn write_int(handle: &HKEY, key: PrefKey, val: u32) -> AnyResult<()> {
 /// * `key` - Preference key to write
 /// * `sz` - String to store
 /// # Returns
-/// A `Result` indicating success or failure
+/// An `Ok(())` if successful, or an error if writing failed.
 fn write_sz(handle: &HKEY, key: PrefKey, sz: &String) -> AnyResult<()> {
     // Get the name of the preference key
     let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
