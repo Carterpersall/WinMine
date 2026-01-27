@@ -91,26 +91,32 @@ static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
 /// A reference to the global preferences mutex.
 ///
 /// TODO: Handle locking as well.
-pub fn preferences_mutex() -> &'static Mutex<Pref> {
-    PREFERENCES.get_or_init(|| {
-        Mutex::new(Pref {
-            game_type: GameType::Begin,
-            mines: 0,
-            height: 0,
-            width: 0,
-            wnd_x_pos: 0,
-            wnd_y_pos: 0,
-            sound_state: SoundState::Off,
-            mark_enabled: false,
-            timer: false,
-            menu_mode: MenuMode::AlwaysOn,
-            color: false,
-            best_times: [0; 3],
-            beginner_name: String::with_capacity(CCH_NAME_MAX),
-            inter_name: String::with_capacity(CCH_NAME_MAX),
-            expert_name: String::with_capacity(CCH_NAME_MAX),
+pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
+    match PREFERENCES
+        .get_or_init(|| {
+            Mutex::new(Pref {
+                game_type: GameType::Begin,
+                mines: 0,
+                height: 0,
+                width: 0,
+                wnd_x_pos: 0,
+                wnd_y_pos: 0,
+                sound_state: SoundState::Off,
+                mark_enabled: false,
+                timer: false,
+                menu_mode: MenuMode::AlwaysOn,
+                color: false,
+                best_times: [0; 3],
+                beginner_name: String::with_capacity(CCH_NAME_MAX),
+                inter_name: String::with_capacity(CCH_NAME_MAX),
+                expert_name: String::with_capacity(CCH_NAME_MAX),
+            })
         })
-    })
+        .lock()
+    {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 /// Represents the current state of the game.
@@ -421,10 +427,7 @@ impl GameState {
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     fn record_win_if_needed(&mut self, hwnd: &HWND) {
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut prefs = preferences_mutex();
         let game = prefs.game_type;
         if game != GameType::Other {
             let game_idx = game as usize;
@@ -675,13 +678,7 @@ impl GameState {
             return Ok(());
         }
 
-        let allow_marks = {
-            let prefs = match preferences_mutex().lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            prefs.mark_enabled
-        };
+        let allow_marks = { preferences_mutex().mark_enabled };
 
         // If currently flagged
         let block = if self.block_flagged(x, y) {
@@ -808,10 +805,7 @@ impl WinMineMainWindow {
         let y_prev = self.state.read().board_height;
 
         let (pref_width, pref_height, total_bombs) = {
-            let prefs = match preferences_mutex().lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+            let prefs = preferences_mutex();
             (prefs.width, prefs.height, prefs.mines)
         };
 

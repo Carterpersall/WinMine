@@ -300,13 +300,7 @@ impl WinMineMainWindow {
     fn handle_keydown(&self, key: VK) -> AnyResult<()> {
         match key {
             code if code == VK::F4 => {
-                let current_sound = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.sound_state
-                };
+                let current_sound = { preferences_mutex().sound_state };
 
                 if matches!(current_sound, SoundState::On | SoundState::Off) {
                     let new_sound = match current_sound {
@@ -318,10 +312,7 @@ impl WinMineMainWindow {
                     };
 
                     let f_menu = {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
                         prefs.sound_state = new_sound;
                         prefs.menu_mode
                     };
@@ -331,26 +322,14 @@ impl WinMineMainWindow {
                 }
             }
             code if code == VK::F5 => {
-                let menu_value = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.menu_mode
-                };
+                let menu_value = { preferences_mutex().menu_mode };
 
                 if !matches!(menu_value, MenuMode::AlwaysOn) {
                     self.set_menu_bar(MenuMode::Hidden)?;
                 }
             }
             code if code == VK::F6 => {
-                let menu_value = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs.menu_mode
-                };
+                let menu_value = { preferences_mutex().menu_mode };
 
                 if !matches!(menu_value, MenuMode::AlwaysOn) {
                     self.set_menu_bar(MenuMode::On)?;
@@ -457,10 +436,7 @@ impl WinMineMainWindow {
             return;
         }
 
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut prefs = preferences_mutex();
         prefs.wnd_x_pos = pos.x;
         prefs.wnd_y_pos = pos.y;
     }
@@ -565,10 +541,7 @@ impl WinMineMainWindow {
 
         // Get the current window position and menu mode from preferences
         let (mut x_window, mut y_window, f_menu) = {
-            let prefs = match preferences_mutex().lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+            let prefs = preferences_mutex();
             (prefs.wnd_x_pos, prefs.wnd_y_pos, prefs.menu_mode)
         };
 
@@ -647,10 +620,7 @@ impl WinMineMainWindow {
             self.wnd.hwnd().InvalidateRect(Some(&rect), true)?;
         }
 
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut prefs = preferences_mutex();
         prefs.wnd_x_pos = x_window;
         prefs.wnd_y_pos = y_window;
 
@@ -701,13 +671,7 @@ impl WinMineMainWindow {
                 self2.state.write().init_game(self2.wnd.hwnd())?;
 
                 // Apply menu visibility and start the game.
-                let f_menu = {
-                    let prefs_guard = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
-                    prefs_guard.menu_mode
-                };
+                let f_menu = { preferences_mutex().menu_mode };
                 self2.set_menu_bar(f_menu)?;
                 self2.start_game()?;
 
@@ -729,10 +693,7 @@ impl WinMineMainWindow {
                 if let Some(rc) = suggested {
                     // Persist the suggested top-left so adjust_window keeps us on the same monitor
                     {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
                         prefs.wnd_x_pos = rc.left;
                         prefs.wnd_y_pos = rc.top;
                     }
@@ -989,10 +950,7 @@ impl WinMineMainWindow {
                 };
 
                 let f_menu = {
-                    let mut prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
+                    let mut prefs = preferences_mutex();
                     if let Some(data) = game.preset_data() {
                         prefs.game_type = game;
                         prefs.mines = data.0;
@@ -1039,10 +997,7 @@ impl WinMineMainWindow {
                     PrefDialog::new().show_modal(&self2.wnd);
 
                     let fmenu = {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
                         prefs.game_type = GameType::Other;
                         prefs.menu_mode
                     };
@@ -1058,13 +1013,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Sound as u16, {
                 let self2 = self.clone();
                 move || {
-                    let current_sound = {
-                        let prefs = match preferences_mutex().lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
-                        prefs.sound_state
-                    };
+                    let current_sound = { preferences_mutex().sound_state };
                     let new_sound = match current_sound {
                         SoundState::On => {
                             SoundState::stop_all();
@@ -1073,10 +1022,7 @@ impl WinMineMainWindow {
                         SoundState::Off => SoundState::init(),
                     };
                     let f_menu = {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
                         prefs.sound_state = new_sound;
                         prefs.menu_mode
                     };
@@ -1092,10 +1038,7 @@ impl WinMineMainWindow {
                 let self2 = self.clone();
                 move || {
                     let f_menu = {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
                         prefs.color = !prefs.color;
                         prefs.menu_mode
                     };
@@ -1118,10 +1061,7 @@ impl WinMineMainWindow {
                 let self2 = self.clone();
                 move || {
                     let f_menu = {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(g) => g,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
                         prefs.mark_enabled = !prefs.mark_enabled;
                         prefs.menu_mode
                     };
@@ -1331,10 +1271,7 @@ impl PrefDialog {
             move |_| -> AnyResult<bool> {
                 // Get current board settings from preferences
                 let (height, width, mines) = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
+                    let prefs = preferences_mutex();
                     (prefs.height, prefs.width, prefs.mines)
                 };
 
@@ -1363,10 +1300,7 @@ impl PrefDialog {
                 let mines = get_dlg_int(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines)?;
 
                 // Update preferences with the new settings
-                let mut prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
+                let mut prefs = preferences_mutex();
                 prefs.height = height as i32;
                 prefs.width = width as i32;
                 prefs.mines = mines as i16;
@@ -1490,10 +1424,7 @@ impl BestDialog {
         self.dlg.on().wm_init_dialog({
             let self2 = self.clone();
             move |_| -> AnyResult<bool> {
-                let prefs = match preferences_mutex().lock() {
-                    Ok(guard) => guard,
-                    Err(poisoned) => poisoned.into_inner(),
-                };
+                let prefs = preferences_mutex();
                 self2.reset_best_dialog(
                     prefs.best_times[GameType::Begin as usize],
                     prefs.best_times[GameType::Inter as usize],
@@ -1514,10 +1445,7 @@ impl BestDialog {
                 move || -> AnyResult<()> {
                     // Set best times and names to defaults
                     {
-                        let mut prefs = match preferences_mutex().lock() {
-                            Ok(guard) => guard,
-                            Err(poisoned) => poisoned.into_inner(),
-                        };
+                        let mut prefs = preferences_mutex();
 
                         // Set all best times to 999 seconds
                         prefs.best_times[GameType::Begin as usize] = 999;
@@ -1614,10 +1542,7 @@ impl EnterDialog {
             .GetDlgItem(ControlId::EditName as u16)
             .and_then(|edit_hwnd| edit_hwnd.GetWindowText())?;
 
-        let mut prefs = match preferences_mutex().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
+        let mut prefs = preferences_mutex();
         match prefs.game_type {
             GameType::Begin => prefs.beginner_name = new_name,
             GameType::Inter => prefs.inter_name = new_name,
@@ -1634,10 +1559,7 @@ impl EnterDialog {
             let dlg = self.dlg.clone();
             move |_| -> AnyResult<bool> {
                 let (game_type, current_name) = {
-                    let prefs = match preferences_mutex().lock() {
-                        Ok(guard) => guard,
-                        Err(poisoned) => poisoned.into_inner(),
-                    };
+                    let prefs = preferences_mutex();
                     let name = match prefs.game_type {
                         GameType::Begin => prefs.beginner_name.clone(),
                         GameType::Inter => prefs.inter_name.clone(),

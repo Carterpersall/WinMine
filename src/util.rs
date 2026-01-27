@@ -156,10 +156,7 @@ impl WinMineMainWindow {
     pub fn set_menu_bar(&self, f_active: MenuMode) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (menu_on, game_type, color, mark, sound) = {
-            let mut prefs = match preferences_mutex().lock() {
-                Ok(g) => g,
-                Err(poisoned) => poisoned.into_inner(),
-            };
+            let mut prefs = preferences_mutex();
             prefs.menu_mode = f_active;
             (
                 !matches!(prefs.menu_mode, MenuMode::Hidden),

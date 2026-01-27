@@ -272,10 +272,7 @@ pub fn read_preferences() -> SysResult<()> {
         None,
     )?;
 
-    let mut prefs = match preferences_mutex().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let mut prefs = preferences_mutex();
 
     // Get the height of the board
     prefs.height = read_int(&key_guard, PrefKey::Height)
@@ -355,10 +352,7 @@ pub fn write_preferences() -> AnyResult<()> {
         Err(e) => return Err(format!("Failed to open registry key: {e}").into()),
     };
 
-    let prefs = match preferences_mutex().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let prefs = preferences_mutex();
 
     // Save all preferences to the registry
     write_int(&key_guard, PrefKey::Difficulty, prefs.game_type as u32)?;

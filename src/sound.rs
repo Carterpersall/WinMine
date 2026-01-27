@@ -23,13 +23,7 @@ impl Tune {
     /// # Arguments
     /// * `tune` - The tune to play
     pub fn play(self, hinst: &HINSTANCE) {
-        let sound_on = {
-            let prefs = match preferences_mutex().lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            prefs.sound_state == SoundState::On
-        };
+        let sound_on = { preferences_mutex().sound_state == SoundState::On };
 
         if sound_on {
             let resource_ptr = self as usize as *const u16;

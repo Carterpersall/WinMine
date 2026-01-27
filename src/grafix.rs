@@ -751,13 +751,7 @@ pub fn draw_screen(hdc: &ReleaseDCGuard, state: &GameState) -> AnyResult<()> {
 /// # Returns
 /// Ok(()) if successful, or an error if loading resources failed.
 pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
-    let color_on = {
-        let prefs = match preferences_mutex().lock() {
-            Ok(g) => g,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        prefs.color
-    };
+    let color_on = { preferences_mutex().color };
     let mut state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
