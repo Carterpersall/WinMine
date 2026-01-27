@@ -812,10 +812,10 @@ impl WinMineMainWindow {
                 self2.wnd.hwnd().KillTimer(ID_TIMER)?;
 
                 // Write preferences if they have changed
-                if UPDATE_INI.load(Ordering::Relaxed)
-                    && let Err(e) = write_preferences()
-                {
-                    eprintln!("Failed to write preferences: {e}");
+                // TODO: The original code has a bug where the current window position is not saved on exit
+                // unless another preference has changed. Fix this.
+                if UPDATE_INI.load(Ordering::Relaxed) {
+                    write_preferences()?;
                 }
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };
@@ -1227,7 +1227,7 @@ pub fn run_winmine(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>>
     let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
 
     // Read user preferences into the global state
-    read_preferences();
+    read_preferences()?;
 
     let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
     let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);

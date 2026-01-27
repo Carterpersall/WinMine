@@ -2,7 +2,7 @@
 //! settings to the Windows registry.
 
 use winsafe::co::{GDC, KEY, REG_OPTION};
-use winsafe::{AnyResult, HKEY, HWND, RegistryValue};
+use winsafe::{AnyResult, HKEY, HWND, RegistryValue, SysResult};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::preferences_mutex;
@@ -76,6 +76,22 @@ pub enum MenuMode {
     On = 2,
 }
 
+impl MenuMode {
+    /// Create a MenuMode from a u32 value, defaulting to AlwaysOn for invalid values.
+    /// # Arguments
+    /// * `val` - The u32 value to convert.
+    /// # Returns
+    /// A MenuMode corresponding to the given value, or AlwaysOn if the value is invalid.
+    pub const fn from(val: u32) -> MenuMode {
+        match val {
+            0 => MenuMode::AlwaysOn,
+            1 => MenuMode::Hidden,
+            2 => MenuMode::On,
+            _ => MenuMode::AlwaysOn,
+        }
+    }
+}
+
 /// Minimum board height allowed by the game.
 pub const MINHEIGHT: u32 = 9;
 /// Default board height used on first run.
@@ -118,6 +134,20 @@ impl GameType {
             GameType::Inter => Some(Self::LEVEL_DATA[1]),
             GameType::Expert => Some(Self::LEVEL_DATA[2]),
             GameType::Other => None,
+        }
+    }
+
+    /// Create a GameType from a u32 value, defaulting to Other for invalid values.
+    /// # Arguments
+    /// * `val` - The u32 value to convert.
+    /// # Returns
+    /// A GameType corresponding to the given value, or Other if the value is invalid.
+    pub const fn from(val: u32) -> GameType {
+        match val {
+            0 => GameType::Begin,
+            1 => GameType::Inter,
+            2 => GameType::Expert,
+            _ => GameType::Other,
         }
     }
 }
@@ -195,20 +225,18 @@ pub struct Pref {
 /// The retrieved integer value, clamped within the specified range
 ///
 /// TODO: Change return type to option or result so this function does not need to handle defaults.
-pub fn read_int(handle: &HKEY, key: PrefKey, val_default: u32, val_min: u32, val_max: u32) -> u32 {
+/// TODO: Should this function take bounds as arguments, or should clamping be done by the caller?
+pub fn read_int(handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
     // Get the name of the preference key
     let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
-        return val_default;
+        return Err(format!("Invalid preference key: {}", key as u8).into());
     };
 
     // Attempt to read the DWORD value from the registry, returning the default if it fails
-    let value = match handle.RegQueryValueEx(Some(key_name)) {
-        Ok(RegistryValue::Dword(val)) => val,
-        _ => return val_default,
-    };
-
-    // Clamp the value within the specified range and return it
-    value.clamp(val_min, val_max)
+    match handle.RegQueryValueEx(Some(key_name))? {
+        RegistryValue::Dword(val) => Ok(val),
+        val => Err(format!("Preference key {} is not a DWORD: {:?}", key_name, val).into()),
+    }
 }
 
 /// Read a string preference from the registry.
@@ -234,17 +262,15 @@ fn read_sz(handle: &HKEY, key: PrefKey) -> String {
 ///
 /// TODO: Should this return a Result to indicate failure? It currently just uses defaults on failure,
 /// which would cause the current settings to be overwritten on the next save.
-pub fn read_preferences() {
+pub fn read_preferences() -> SysResult<()> {
     // Create or open the preferences registry key with read access
-    let Ok((key_guard, _)) = HKEY::CURRENT_USER.RegCreateKeyEx(
+    let (key_guard, _) = HKEY::CURRENT_USER.RegCreateKeyEx(
         SZ_WINMINE_REG_STR,
         None,
         REG_OPTION::default(),
         KEY::READ,
         None,
-    ) else {
-        return;
-    };
+    )?;
 
     let mut prefs = match preferences_mutex().lock() {
         Ok(guard) => guard,
@@ -252,71 +278,48 @@ pub fn read_preferences() {
     };
 
     // Get the height of the board
-    prefs.height = read_int(&key_guard, PrefKey::Height, MINHEIGHT, DEFHEIGHT, 25) as i32;
+    prefs.height = read_int(&key_guard, PrefKey::Height)
+        .unwrap_or(DEFHEIGHT)
+        .clamp(MINHEIGHT, 25) as i32;
 
     // Get the width of the board
-    prefs.width = read_int(&key_guard, PrefKey::Width, MINWIDTH, DEFWIDTH, 30) as i32;
+    prefs.width = read_int(&key_guard, PrefKey::Width)
+        .unwrap_or(DEFWIDTH)
+        .clamp(MINWIDTH, 30) as i32;
 
     // Get the game difficulty
-    let game_raw = read_int(
-        &key_guard,
-        PrefKey::Difficulty,
-        GameType::Begin as u32,
-        GameType::Begin as u32,
-        GameType::Other as u32,
-    );
-    // Convert the raw integer into the corresponding GameType enum variant
-    prefs.game_type = match game_raw {
-        0 => GameType::Begin,
-        1 => GameType::Inter,
-        2 => GameType::Expert,
-        _ => GameType::Other,
-    };
+    prefs.game_type = GameType::from(read_int(&key_guard, PrefKey::Difficulty).unwrap_or(0));
     // Get the number of mines on the board and the window position
-    prefs.mines = read_int(&key_guard, PrefKey::Mines, 10, 10, 999) as i16;
-    // TODO: These values are either not saved properly or are ignored when the window is created.
-    // Though it also seems to not work properly in the original WinMine either, so maybe just remove them?
-    prefs.wnd_x_pos = read_int(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
-    prefs.wnd_y_pos = read_int(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;
+    prefs.mines = read_int(&key_guard, PrefKey::Mines)
+        .unwrap_or(10)
+        .clamp(10, 999) as i16;
+    // TODO: The original bounds for window position were 0-1024, which made sense on 1990s displays, but is too small for modern screens.
+    prefs.wnd_x_pos = read_int(&key_guard, PrefKey::Xpos)
+        .unwrap_or(80)
+        .clamp(0, 1024) as i32;
+    prefs.wnd_y_pos = read_int(&key_guard, PrefKey::Ypos)
+        .unwrap_or(80)
+        .clamp(0, 1024) as i32;
 
     // Get sound, marking, ticking, and menu preferences
-    let sound_raw = read_int(
-        &key_guard,
-        PrefKey::Sound,
-        SoundState::Off as u32,
-        SoundState::Off as u32,
-        SoundState::On as u32,
-    );
-    prefs.sound_state = if sound_raw == SoundState::On as u32 {
-        SoundState::On
-    } else {
-        SoundState::Off
+    prefs.sound_state = match read_int(&key_guard, PrefKey::Sound) {
+        Ok(val) if val == SoundState::On as u32 => SoundState::On,
+        _ => SoundState::Off,
     };
-    prefs.mark_enabled = read_int(&key_guard, PrefKey::Mark, 1, 0, 1) != 0;
-    prefs.timer = read_int(&key_guard, PrefKey::Tick, 0, 0, 1) != 0;
-    let menu_raw = read_int(
-        &key_guard,
-        PrefKey::Menu,
-        MenuMode::AlwaysOn as u32,
-        MenuMode::AlwaysOn as u32,
-        MenuMode::On as u32,
-    );
-    prefs.menu_mode = match menu_raw {
-        0 => MenuMode::AlwaysOn,
-        1 => MenuMode::Hidden,
-        2 => MenuMode::On,
-        // Unreachable due to `read_int`'s clamping
-        _ => MenuMode::On,
-    };
+    prefs.mark_enabled = read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
+    prefs.timer = read_int(&key_guard, PrefKey::Tick).unwrap_or(0) != 0;
+    prefs.menu_mode = MenuMode::from(read_int(&key_guard, PrefKey::Menu).unwrap_or(0));
 
     // Get best times and player names for each difficulty level
-    prefs.best_times[GameType::Begin as usize] =
-        read_int(&key_guard, PrefKey::Time1, 999, 0, 999) as u16;
-    prefs.best_times[GameType::Inter as usize] =
-        read_int(&key_guard, PrefKey::Time2, 999, 0, 999) as u16;
-    prefs.best_times[GameType::Expert as usize] =
-        read_int(&key_guard, PrefKey::Time3, 999, 0, 999) as u16;
-
+    prefs.best_times[GameType::Begin as usize] = read_int(&key_guard, PrefKey::Time1)
+        .unwrap_or(999)
+        .clamp(0, 999) as u16;
+    prefs.best_times[GameType::Inter as usize] = read_int(&key_guard, PrefKey::Time2)
+        .unwrap_or(999)
+        .clamp(0, 999) as u16;
+    prefs.best_times[GameType::Expert as usize] = read_int(&key_guard, PrefKey::Time3)
+        .unwrap_or(999)
+        .clamp(0, 999) as u16;
     prefs.beginner_name = read_sz(&key_guard, PrefKey::Name1);
     prefs.inter_name = read_sz(&key_guard, PrefKey::Name2);
     prefs.expert_name = read_sz(&key_guard, PrefKey::Name3);
@@ -324,21 +327,16 @@ pub fn read_preferences() {
     // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
     let desktop = HWND::GetDesktopWindow();
     let default_color = match desktop.GetDC() {
-        Ok(hdc) => {
-            if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 {
-                1
-            } else {
-                0
-            }
-        }
-        Err(_) => 0,
+        Ok(hdc) if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 => 1,
+        _ => 0,
     };
-    prefs.color = read_int(&key_guard, PrefKey::Color, default_color, 0, 1) != 0;
+    prefs.color = read_int(&key_guard, PrefKey::Color).unwrap_or(default_color) != 0;
 
     // If sound is enabled, initialize the sound system
     if prefs.sound_state == SoundState::On {
         prefs.sound_state = SoundState::init();
     }
+    Ok(())
 }
 
 /// Write all user preferences from the shared PREF struct into the registry.

@@ -89,6 +89,8 @@ static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
 /// Retrieve the global preferences mutex.
 /// # Returns
 /// A reference to the global preferences mutex.
+///
+/// TODO: Handle locking as well.
 pub fn preferences_mutex() -> &'static Mutex<Pref> {
     PREFERENCES.get_or_init(|| {
         Mutex::new(Pref {
