@@ -430,6 +430,8 @@ impl WinMineMainWindow {
     }
 
     /// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
+    ///
+    /// TODO: Use the normal WM commands rather than the basic WM_SYSCOMMAND message
     /// # Arguments
     /// * `command` - The system command identifier.
     fn handle_syscommand(&self, command: SC) {
@@ -941,9 +943,8 @@ impl WinMineMainWindow {
         self.wnd.on().wm_paint({
             let self2 = self.clone();
             move || {
-                if let Ok(paint_guard) = self2.wnd.hwnd().BeginPaint() {
-                    draw_screen(&paint_guard, &self2.state.read())?;
-                }
+                let _paint_guard = self2.wnd.hwnd().BeginPaint()?;
+                draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                 Ok(())
             }
         });
@@ -1104,9 +1105,7 @@ impl WinMineMainWindow {
                     }
 
                     // Repaint immediately so toggling color off updates without restarting.
-                    if let Ok(hdc) = self2.wnd.hwnd().GetDC() {
-                        draw_screen(&hdc, &self2.state.read())?;
-                    }
+                    draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                     UPDATE_INI.store(true, Ordering::Relaxed);
                     self2.set_menu_bar(f_menu)?;
                     Ok(())
@@ -1256,6 +1255,8 @@ pub fn run_winmine(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>>
         Err(e) => Err(format!("Unhandled error during main window execution: {e}").into()),
     }
 }
+
+// TODO: Move GAME_STATUS and CHORD_ACTIVE to a shared struct
 
 /// Returns whether the game is currently in the 'icon' (minimized) status.
 /// # Returns

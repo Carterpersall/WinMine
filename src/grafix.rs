@@ -206,7 +206,7 @@ pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[i8]) -> AnyResu
 /// * `board` - Slice representing the board state.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-fn draw_grid(hdc: &HDC, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
+pub fn draw_grid(hdc: &ReleaseDCGuard, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
     let state = match grafix_state().lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
@@ -230,23 +230,6 @@ fn draw_grid(hdc: &HDC, width: i32, height: i32, board: &[i8]) -> AnyResult<()> 
             dx += dst_w;
         }
         dy += dst_h;
-    }
-    Ok(())
-}
-
-/// Display the entire minefield grid.
-///
-/// TODO: Remove this function.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-/// * `width` - The width of the board in blocks.
-/// * `height` - The height of the board in blocks.
-/// * `board` - Slice representing the board state.
-/// # Returns
-/// `Ok(())` if successful, or an error if drawing failed.
-pub fn display_grid(hwnd: &HWND, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
-    if let Ok(hdc) = hwnd.GetDC() {
-        draw_grid(&hdc, width, height, board)?;
     }
     Ok(())
 }
@@ -291,7 +274,7 @@ fn draw_led(hdc: &HDC, x: i32, led_index: u16) -> AnyResult<()> {
 /// * `bombs` - The number of bombs left to display.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-fn draw_bomb_count(hdc: &HDC, bombs: i16) -> AnyResult<()> {
+pub fn draw_bomb_count(hdc: &ReleaseDCGuard, bombs: i16) -> AnyResult<()> {
     // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
     let layout = unsafe { GetLayout(hdc.ptr()) };
     // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
@@ -318,28 +301,13 @@ fn draw_bomb_count(hdc: &HDC, bombs: i16) -> AnyResult<()> {
     Ok(())
 }
 
-/// Display the bomb counter.
-///
-/// TODO: Remove this function.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-/// * `bombs` - The number of bombs left to display.
-/// # Returns
-/// `Ok(())` if successful, or an error if drawing failed.
-pub fn display_bomb_count(hwnd: &HWND, bombs: i16) -> AnyResult<()> {
-    if let Ok(hdc) = hwnd.GetDC() {
-        draw_bomb_count(&hdc, bombs)?;
-    }
-    Ok(())
-}
-
 /// Draw the timer onto the provided device context.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
 /// * `time` - The time in seconds to display.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-fn draw_timer(hdc: &HDC, time: u16) -> AnyResult<()> {
+pub fn draw_timer(hdc: &ReleaseDCGuard, time: u16) -> AnyResult<()> {
     // The timer uses the same mirroring trick as the bomb counter.
     let layout = unsafe { GetLayout(hdc.ptr()) };
     let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -372,21 +340,6 @@ fn draw_timer(hdc: &HDC, time: u16) -> AnyResult<()> {
         unsafe {
             SetLayout(hdc.ptr(), layout);
         }
-    }
-    Ok(())
-}
-
-/// Display the timer.
-///
-/// TODO: Remove this function.
-/// # Arguments
-/// * `hwnd` - Handle to the main window.
-/// * `time` - The time in seconds to display.
-/// # Returns
-/// `Ok(())` if successful, or an error if drawing failed.
-pub fn display_time(hwnd: &HWND, time: u16) -> AnyResult<()> {
-    if let Ok(hdc) = hwnd.GetDC() {
-        draw_timer(&hdc, time)?;
     }
     Ok(())
 }
@@ -772,7 +725,7 @@ fn draw_background(hdc: &HDC) -> AnyResult<()> {
 /// * `state` - The current game state containing board and UI information.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-pub fn draw_screen(hdc: &HDC, state: &GameState) -> AnyResult<()> {
+pub fn draw_screen(hdc: &ReleaseDCGuard, state: &GameState) -> AnyResult<()> {
     // 1. Draw background and borders
     draw_background(hdc)?;
     // 2. Draw bomb counter

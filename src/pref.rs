@@ -274,7 +274,8 @@ pub fn read_preferences() {
     };
     // Get the number of mines on the board and the window position
     prefs.mines = read_int(&key_guard, PrefKey::Mines, 10, 10, 999) as i16;
-    // TODO: These values are either not saved properly or are ignored when the window is created
+    // TODO: These values are either not saved properly or are ignored when the window is created.
+    // Though it also seems to not work properly in the original WinMine either, so maybe just remove them?
     prefs.wnd_x_pos = read_int(&key_guard, PrefKey::Xpos, 80, 0, 1024) as i32;
     prefs.wnd_y_pos = read_int(&key_guard, PrefKey::Ypos, 80, 0, 1024) as i32;
 

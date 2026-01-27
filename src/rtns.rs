@@ -11,8 +11,7 @@ use winsafe::{AnyResult, HWND, POINT, prelude::*};
 
 use crate::globals::{CHORD_ACTIVE, GAME_STATUS, StatusFlag};
 use crate::grafix::{
-    ButtonSprite, display_bomb_count, display_button, display_grid, display_time, draw_block,
-    load_bitmaps,
+    ButtonSprite, display_button, draw_block, draw_bomb_count, draw_grid, draw_timer, load_bitmaps,
 };
 use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
 use crate::sound::Tune;
@@ -247,6 +246,8 @@ impl GameState {
     }
 
     /// Set a block as containing a bomb at the specified coordinates.
+    ///
+    /// TODO: Could these functions be moved under a BlockMask impl?
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
@@ -288,23 +289,23 @@ impl GameState {
         (self.block_value(x, y) & BlockMask::Visit as u8) != 0
     }
 
-    /// Check if a block at the specified coordinates is guessed to contain a bomb.
+    /// Check if a block at the specified coordinates is currently flagged as a bomb.
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// # Returns
     /// `true` if the block is guessed to contain a bomb, `false` otherwise.
-    fn guessed_bomb(&self, x: i32, y: i32) -> bool {
+    fn block_flagged(&self, x: i32, y: i32) -> bool {
         self.block_value(x, y) & BlockMask::Data as u8 == BlockCell::BombUp as u8
     }
 
-    /// Check if a block at the specified coordinates is guessed to be marked.
+    /// Check if a block at the specified coordinates is currently guessed (marked with a ?).
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// # Returns
     /// `true` if the block is guessed to be marked, `false` otherwise.
-    fn guessed_mark(&self, x: i32, y: i32) -> bool {
+    fn block_guessed(&self, x: i32, y: i32) -> bool {
         self.block_value(x, y) & BlockMask::Data as u8 == BlockCell::GuessUp as u8
     }
 
@@ -361,16 +362,21 @@ impl GameState {
             for x in 1..=self.board_width {
                 if !self.is_visit(x, y) {
                     if self.is_bomb(x, y) {
-                        if !self.guessed_bomb(x, y) {
+                        if !self.block_flagged(x, y) {
                             self.set_raw_block(x, y, cell as u8);
                         }
-                    } else if self.guessed_bomb(x, y) {
+                    } else if self.block_flagged(x, y) {
                         self.set_raw_block(x, y, BlockCell::Wrong as u8);
                     }
                 }
             }
         }
-        display_grid(hwnd, self.board_width, self.board_height, &self.board_cells)?;
+        draw_grid(
+            &hwnd.GetDC()?,
+            self.board_width,
+            self.board_height,
+            &self.board_cells,
+        )?;
         Ok(())
     }
 
@@ -384,7 +390,7 @@ impl GameState {
         let mut count = 0;
         for y in (y_center - 1)..=(y_center + 1) {
             for x in (x_center - 1)..=(x_center + 1) {
-                if self.guessed_bomb(x, y) {
+                if self.block_flagged(x, y) {
                     count += 1;
                 }
             }
@@ -625,7 +631,7 @@ impl GameState {
         let mut lose = false;
         for y in (y_center - 1)..=(y_center + 1) {
             for x in (x_center - 1)..=(x_center + 1) {
-                if self.guessed_bomb(x, y) {
+                if self.block_flagged(x, y) {
                     continue;
                 }
 
@@ -675,23 +681,34 @@ impl GameState {
             prefs.mark_enabled
         };
 
-        let block = if self.guessed_bomb(x, y) {
-            self.update_bomb_count_internal(hwnd, 1)?;
+        // If currently flagged
+        let block = if self.block_flagged(x, y) {
+            // Increment the bomb count
+            self.bombs_left += 1;
+            draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+
+            // If marks are allowed, change to question mark; otherwise, change to blank
             if allow_marks {
                 BlockCell::GuessUp as u8
             } else {
                 BlockCell::BlankUp as u8
             }
-        } else if self.guessed_mark(x, y) {
+        } else if self.block_guessed(x, y) {
+            // If currently marked with a question mark, change to blank
+            // No need to update the bomb count since the guess mark doesn't affect it
             BlockCell::BlankUp as u8
         } else {
-            self.update_bomb_count_internal(hwnd, -1)?;
+            // Currently blank; change to flagged and decrement bomb count
+            self.bombs_left -= 1;
+            draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
             BlockCell::BombUp as u8
         };
 
+        // Update the block visually
         self.change_blk(hwnd, x, y, block)?;
 
-        if self.guessed_bomb(x, y) && self.check_win() {
+        // If the user has flagged the last bomb, they have won
+        if self.block_flagged(x, y) && self.check_win() {
             self.game_over(hwnd, true)?;
         }
 
@@ -732,20 +749,6 @@ impl GameState {
         self.set_raw_block(x, y, blk);
     }
 
-    /// Change the bomb count by the specified delta and update the display.
-    ///
-    /// TODO: Does this function need to exist?
-    /// # Arguments
-    /// * `hwnd` - Handle to the main window.
-    /// * `delta` - The change in bomb count (positive or negative).
-    /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
-    fn update_bomb_count_internal(&mut self, hwnd: &HWND, delta: i16) -> AnyResult<()> {
-        self.bombs_left += delta;
-        display_bomb_count(hwnd, self.bombs_left)?;
-        Ok(())
-    }
-
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
     /// # Arguments
     /// * `x` - The X coordinate.
@@ -753,7 +756,7 @@ impl GameState {
     /// # Returns
     /// `true` if the coordinate is valid for flood-fill, `false` otherwise.
     fn in_range_step(&mut self, x: i32, y: i32) -> bool {
-        self.in_range(x, y) && !self.is_visit(x, y) && !self.guessed_bomb(x, y)
+        self.in_range(x, y) && !self.is_visit(x, y) && !self.block_flagged(x, y)
     }
 
     /// Reset the game field to its initial blank state and rebuild the border.
@@ -783,7 +786,7 @@ impl GameState {
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
-            display_time(hwnd, self.secs_elapsed)?;
+            draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
             Tune::Tick.play(&hwnd.hinstance());
         }
         Ok(())
@@ -849,7 +852,7 @@ impl WinMineMainWindow {
         self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
         GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
 
-        display_bomb_count(self.wnd.hwnd(), self.state.read().bombs_left)?;
+        draw_bomb_count(&self.wnd.hwnd().GetDC()?, self.state.read().bombs_left)?;
 
         self.adjust_window(f_adjust)?;
 
@@ -964,7 +967,7 @@ impl GameState {
                 // Play the tick sound, display the initial time, and start the timer
                 Tune::Tick.play(&hwnd.hinstance());
                 self.secs_elapsed = 1;
-                display_time(hwnd, self.secs_elapsed)?;
+                draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
                 self.timer_running = true;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
