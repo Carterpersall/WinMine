@@ -2,8 +2,8 @@
 //! This includes board representation, game status tracking, and related utilities.
 
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicBool, Ordering};
 use core::ops::BitOrAssign;
+use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use winsafe::co::WM;

@@ -62,12 +62,17 @@ pub enum StatusFlag {
 /// classic WinMine assets are scaled from 96 DPI to this value.
 pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 
-/// Tracks whether the left mouse button is currently held.
-pub static LEFT_CLK_DOWN: AtomicBool = AtomicBool::new(false);
+/// Tracks whether a drag operation is active.
+pub static DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Signals that the left and right mouse buttons are both held down, initiating a "chord" operation.
+/// Signals that a chord operation is currently active.
 ///
 /// A chord operation depresses a 3x3 area of cells around the cursor.
+///
+/// A chord operation will begin if:
+/// - Both left and right buttons are held down, and the middle button is not held down
+/// - Only the middle button is held down
+/// - Shift is held _then_ left button is held down
 pub static CHORD_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Signals that the next click should be ignored (used after window activation).

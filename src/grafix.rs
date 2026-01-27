@@ -128,6 +128,7 @@ struct GrafixState {
     mem_button_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; BUTTON_SPRITE_COUNT],
 }
 
+// TODO: Eliminate use of *const BITMAPINFO. This is a lot of work and requires unsafe code elsewhere, but it's better practice.
 unsafe impl Send for GrafixState {}
 unsafe impl Sync for GrafixState {}
 

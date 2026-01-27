@@ -9,9 +9,7 @@ use windows_sys::Win32::Data::HtmlHelp::{
     HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
 };
 
-use winsafe::co::{
-    BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
-};
+use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HWND,
@@ -20,9 +18,9 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, CHORD_ACTIVE, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
-    LEFT_CLK_DOWN, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE,
-    MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
+    BASE_DPI, CHORD_ACTIVE, DEFAULT_PLAYER_NAME, DRAG_ACTIVE, GAME_NAME, GAME_STATUS,
+    IGNORE_NEXT_CLICK, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
+    MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -274,7 +272,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
-        LEFT_CLK_DOWN.store(true, Ordering::Relaxed);
+        DRAG_ACTIVE.store(true, Ordering::Relaxed);
         self.state.write().cursor_pos = POINT { x: -1, y: -1 };
         display_button(self.wnd.hwnd(), ButtonSprite::Caution)
     }
@@ -283,16 +281,20 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
-        LEFT_CLK_DOWN.store(false, Ordering::Relaxed);
+        DRAG_ACTIVE.store(false, Ordering::Relaxed);
         if status_play() {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
             self.state.write().track_mouse(self.wnd.hwnd(), -2, -2)?;
         }
+        // If a chord operation was active, end it now
+        CHORD_ACTIVE.store(false, Ordering::Relaxed);
         Ok(())
     }
 
     /// Handles the `WM_KEYDOWN` message.
+    ///
+    /// TODO: Move this function into the closure.
     /// # Arguments
     /// * `key`: The virtual key code of the key that was pressed.
     /// # Returns
@@ -349,8 +351,8 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
-        if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-            // If the left button is down, the user is dragging
+        if DRAG_ACTIVE.load(Ordering::Relaxed) {
+            // If the user is dragging, track the mouse position
             if status_play() {
                 self.state.write().track_mouse(
                     self.wnd.hwnd(),
@@ -379,21 +381,10 @@ impl WinMineMainWindow {
             return Ok(());
         }
 
-        if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
+        // If the left and right buttons are both down, and the middle button is not down, start a chord operation
+        if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
+            CHORD_ACTIVE.store(true, Ordering::Relaxed);
             self.state.write().track_mouse(self.wnd.hwnd(), -3, -3)?;
-            set_block_flag(true);
-            unsafe {
-                // TODO: Change this
-                self.wnd.hwnd().PostMessage(WndMsg::new(
-                    WM::MOUSEMOVE,
-                    btn.raw() as usize,
-                    point.x as isize | ((point.y as isize) << 16),
-                ))?;
-            }
-            return Ok(());
-        }
-
-        if btn == MK::LBUTTON {
             self.begin_primary_button_drag()?;
             self.handle_mouse_move(btn, point)?;
             return Ok(());
@@ -820,7 +811,9 @@ impl WinMineMainWindow {
         self.wnd.on().wm_r_button_up({
             let self2 = self.clone();
             move |r_btn| {
-                if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
+                // If the right button is released while the left button is down, finish the drag operation
+                // This replicates the original behavior, though it does add some complexity.
+                if r_btn.vkey_code & MK::LBUTTON == MK::LBUTTON {
                     self2.finish_primary_button_drag()?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
@@ -836,8 +829,12 @@ impl WinMineMainWindow {
                     return Ok(());
                 }
 
+                if m_btn.vkey_code.has(MK::MBUTTON) {
+                    // If the middle button is pressed, start a chord operation
+                    // However, if a chord is already active, end the chord instead
+                    CHORD_ACTIVE.fetch_not(Ordering::Relaxed);
+                }
                 if status_play() {
-                    set_block_flag(true);
                     self2.begin_primary_button_drag()?;
                     self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords)?;
                 }
@@ -849,9 +846,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_m_button_up({
             let self2 = self.clone();
             move |m_btn| {
-                if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-                    self2.finish_primary_button_drag()?;
-                }
+                self2.finish_primary_button_drag()?;
                 unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
             }
@@ -863,16 +858,18 @@ impl WinMineMainWindow {
                 if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) {
                     return Ok(());
                 }
+                // TODO: This logic can be simplified
                 if self2.btn_click_handler(l_btn.coords)? {
                     return Ok(());
                 }
+                // If the right button or the shift key is also down, start a chord operation
+                if l_btn.vkey_code.has(MK::RBUTTON) || l_btn.vkey_code.has(MK::SHIFT) {
+                    CHORD_ACTIVE.store(true, Ordering::Relaxed);
+                }
                 if status_play() {
-                    // Mask SHIFT and RBUTTON to indicate a "chord" operation.
-                    set_block_flag(l_btn.vkey_code == MK::SHIFT || l_btn.vkey_code == MK::RBUTTON);
                     self2.begin_primary_button_drag()?;
                     self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords)?;
                 }
-                unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
                 Ok(())
             }
         });
@@ -880,9 +877,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_l_button_up({
             let self2 = self.clone();
             move |l_btn| {
-                if LEFT_CLK_DOWN.load(Ordering::Relaxed) {
-                    self2.finish_primary_button_drag()?;
-                }
+                self2.finish_primary_button_drag()?;
                 unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
                 Ok(())
             }
@@ -932,14 +927,7 @@ impl WinMineMainWindow {
                 let self2 = self.clone();
                 move || {
                     self2.wnd.hwnd().ShowWindow(SW::HIDE);
-                    // TODO: Replace this with a safer method of closing the window
-                    unsafe {
-                        let _ = self2.wnd.hwnd().SendMessage(WndMsg::new(
-                            WM::SYSCOMMAND,
-                            SC::CLOSE.raw() as usize,
-                            0,
-                        ));
-                    }
+                    self2.wnd.close();
                     Ok(())
                 }
             });
@@ -1236,13 +1224,6 @@ fn set_status_icon() {
 /// Clears the status icon flag.
 fn clr_status_icon() {
     GAME_STATUS.fetch_and(!(StatusFlag::Icon as i32), Ordering::Relaxed);
-}
-
-/// Sets the block flag indicating whether button input is blocked.
-/// # Arguments
-/// * `active`: True to block button input, false to allow it.
-fn set_block_flag(active: bool) {
-    CHORD_ACTIVE.store(active, Ordering::Relaxed);
 }
 
 /// Struct containing the state shared by the Preferences dialog
