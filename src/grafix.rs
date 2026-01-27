@@ -235,6 +235,66 @@ pub fn draw_grid(hdc: &ReleaseDCGuard, width: i32, height: i32, board: &[i8]) ->
     Ok(())
 }
 
+/// LED digit sprites used in the bomb counter and timer.
+#[repr(u8)]
+enum LEDSprite {
+    /// Digit 0
+    Zero = 0,
+    /// Digit 1
+    One = 1,
+    /// Digit 2
+    Two = 2,
+    /// Digit 3
+    Three = 3,
+    /// Digit 4
+    Four = 4,
+    /// Digit 5
+    Five = 5,
+    /// Digit 6
+    Six = 6,
+    /// Digit 7
+    Seven = 7,
+    /// Digit 8
+    Eight = 8,
+    /// Digit 9
+    Nine = 9,
+    /// No digit (blank)
+    Blank = 10,
+    /// Negative sign
+    Negative = 11,
+}
+
+impl From<u16> for LEDSprite {
+    /// Create an `LEDSprite` from a `u16` value.
+    /// # Arguments
+    /// * `value` - The `u16` value to convert.
+    fn from(value: u16) -> Self {
+        match value.into() {
+            0 => LEDSprite::Zero,
+            1 => LEDSprite::One,
+            2 => LEDSprite::Two,
+            3 => LEDSprite::Three,
+            4 => LEDSprite::Four,
+            5 => LEDSprite::Five,
+            6 => LEDSprite::Six,
+            7 => LEDSprite::Seven,
+            8 => LEDSprite::Eight,
+            9 => LEDSprite::Nine,
+            10 => LEDSprite::Blank,
+            11 => LEDSprite::Negative,
+            _ => LEDSprite::Blank,
+        }
+    }
+}
+impl From<i16> for LEDSprite {
+    /// Create an `LEDSprite` from an `i16` value.
+    /// # Arguments
+    /// * `value` - The `i16` value to convert.
+    fn from(value: i16) -> Self {
+        LEDSprite::from(value.unsigned_abs())
+    }
+}
+
 /// Draw a single LED digit at the specified X coordinate.
 /// # Arguments
 /// * `hdc` - The device context to draw on.
@@ -244,12 +304,9 @@ pub fn draw_grid(hdc: &ReleaseDCGuard, width: i32, height: i32, board: &[i8]) ->
 /// `Ok(())` if successful, or an error if drawing failed.
 ///
 /// TODO: Could `led_index` be an enum?
-fn draw_led(hdc: &HDC, x: i32, led_index: u16) -> AnyResult<()> {
+fn draw_led(hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = grafix_state();
-    if led_index >= I_LED_MAX as u16 {
-        return Ok(());
-    }
     let Some(src) = state.mem_led_dc[led_index as usize].as_ref() else {
         return Ok(());
     };
@@ -286,9 +343,16 @@ pub fn draw_bomb_count(hdc: &ReleaseDCGuard, bombs: i16) -> AnyResult<()> {
     // Draw each of the three digits in sequence
     let x0 = scale_dpi(DX_LEFT_BOMB_96);
     let dx = scale_dpi(DX_LED_96);
-    draw_led(hdc, x0, u16::try_from(bombs).map_or(11, |b| b / 100))?;
-    draw_led(hdc, x0 + dx, (bombs.unsigned_abs() % 100) / 10)?;
-    draw_led(hdc, x0 + dx * 2, bombs.unsigned_abs() % 10)?;
+    // Hundreds place or negative sign
+    draw_led(
+        hdc,
+        x0,
+        LEDSprite::from(u16::try_from(bombs).map_or(11, |b| b / 100)),
+    )?;
+    // Tens place
+    draw_led(hdc, x0 + dx, LEDSprite::from((bombs % 100) / 10))?;
+    // Ones place
+    draw_led(hdc, x0 + dx * 2, LEDSprite::from(bombs % 10))?;
 
     // Restore the original layout if it was mirrored
     if mirrored {
@@ -317,21 +381,24 @@ pub fn draw_timer(hdc: &ReleaseDCGuard, time: u16) -> AnyResult<()> {
 
     let dx_window = WINDOW_WIDTH.load(Relaxed);
     let dx_led = scale_dpi(DX_LED_96);
+    let dx_led_right = scale_dpi(DX_RIGHT_TIME_96);
+    // Hundreds place
     draw_led(
         hdc,
-        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led),
-        time / 100,
+        dx_window - (dx_led_right + 3 * dx_led),
+        LEDSprite::from(time / 100),
     )?;
-    let time = time % 100;
+    // Tens place
     draw_led(
         hdc,
-        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 2 * dx_led),
-        time / 10,
+        dx_window - (dx_led_right + 2 * dx_led),
+        LEDSprite::from((time % 100) / 10),
     )?;
+    // Ones place
     draw_led(
         hdc,
-        dx_window - (scale_dpi(DX_RIGHT_TIME_96) + dx_led),
-        time % 10,
+        dx_window - (dx_led_right + dx_led),
+        LEDSprite::from(time % 10),
     )?;
 
     if mirrored {
