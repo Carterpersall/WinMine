@@ -65,8 +65,10 @@ pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 /// Tracks whether the left mouse button is currently held.
 pub static LEFT_CLK_DOWN: AtomicBool = AtomicBool::new(false);
 
-/// Tracks whether the UI should temporarily block button handling.
-pub static BLK_BTN_INPUT: AtomicBool = AtomicBool::new(false);
+/// Signals that the left and right mouse buttons are both held down, initiating a "chord" operation.
+///
+/// A chord operation depresses a 3x3 area of cells around the cursor.
+pub static CHORD_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 /// Signals that the next click should be ignored (used after window activation).
 pub static IGNORE_NEXT_CLICK: AtomicBool = AtomicBool::new(false);

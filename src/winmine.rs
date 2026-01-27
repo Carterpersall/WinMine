@@ -20,7 +20,7 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, BLK_BTN_INPUT, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
+    BASE_DPI, CHORD_ACTIVE, DEFAULT_PLAYER_NAME, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
     LEFT_CLK_DOWN, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE,
     MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
@@ -1295,7 +1295,7 @@ fn clr_status_icon() {
 /// # Arguments
 /// * `active`: True to block button input, false to allow it.
 fn set_block_flag(active: bool) {
-    BLK_BTN_INPUT.store(active, Ordering::Relaxed);
+    CHORD_ACTIVE.store(active, Ordering::Relaxed);
 }
 
 /// Struct containing the state shared by the Preferences dialog

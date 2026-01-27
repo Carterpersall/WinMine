@@ -9,7 +9,7 @@ use winsafe::co::WM;
 use winsafe::msg::WndMsg;
 use winsafe::{AnyResult, HWND, POINT, prelude::*};
 
-use crate::globals::{BLK_BTN_INPUT, GAME_STATUS, StatusFlag};
+use crate::globals::{CHORD_ACTIVE, GAME_STATUS, StatusFlag};
 use crate::grafix::{
     ButtonSprite, display_bomb_count, display_button, display_grid, display_time, draw_block,
     load_bitmaps,
@@ -867,19 +867,21 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn track_mouse(&mut self, hwnd: &HWND, x_new: i32, y_new: i32) -> AnyResult<()> {
         let pt_new = POINT { x: x_new, y: y_new };
+        // No change in position; nothing to do
         if pt_new == self.cursor_pos {
             return Ok(());
         }
 
-        self.cursor_pos = pt_new;
-
         let y_max = self.board_height;
         let x_max = self.board_width;
 
-        if BLK_BTN_INPUT.load(Ordering::Relaxed) {
+        // Check if a chord operation is active
+        if CHORD_ACTIVE.load(Ordering::Relaxed) {
+            // Determine if the old and new positions are within range
             let valid_new = self.in_range(pt_new.x, pt_new.y);
             let valid_old = self.in_range(self.cursor_pos.x, self.cursor_pos.y);
 
+            // Determine the affected area (3x3 grid around old and new positions)
             let y_old_min = max(self.cursor_pos.y - 1, 1);
             let y_old_max = min(self.cursor_pos.y + 1, y_max);
             let y_cur_min = max(pt_new.y - 1, 1);
@@ -889,45 +891,42 @@ impl GameState {
             let x_cur_min = max(pt_new.x - 1, 1);
             let x_cur_max = min(pt_new.x + 1, x_max);
 
+            // If the old position is valid, pop up boxes in the previous area
             if valid_old {
+                // Iterate over the old 3x3 area from left to right, top to bottom
                 for y in y_old_min..=y_old_max {
                     for x in x_old_min..=x_old_max {
+                        // Only pop up boxes that are not visited
                         if !self.is_visit(x, y) {
+                            // Restore the box to its raised state
                             self.pop_box_up(x, y);
+                            draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
                     }
                 }
             }
 
+            // If the new position is valid, push down boxes in the new area
             if valid_new {
+                // Iterate over the new 3x3 area from left to right, top to bottom
                 for y in y_cur_min..=y_cur_max {
                     for x in x_cur_min..=x_cur_max {
+                        // Only push down boxes that are not visited
                         if !self.is_visit(x, y) {
+                            // Depress the box visually
                             self.push_box_down(x, y);
+                            draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
-                    }
-                }
-            }
-
-            if valid_old {
-                for y in y_old_min..=y_old_max {
-                    for x in x_old_min..=x_old_max {
-                        draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
-                    }
-                }
-            }
-
-            if valid_new {
-                for y in y_cur_min..=y_cur_max {
-                    for x in x_cur_min..=x_cur_max {
-                        draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                     }
                 }
             }
         } else {
+            // Otherwise, handle single-box push/pop
+            // Check if the old cursor position is in range and not yet visited
             if self.in_range(self.cursor_pos.x, self.cursor_pos.y)
                 && !self.is_visit(self.cursor_pos.x, self.cursor_pos.y)
             {
+                // Restore the old box to its raised state
                 self.pop_box_up(self.cursor_pos.x, self.cursor_pos.y);
                 draw_block(
                     &hwnd.GetDC()?,
@@ -936,11 +935,15 @@ impl GameState {
                     &self.board_cells,
                 )?;
             }
+            // Check if the new cursor position is in range and not yet visited
             if self.in_range(pt_new.x, pt_new.y) && self.in_range_step(pt_new.x, pt_new.y) {
+                // Depress the new box visually
                 self.push_box_down(pt_new.x, pt_new.y);
                 draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
             }
         }
+        // Store the new cursor position
+        self.cursor_pos = pt_new;
         Ok(())
     }
 
@@ -968,11 +971,13 @@ impl GameState {
                 }
             }
 
+            // TODO: Why is this check needed here?
             if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) == 0 {
                 self.cursor_pos = POINT { x: -2, y: -2 };
             }
 
-            if BLK_BTN_INPUT.load(Ordering::Relaxed) {
+            // Determine whether to chord (select adjacent squares) or step (reveal a single square)
+            if CHORD_ACTIVE.load(Ordering::Relaxed) {
                 self.step_block(hwnd, x_pos, y_pos)?;
             } else if self.in_range_step(x_pos, y_pos) {
                 self.step_square(hwnd, x_pos, y_pos)?;
