@@ -1,8 +1,6 @@
 //! Global constants and variables used throughout the application.
 
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU32};
-
-use bitflags::bitflags;
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32};
 
 /* -------------------- */
 /* Constant Definitions */
@@ -39,20 +37,6 @@ pub const MSG_VERSION_NAME: &str = "Minesweeper";
 /// Credit string used in the About box.
 pub const MSG_CREDIT: &str = "by Robert Donner and Curt Johnson";
 
-bitflags! {
-    /// Flags defining the current game status.
-    pub struct StatusFlag: u8 {
-        /// Game is currently being played.
-        const Play = 0b0001;
-        /// Game is currently paused.
-        const Pause = 0b0010;
-        /// Game is currently minimized.
-        const Minimized = 0b0100;
-        /// Game is over (win or loss).
-        const GameOver = 0b1000;
-    }
-}
-
 /* ---------------- */
 /* Global Variables */
 /* ---------------- */
@@ -75,7 +59,3 @@ pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);
 
 /// Current client height of the main window.
 pub static WINDOW_HEIGHT: AtomicI32 = AtomicI32::new(0);
-
-/// Aggregated status flags shared between modules.
-pub static GAME_STATUS: AtomicU8 =
-    AtomicU8::new(StatusFlag::Minimized.bits() | StatusFlag::GameOver.bits());

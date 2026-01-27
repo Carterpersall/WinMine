@@ -6,11 +6,11 @@ use core::ops::BitOrAssign;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use bitflags::bitflags;
 use winsafe::co::WM;
 use winsafe::msg::WndMsg;
 use winsafe::{AnyResult, HWND, POINT, prelude::*};
 
-use crate::globals::{GAME_STATUS, StatusFlag};
 use crate::grafix::{
     ButtonSprite, display_button, draw_block, draw_bomb_count, draw_grid, draw_timer, load_bitmaps,
 };
@@ -103,6 +103,24 @@ impl AdjustFlag {
     }
 }
 
+bitflags! {
+    /// Flags defining the current game status.
+    #[derive(Clone)]
+    pub struct StatusFlag: u8 {
+        /// Game is currently being played.
+        const Play = 0b0001;
+        /// Game is currently paused.
+        const Pause = 0b0010;
+        /// Game is currently minimized.
+        ///
+        /// TODO: Is this flag needed? The Pause flag may be sufficient.
+        /// It is only read when the window is being moved, which we may not want to do anyways.
+        const Minimized = 0b0100;
+        /// Game is over (win or loss).
+        const GameOver = 0b1000;
+    }
+}
+
 /// Shift applied when converting x/y to the packed board index.
 pub const BOARD_INDEX_SHIFT: usize = 5;
 
@@ -145,6 +163,8 @@ pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
 /// Represents the current state of the game.
 #[derive(Clone)]
 pub struct GameState {
+    /// Aggregated status flags defining the current game state.
+    pub game_status: StatusFlag,
     /// Current board width in cells (excluding border)
     pub board_width: i32,
     /// Current board height in cells (excluding border)
@@ -191,6 +211,7 @@ impl GameState {
     /// Creates a new default GameState
     pub fn new() -> Self {
         Self {
+            game_status: StatusFlag::Minimized | StatusFlag::GameOver,
             board_width: 0,
             board_height: 0,
             btn_face_state: ButtonSprite::Happy,
@@ -602,7 +623,7 @@ impl GameState {
         } else {
             Tune::LoseGame.play(&hwnd.hinstance());
         }
-        GAME_STATUS.store(StatusFlag::GameOver.bits(), Ordering::Relaxed);
+        self.game_status = StatusFlag::GameOver;
 
         if win {
             self.record_win_if_needed(hwnd);
@@ -879,7 +900,7 @@ impl WinMineMainWindow {
         self.state.write().bombs_left = total_bombs;
         self.state.write().boxes_visited = 0;
         self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
-        GAME_STATUS.store(StatusFlag::Play.bits(), Ordering::Relaxed);
+        self.state.write().game_status = StatusFlag::Play;
 
         draw_bomb_count(&self.wnd.hwnd().GetDC()?, self.state.read().bombs_left)?;
 
@@ -1004,7 +1025,7 @@ impl GameState {
             }
 
             // If the game is not in play mode, reset the cursor position to a location off the board
-            if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits())) == 0 {
+            if !self.game_status.contains(StatusFlag::Play) {
                 self.cursor_pos = POINT { x: -2, y: -2 };
             }
 
@@ -1025,21 +1046,21 @@ impl GameState {
     pub fn pause_game(&mut self) {
         SoundState::stop_all();
 
-        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause.bits())) == 0 {
+        if !self.game_status.contains(StatusFlag::Pause) {
             F_OLD_TIMER_STATUS.store(self.timer_running, Ordering::Relaxed);
         }
-        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits())) != 0 {
+        if self.game_status.contains(StatusFlag::Play) {
             self.timer_running = false;
         }
 
-        GAME_STATUS.fetch_or(StatusFlag::Pause.bits(), Ordering::Relaxed);
+        self.game_status.insert(StatusFlag::Pause);
     }
 
     /// Resume the game by restoring the timer state and clearing the pause flag.
     pub fn resume_game(&mut self) {
-        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits())) != 0 {
+        if self.game_status.contains(StatusFlag::Play) {
             self.timer_running = F_OLD_TIMER_STATUS.load(Ordering::Relaxed);
         }
-        GAME_STATUS.fetch_and(!(StatusFlag::Pause.bits()), Ordering::Relaxed);
+        self.game_status.remove(StatusFlag::Pause);
     }
 }

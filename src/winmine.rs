@@ -18,9 +18,9 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, DEFAULT_PLAYER_NAME, DRAG_ACTIVE, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
-    MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE,
-    MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
+    BASE_DPI, DEFAULT_PLAYER_NAME, DRAG_ACTIVE, GAME_NAME, IGNORE_NEXT_CLICK, MSG_CREDIT,
+    MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, UI_DPI,
+    WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -31,7 +31,7 @@ use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, SoundState, read_preferences,
     write_preferences,
 };
-use crate::rtns::{AdjustFlag, GameState, ID_TIMER, preferences_mutex};
+use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag, preferences_mutex};
 use crate::util::{IconId, StateLock, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
@@ -282,7 +282,7 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
         DRAG_ACTIVE.store(false, Ordering::Relaxed);
-        if status_play() {
+        if self.state.read().game_status.contains(StatusFlag::Play) {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
             self.state.write().track_mouse(self.wnd.hwnd(), -2, -2)?;
@@ -353,7 +353,7 @@ impl WinMineMainWindow {
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
         if DRAG_ACTIVE.load(Ordering::Relaxed) {
             // If the user is dragging, track the mouse position
-            if status_play() {
+            if self.state.read().game_status.contains(StatusFlag::Play) {
                 self.state.write().track_mouse(
                     self.wnd.hwnd(),
                     self.x_box_from_xpos(point.x),
@@ -377,7 +377,9 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if handling the right button down failed.
     fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
         // Ignore right-clicks if the next click is set to be ignored
-        if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) || !status_play() {
+        if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed)
+            || !self.state.read().game_status.contains(StatusFlag::Play)
+        {
             return Ok(());
         }
 
@@ -406,16 +408,15 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `command` - The system command identifier.
     fn handle_syscommand(&self, command: SC) {
-        // Isolate the system command identifier by masking out the lower 4 bits.
-        //let command = (sys_cmd & 0xFFF0) as u32;
+        let state = &mut self.state.write();
         if command == SC::MINIMIZE {
-            self.state.write().pause_game();
-            set_status_pause();
-            set_status_icon();
+            state.pause_game();
+            state.game_status.insert(StatusFlag::Pause);
+            state.game_status.insert(StatusFlag::Minimized);
         } else if command == SC::RESTORE {
-            clr_status_pause();
-            clr_status_icon();
-            self.state.write().resume_game();
+            state.game_status.remove(StatusFlag::Pause);
+            state.game_status.remove(StatusFlag::Minimized);
+            state.resume_game();
             IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
         }
     }
@@ -424,7 +425,12 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
     fn handle_window_pos_changed(&self, pos: &WINDOWPOS) {
-        if status_icon() {
+        if self
+            .state
+            .read()
+            .game_status
+            .contains(StatusFlag::Minimized)
+        {
             return;
         }
 
@@ -835,7 +841,7 @@ impl WinMineMainWindow {
                     // However, if a chord is already active, end the chord instead
                     self2.state.write().chord_active = !self2.state.read().chord_active;
                 }
-                if status_play() {
+                if self2.state.read().game_status.contains(StatusFlag::Play) {
                     self2.begin_primary_button_drag()?;
                     self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords)?;
                 }
@@ -867,7 +873,7 @@ impl WinMineMainWindow {
                 if l_btn.vkey_code.has(MK::RBUTTON) || l_btn.vkey_code.has(MK::SHIFT) {
                     self2.state.write().chord_active = true;
                 }
-                if status_play() {
+                if self2.state.read().game_status.contains(StatusFlag::Play) {
                     self2.begin_primary_button_drag()?;
                     self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords)?;
                 }
@@ -1189,42 +1195,6 @@ pub fn run_winmine(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>>
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Unhandled error during main window execution: {e}").into()),
     }
-}
-
-// TODO: Move GAME_STATUS to the GameState struct.
-
-/// Returns whether the game is currently in the 'icon' (minimized) status.
-/// # Returns
-/// True if the game is in icon status, false otherwise.
-fn status_icon() -> bool {
-    GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Minimized.bits()) != 0
-}
-
-/// Returns whether the game is currently in play status.
-/// # Returns
-/// True if the game is in play status, false otherwise.
-fn status_play() -> bool {
-    GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits()) != 0
-}
-
-/// Sets the play status flag.
-fn set_status_pause() {
-    GAME_STATUS.fetch_or(StatusFlag::Pause.bits(), Ordering::Relaxed);
-}
-
-/// Clears the pause status flag.
-fn clr_status_pause() {
-    GAME_STATUS.fetch_and(!(StatusFlag::Pause.bits()), Ordering::Relaxed);
-}
-
-/// Sets the status icon flag.
-fn set_status_icon() {
-    GAME_STATUS.fetch_or(StatusFlag::Minimized.bits(), Ordering::Relaxed);
-}
-
-/// Clears the status icon flag.
-fn clr_status_icon() {
-    GAME_STATUS.fetch_and(!(StatusFlag::Minimized.bits()), Ordering::Relaxed);
 }
 
 /// Struct containing the state shared by the Preferences dialog
