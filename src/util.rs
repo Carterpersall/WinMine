@@ -182,7 +182,7 @@ impl WinMineMainWindow {
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
         let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
         self.wnd.hwnd().SetMenu(menu_arg)?;
-        self.adjust_window(AdjustFlag::Resize as i32)?;
+        self.adjust_window(AdjustFlag::Resize)?;
 
         Ok(())
     }

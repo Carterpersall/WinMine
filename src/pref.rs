@@ -218,14 +218,8 @@ pub struct Pref {
 /// # Arguments
 /// * `handle` - Open registry key handle
 /// * `key` - Preference key to read
-/// * `val_default` - Default value if the read fails
-/// * `val_min` - Minimum allowed value
-/// * `val_max` - Maximum allowed value
 /// # Returns
-/// The retrieved integer value, clamped within the specified range
-///
-/// TODO: Change return type to option or result so this function does not need to handle defaults.
-/// TODO: Should this function take bounds as arguments, or should clamping be done by the caller?
+/// The retrieved integer value, or an error if reading failed
 pub fn read_int(handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
     // Get the name of the preference key
     let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {

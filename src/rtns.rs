@@ -3,6 +3,7 @@
 
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, Ordering};
+use core::ops::BitOrAssign;
 use std::sync::{Mutex, OnceLock};
 
 use winsafe::co::WM;
@@ -70,14 +71,36 @@ const I_STEP_MAX: usize = 100;
 /// Timer identifier used for the per-second gameplay timer.
 pub const ID_TIMER: usize = 1;
 
-/// Window-adjustment flags.
-///
-/// TODO: Are these flags needed?
-#[repr(i32)]
+/// Packed flags indicating adjustments needed for the main window.
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum AdjustFlag {
-    Resize = 0x02,
-    Display = 0x04,
+    /// Indicate that a window resize is needed.
+    Resize = 0b01,
+    /// Indicate that a display refresh is needed.
+    Redraw = 0b10,
+    /// Indicate that both a resize and redraw are needed.
+    ResizeAndRedraw = 0b11,
+}
+
+impl BitOrAssign for AdjustFlag {
+    /// Combine two `AdjustFlag` values using bitwise OR.
+    /// # Arguments
+    /// * `rhs` - The right-hand side `AdjustFlag` to combine with.
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = match (*self as u8) | (rhs as u8) {
+            0b01 => AdjustFlag::Resize,
+            0b10 => AdjustFlag::Redraw,
+            0b11 => AdjustFlag::ResizeAndRedraw,
+            // Unreachable, but handle just in case
+            _ => AdjustFlag::ResizeAndRedraw,
+        };
+    }
+}
+
+impl AdjustFlag {
+    pub const fn contains(&self, other: AdjustFlag) -> bool {
+        ((*self as u8) & (other as u8)) != 0
+    }
 }
 
 /// Shift applied when converting x/y to the packed board index.
@@ -810,9 +833,9 @@ impl WinMineMainWindow {
         };
 
         let f_adjust = if pref_width != x_prev || pref_height != y_prev {
-            AdjustFlag::Resize as i32 | AdjustFlag::Display as i32
+            AdjustFlag::ResizeAndRedraw
         } else {
-            AdjustFlag::Display as i32
+            AdjustFlag::Redraw
         };
 
         self.state.write().board_width = pref_width;

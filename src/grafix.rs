@@ -531,32 +531,32 @@ enum BorderStyle {
     Flat = 0b10,
 }
 
-/// Set the pen for drawing based on the normal flag.
-///
-/// TODO: Should this be moved into an impl for BorderStyle?
-/// # Arguments
-/// * `hdc` - The device context to set the pen on.
-/// * `f_normal` - The normal flag determining the pen style.
-/// # Returns
-/// `Ok(())` if successful, or an error if setting the pen failed.
-fn set_border_pen(hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
-    // Select the appropriate pen based on the border style
-    if border_style == BorderStyle::Sunken {
-        // Use cached white pen for sunken borders
-        if let Some(ref white_pen) = grafix_state().h_white_pen {
-            // Note: This somehow does not cause a resource leak
-            hdc.SelectObject(&**white_pen)
-                .map(|mut guard| guard.leak())?;
+impl BorderStyle {
+    /// Set the pen for drawing based on the normal flag.
+    /// # Arguments
+    /// * `hdc` - The device context to set the pen on.
+    /// * `f_normal` - The normal flag determining the pen style.
+    /// # Returns
+    /// `Ok(())` if successful, or an error if setting the pen failed.
+    fn set_border_pen(self, hdc: &HDC) -> AnyResult<()> {
+        // Select the appropriate pen based on the border style
+        if self == BorderStyle::Sunken {
+            // Use cached white pen for sunken borders
+            if let Some(ref white_pen) = grafix_state().h_white_pen {
+                // Note: This somehow does not cause a resource leak
+                hdc.SelectObject(&**white_pen)
+                    .map(|mut guard| guard.leak())?;
+            }
+        } else {
+            // Use cached gray pen for raised and flat borders
+            if let Some(ref gray_pen) = grafix_state().h_gray_pen {
+                // Note: This somehow does not cause a resource leak
+                hdc.SelectObject(&**gray_pen)
+                    .map(|mut guard| guard.leak())?;
+            }
         }
-    } else {
-        // Use cached gray pen for raised and flat borders
-        if let Some(ref gray_pen) = grafix_state().h_gray_pen {
-            // Note: This somehow does not cause a resource leak
-            hdc.SelectObject(&**gray_pen)
-                .map(|mut guard| guard.leak())?;
-        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Draw a beveled border rectangle onto the provided device context.
@@ -581,7 +581,7 @@ fn draw_border(
 ) -> AnyResult<()> {
     let mut i = 0;
     // Set the initial pen style based on given border style
-    set_border_pen(hdc, border_style)?;
+    border_style.set_border_pen(hdc)?;
 
     // Draw the top and left edges
     while i < width {
@@ -597,14 +597,12 @@ fn draw_border(
 
     // Switch pen style for bottom and right edges if not flat
     if border_style != BorderStyle::Flat {
-        set_border_pen(
-            hdc,
-            if border_style == BorderStyle::Sunken {
-                BorderStyle::Raised
-            } else {
-                BorderStyle::Sunken
-            },
-        )?;
+        if border_style == BorderStyle::Sunken {
+            BorderStyle::Raised
+        } else {
+            BorderStyle::Sunken
+        }
+        .set_border_pen(hdc)?;
     }
 
     // Draw the bottom and right edges
@@ -959,8 +957,6 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
 /// * `color_on` - Whether color mode is enabled.
 /// # Returns
 /// Optionally, a tuple containing the resource handle and a pointer to the bitmap data.
-///
-/// TODO: Could we return a BITMAPINFO reference instead of a raw pointer?
 fn load_bitmap_resource(
     hinst: &HINSTANCE,
     id: BitmapId,

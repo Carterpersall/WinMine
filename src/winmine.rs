@@ -10,7 +10,7 @@ use windows_sys::Win32::Data::HtmlHelp::{
 };
 
 use winsafe::co::{
-    BN, DLGID, GWLP, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS, WS_EX,
+    BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS,
 };
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
@@ -525,7 +525,7 @@ impl WinMineMainWindow {
     ///
     /// TODO: Make `f_adjust` an enum
     /// TODO: This function is a mess full of unreachable branches, clean it up.
-    pub fn adjust_window(&self, mut f_adjust: i32) -> AnyResult<()> {
+    pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Get the current menu handle
         let menu_handle = self.wnd.hwnd().GetMenu();
 
@@ -554,23 +554,23 @@ impl WinMineMainWindow {
             right: dx_window,
             bottom: dy_window,
         };
-        // Get the current window styles
-        let dw_style = self.wnd.hwnd().GetWindowLongPtr(GWLP::STYLE);
-        let dw_ex_style = self.wnd.hwnd().GetWindowLongPtr(GWLP::EXSTYLE);
         // Adjust the window rect for the current DPI
         let adjusted = AdjustWindowRectExForDpi(
             desired,
-            unsafe { WS::from_raw(dw_style as _) },
+            self.wnd.hwnd().style(),
             menu_visible,
-            unsafe { WS_EX::from_raw(dw_ex_style as _) },
+            self.wnd.hwnd().style_ex(),
             UI_DPI.load(Ordering::Relaxed),
         )?;
 
+        // Calculate total window size including non-client areas
         let cx_total = adjusted.right - adjusted.left;
         let cy_total = adjusted.bottom - adjusted.top;
+        // Calculate frame adjustments needed to fit the desired client area
         let frame_extra = max(0, cx_total - dx_window);
         let dyp_adjust = max(0, cy_total - dy_window);
 
+        // Get the screen width
         let cx_screen = {
             let mut result = GetSystemMetrics(SM::CXVIRTUALSCREEN);
             if result == 0 {
@@ -578,11 +578,13 @@ impl WinMineMainWindow {
             }
             result
         };
+        // If the window exceeds the screen width, adjust its x position to be within bounds
         let mut excess = x_window + dx_window + frame_extra - cx_screen;
         if excess > 0 {
-            f_adjust |= AdjustFlag::Resize as i32;
+            f_adjust |= AdjustFlag::Resize;
             x_window -= excess;
         }
+        // Get the screen height
         let cy_screen = {
             let mut result = GetSystemMetrics(SM::CYVIRTUALSCREEN);
             if result == 0 {
@@ -590,13 +592,15 @@ impl WinMineMainWindow {
             }
             result
         };
+        // If the window exceeds the screen height, adjust its y position to be within bounds
         excess = y_window + dy_window + dyp_adjust - cy_screen;
         if excess > 0 {
-            f_adjust |= AdjustFlag::Resize as i32;
+            f_adjust |= AdjustFlag::Resize;
             y_window -= excess;
         }
 
-        if (f_adjust & AdjustFlag::Resize as i32) != 0 {
+        // If a window resize has been requested, move and resize the window accordingly
+        if f_adjust.contains(AdjustFlag::Resize) {
             self.wnd.hwnd().MoveWindow(
                 POINT {
                     x: x_window,
@@ -610,7 +614,8 @@ impl WinMineMainWindow {
             )?;
         }
 
-        if (f_adjust & AdjustFlag::Display as i32) != 0 {
+        // If a display refresh has been requested, invalidate the window's client area
+        if f_adjust.contains(AdjustFlag::Redraw) {
             let rect = RECT {
                 left: 0,
                 top: 0,
@@ -620,6 +625,7 @@ impl WinMineMainWindow {
             self.wnd.hwnd().InvalidateRect(Some(&rect), true)?;
         }
 
+        // Update preferences with the new window position
         let mut prefs = preferences_mutex();
         prefs.wnd_x_pos = x_window;
         prefs.wnd_y_pos = y_window;
@@ -665,7 +671,7 @@ impl WinMineMainWindow {
                 UI_DPI.store(if dpi == 0 { BASE_DPI } else { dpi }, Ordering::Relaxed);
 
                 // Ensure the client area matches the board size for the active DPI.
-                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32)?;
+                self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
 
                 // Initialize local resources.
                 self2.state.write().init_game(self2.wnd.hwnd())?;
@@ -718,7 +724,7 @@ impl WinMineMainWindow {
                     eprintln!("Failed to reload bitmaps after DPI change: {e}");
                 }
 
-                self2.adjust_window(AdjustFlag::Resize as i32 | AdjustFlag::Display as i32)?;
+                self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
                 Ok(0)
             }
         });
