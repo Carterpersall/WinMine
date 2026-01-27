@@ -18,9 +18,9 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, CHORD_ACTIVE, DEFAULT_PLAYER_NAME, DRAG_ACTIVE, GAME_NAME, GAME_STATUS,
-    IGNORE_NEXT_CLICK, MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT,
-    MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
+    BASE_DPI, DEFAULT_PLAYER_NAME, DRAG_ACTIVE, GAME_NAME, GAME_STATUS, IGNORE_NEXT_CLICK,
+    MSG_CREDIT, MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE,
+    MSG_VERSION_NAME, StatusFlag, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -288,7 +288,7 @@ impl WinMineMainWindow {
             self.state.write().track_mouse(self.wnd.hwnd(), -2, -2)?;
         }
         // If a chord operation was active, end it now
-        CHORD_ACTIVE.store(false, Ordering::Relaxed);
+        self.state.write().chord_active = false;
         Ok(())
     }
 
@@ -383,8 +383,9 @@ impl WinMineMainWindow {
 
         // If the left and right buttons are both down, and the middle button is not down, start a chord operation
         if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
-            CHORD_ACTIVE.store(true, Ordering::Relaxed);
-            self.state.write().track_mouse(self.wnd.hwnd(), -3, -3)?;
+            let state = &mut self.state.write();
+            state.chord_active = true;
+            state.track_mouse(self.wnd.hwnd(), -3, -3)?;
             self.begin_primary_button_drag()?;
             self.handle_mouse_move(btn, point)?;
             return Ok(());
@@ -832,7 +833,7 @@ impl WinMineMainWindow {
                 if m_btn.vkey_code.has(MK::MBUTTON) {
                     // If the middle button is pressed, start a chord operation
                     // However, if a chord is already active, end the chord instead
-                    CHORD_ACTIVE.fetch_not(Ordering::Relaxed);
+                    self2.state.write().chord_active = !self2.state.read().chord_active;
                 }
                 if status_play() {
                     self2.begin_primary_button_drag()?;
@@ -864,7 +865,7 @@ impl WinMineMainWindow {
                 }
                 // If the right button or the shift key is also down, start a chord operation
                 if l_btn.vkey_code.has(MK::RBUTTON) || l_btn.vkey_code.has(MK::SHIFT) {
-                    CHORD_ACTIVE.store(true, Ordering::Relaxed);
+                    self2.state.write().chord_active = true;
                 }
                 if status_play() {
                     self2.begin_primary_button_drag()?;
@@ -1190,40 +1191,40 @@ pub fn run_winmine(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>>
     }
 }
 
-// TODO: Move GAME_STATUS and CHORD_ACTIVE to a shared struct
+// TODO: Move GAME_STATUS to the GameState struct.
 
 /// Returns whether the game is currently in the 'icon' (minimized) status.
 /// # Returns
 /// True if the game is in icon status, false otherwise.
 fn status_icon() -> bool {
-    GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Icon as i32) != 0
+    GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Minimized.bits()) != 0
 }
 
 /// Returns whether the game is currently in play status.
 /// # Returns
 /// True if the game is in play status, false otherwise.
 fn status_play() -> bool {
-    GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32) != 0
+    GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits()) != 0
 }
 
 /// Sets the play status flag.
 fn set_status_pause() {
-    GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
+    GAME_STATUS.fetch_or(StatusFlag::Pause.bits(), Ordering::Relaxed);
 }
 
 /// Clears the pause status flag.
 fn clr_status_pause() {
-    GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
+    GAME_STATUS.fetch_and(!(StatusFlag::Pause.bits()), Ordering::Relaxed);
 }
 
 /// Sets the status icon flag.
 fn set_status_icon() {
-    GAME_STATUS.fetch_or(StatusFlag::Icon as i32, Ordering::Relaxed);
+    GAME_STATUS.fetch_or(StatusFlag::Minimized.bits(), Ordering::Relaxed);
 }
 
 /// Clears the status icon flag.
 fn clr_status_icon() {
-    GAME_STATUS.fetch_and(!(StatusFlag::Icon as i32), Ordering::Relaxed);
+    GAME_STATUS.fetch_and(!(StatusFlag::Minimized.bits()), Ordering::Relaxed);
 }
 
 /// Struct containing the state shared by the Preferences dialog

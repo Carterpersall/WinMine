@@ -10,7 +10,7 @@ use winsafe::co::WM;
 use winsafe::msg::WndMsg;
 use winsafe::{AnyResult, HWND, POINT, prelude::*};
 
-use crate::globals::{CHORD_ACTIVE, GAME_STATUS, StatusFlag};
+use crate::globals::{GAME_STATUS, StatusFlag};
 use crate::grafix::{
     ButtonSprite, display_button, draw_block, draw_bomb_count, draw_grid, draw_timer, load_bitmaps,
 };
@@ -165,6 +165,15 @@ pub struct GameState {
     pub boxes_visited: u16,
     /// Current cursor position in board coordinates
     pub cursor_pos: POINT,
+    /// Indicates whether a chord operation is currently active.
+    ///
+    /// A chord operation depresses a 3x3 area of cells around the cursor.
+    ///
+    /// A chord operation will begin if:
+    /// - Both left and right buttons are held down, and the middle button is not held down
+    /// - Only the middle button is held down
+    /// - Shift is held _then_ left button is held down
+    pub chord_active: bool,
     /// Packed board cell values stored row-major including border
     ///
     /// TODO: Replace with a better data structure, perhaps using a struct?
@@ -189,6 +198,7 @@ impl GameState {
             secs_elapsed: 0,
             boxes_visited: 0,
             cursor_pos: POINT::default(),
+            chord_active: false,
             board_cells: [BlockCell::BlankUp as i8; C_BLK_MAX],
             total_bombs: 0,
             boxes_to_win: 0,
@@ -592,7 +602,7 @@ impl GameState {
         } else {
             Tune::LoseGame.play(&hwnd.hinstance());
         }
-        GAME_STATUS.store(StatusFlag::Demo as i32, Ordering::Relaxed);
+        GAME_STATUS.store(StatusFlag::GameOver.bits(), Ordering::Relaxed);
 
         if win {
             self.record_win_if_needed(hwnd);
@@ -869,7 +879,7 @@ impl WinMineMainWindow {
         self.state.write().bombs_left = total_bombs;
         self.state.write().boxes_visited = 0;
         self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
-        GAME_STATUS.store(StatusFlag::Play as i32, Ordering::Relaxed);
+        GAME_STATUS.store(StatusFlag::Play.bits(), Ordering::Relaxed);
 
         draw_bomb_count(&self.wnd.hwnd().GetDC()?, self.state.read().bombs_left)?;
 
@@ -898,7 +908,7 @@ impl GameState {
         let x_max = self.board_width;
 
         // Check if a chord operation is active
-        if CHORD_ACTIVE.load(Ordering::Relaxed) {
+        if self.chord_active {
             // Determine if the old and new positions are within range
             let valid_new = self.in_range(pt_new.x, pt_new.y);
             let valid_old = self.in_range(self.cursor_pos.x, self.cursor_pos.y);
@@ -994,12 +1004,12 @@ impl GameState {
             }
 
             // If the game is not in play mode, reset the cursor position to a location off the board
-            if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) == 0 {
+            if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits())) == 0 {
                 self.cursor_pos = POINT { x: -2, y: -2 };
             }
 
             // Determine whether to chord (select adjacent squares) or step (reveal a single square)
-            if CHORD_ACTIVE.load(Ordering::Relaxed) {
+            if self.chord_active {
                 self.step_block(hwnd, x_pos, y_pos)?;
             } else if self.in_range_step(x_pos, y_pos) {
                 self.step_square(hwnd, x_pos, y_pos)?;
@@ -1015,21 +1025,21 @@ impl GameState {
     pub fn pause_game(&mut self) {
         SoundState::stop_all();
 
-        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause as i32)) == 0 {
+        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Pause.bits())) == 0 {
             F_OLD_TIMER_STATUS.store(self.timer_running, Ordering::Relaxed);
         }
-        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
+        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits())) != 0 {
             self.timer_running = false;
         }
 
-        GAME_STATUS.fetch_or(StatusFlag::Pause as i32, Ordering::Relaxed);
+        GAME_STATUS.fetch_or(StatusFlag::Pause.bits(), Ordering::Relaxed);
     }
 
     /// Resume the game by restoring the timer state and clearing the pause flag.
     pub fn resume_game(&mut self) {
-        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) != 0 {
+        if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play.bits())) != 0 {
             self.timer_running = F_OLD_TIMER_STATUS.load(Ordering::Relaxed);
         }
-        GAME_STATUS.fetch_and(!(StatusFlag::Pause as i32), Ordering::Relaxed);
+        GAME_STATUS.fetch_and(!(StatusFlag::Pause.bits()), Ordering::Relaxed);
     }
 }

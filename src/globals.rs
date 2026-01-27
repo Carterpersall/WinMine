@@ -1,6 +1,8 @@
 //! Global constants and variables used throughout the application.
 
-use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU32};
+use core::sync::atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicU32};
+
+use bitflags::bitflags;
 
 /* -------------------- */
 /* Constant Definitions */
@@ -37,18 +39,18 @@ pub const MSG_VERSION_NAME: &str = "Minesweeper";
 /// Credit string used in the About box.
 pub const MSG_CREDIT: &str = "by Robert Donner and Curt Johnson";
 
-/// Flags defining the current game status.
-#[repr(i32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum StatusFlag {
-    /// Game is currently being played.
-    Play = 0x01,
-    /// Game is currently paused.
-    Pause = 0x02,
-    /// Game is minimized.
-    Icon = 0x08,
-    /// Demo mode is active.
-    Demo = 0x10,
+bitflags! {
+    /// Flags defining the current game status.
+    pub struct StatusFlag: u8 {
+        /// Game is currently being played.
+        const Play = 0b0001;
+        /// Game is currently paused.
+        const Pause = 0b0010;
+        /// Game is currently minimized.
+        const Minimized = 0b0100;
+        /// Game is over (win or loss).
+        const GameOver = 0b1000;
+    }
 }
 
 /* ---------------- */
@@ -65,16 +67,6 @@ pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 /// Tracks whether a drag operation is active.
 pub static DRAG_ACTIVE: AtomicBool = AtomicBool::new(false);
 
-/// Signals that a chord operation is currently active.
-///
-/// A chord operation depresses a 3x3 area of cells around the cursor.
-///
-/// A chord operation will begin if:
-/// - Both left and right buttons are held down, and the middle button is not held down
-/// - Only the middle button is held down
-/// - Shift is held _then_ left button is held down
-pub static CHORD_ACTIVE: AtomicBool = AtomicBool::new(false);
-
 /// Signals that the next click should be ignored (used after window activation).
 pub static IGNORE_NEXT_CLICK: AtomicBool = AtomicBool::new(false);
 
@@ -85,5 +77,5 @@ pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);
 pub static WINDOW_HEIGHT: AtomicI32 = AtomicI32::new(0);
 
 /// Aggregated status flags shared between modules.
-pub static GAME_STATUS: AtomicI32 =
-    AtomicI32::new(StatusFlag::Icon as i32 | StatusFlag::Demo as i32);
+pub static GAME_STATUS: AtomicU8 =
+    AtomicU8::new(StatusFlag::Minimized.bits() | StatusFlag::GameOver.bits());
