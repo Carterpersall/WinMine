@@ -2,7 +2,6 @@
 //! This includes board representation, game status tracking, and related utilities.
 
 use core::cmp::{max, min};
-use core::ops::BitOrAssign;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -22,8 +21,7 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 /// Encoded board values used to track each tile state.
 ///
 /// These values are used to get the visual representation of each cell, in reverse order.
-#[repr(u8)]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone)]
 pub enum BlockCell {
     /// A blank cell with no adjacent bombs.
     Blank = 0,
@@ -48,6 +46,8 @@ pub enum BlockCell {
 }
 
 /// Bit masks applied to the packed board cell value.
+///
+/// TODO: Make this a struct instead of an enum.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BlockMask {
@@ -71,35 +71,16 @@ const I_STEP_MAX: usize = 100;
 /// Timer identifier used for the per-second gameplay timer.
 pub const ID_TIMER: usize = 1;
 
-/// Packed flags indicating adjustments needed for the main window.
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum AdjustFlag {
-    /// Indicate that a window resize is needed.
-    Resize = 0b01,
-    /// Indicate that a display refresh is needed.
-    Redraw = 0b10,
-    /// Indicate that both a resize and redraw are needed.
-    ResizeAndRedraw = 0b11,
-}
-
-impl BitOrAssign for AdjustFlag {
-    /// Combine two `AdjustFlag` values using bitwise OR.
-    /// # Arguments
-    /// * `rhs` - The right-hand side `AdjustFlag` to combine with.
-    fn bitor_assign(&mut self, rhs: Self) {
-        *self = match (*self as u8) | (rhs as u8) {
-            0b01 => AdjustFlag::Resize,
-            0b10 => AdjustFlag::Redraw,
-            0b11 => AdjustFlag::ResizeAndRedraw,
-            // Unreachable, but handle just in case
-            _ => AdjustFlag::ResizeAndRedraw,
-        };
-    }
-}
-
-impl AdjustFlag {
-    pub const fn contains(&self, other: AdjustFlag) -> bool {
-        ((*self as u8) & (other as u8)) != 0
+bitflags! {
+    /// Packed flags indicating adjustments needed for the main window.
+    #[derive(Clone)]
+    pub struct AdjustFlag: u8 {
+        /// Indicate that a window resize is needed.
+        const Resize = 0b01;
+        /// Indicate that a display refresh is needed.
+        const Redraw = 0b10;
+        /// Indicate that both a resize and redraw are needed.
+        const ResizeAndRedraw = 0b11;
     }
 }
 
@@ -386,6 +367,8 @@ impl GameState {
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// * `block` - The raw block value to set.
+    ///
+    /// TODO: make `block` a `BlockCell` instead of u8
     const fn set_raw_block(&mut self, x: i32, y: i32, block: u8) {
         // Keep only the data bits plus the Visit bit (when present).
         let masked = block & (BlockMask::Data as u8 | BlockMask::Visit as u8);
@@ -398,6 +381,8 @@ impl GameState {
     /// * `y` - The Y coordinate.
     /// # Returns
     /// The data bits of the block.
+    ///
+    /// TODO: Return a `BlockCell` instead of u8
     fn block_data(&self, x: i32, y: i32) -> u8 {
         self.block_value(x, y) & BlockMask::Data as u8
     }

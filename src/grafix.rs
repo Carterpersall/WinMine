@@ -302,8 +302,6 @@ impl From<i16> for LEDSprite {
 /// * `led_index` - The index of the LED digit to draw.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-///
-/// TODO: Could `led_index` be an enum?
 fn draw_led(hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
     let state = grafix_state();

@@ -50,6 +50,8 @@ const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
 static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
 
 /// Icon resources embedded in the executable.
+///
+/// TODO: Should all resource IDs be merged into a single enum?
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum IconId {

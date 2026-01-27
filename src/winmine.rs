@@ -520,9 +520,6 @@ impl WinMineMainWindow {
     /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
     /// # Returns
     /// An `Ok(())` if successful, or an error if adjustment failed.
-    ///
-    /// TODO: Make `f_adjust` an enum
-    /// TODO: This function is a mess full of unreachable branches, clean it up.
     pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Get the current menu handle
         let menu_handle = self.wnd.hwnd().GetMenu();
