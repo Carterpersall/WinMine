@@ -6,6 +6,7 @@ use winsafe::{AnyResult, HKEY, HWND, RegistryValue, SysResult};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::rtns::preferences_mutex;
+use crate::sound::Sound;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
@@ -52,16 +53,6 @@ pub enum PrefKey {
     Name3 = 16,
     /// Flag indicating if the user has played the game before.
     AlreadyPlayed = 17,
-}
-
-/// Sound effect preferences.
-#[repr(i32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum SoundState {
-    /// Sound effects are disabled.
-    Off = 2,
-    /// Sound effects are enabled.
-    On = 3,
 }
 
 /// Menu visibility preferences.
@@ -195,7 +186,7 @@ pub struct Pref {
     /// Y position of the main window.
     pub wnd_y_pos: i32,
     /// Whether sound effects are enabled.
-    pub sound_state: SoundState,
+    pub sound_enabled: bool,
     /// Whether right-click marking is enabled.
     pub mark_enabled: bool,
     /// Whether the game timer is enabled.
@@ -293,10 +284,7 @@ pub fn read_preferences() -> SysResult<()> {
         .clamp(0, 1024) as i32;
 
     // Get sound, marking, ticking, and menu preferences
-    prefs.sound_state = match read_int(&key_guard, PrefKey::Sound) {
-        Ok(val) if val == SoundState::On as u32 => SoundState::On,
-        _ => SoundState::Off,
-    };
+    prefs.sound_enabled = matches!(read_int(&key_guard, PrefKey::Sound), Ok(3));
     prefs.mark_enabled = read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
     prefs.timer = read_int(&key_guard, PrefKey::Tick).unwrap_or(0) != 0;
     prefs.menu_mode = MenuMode::from(read_int(&key_guard, PrefKey::Menu).unwrap_or(0));
@@ -324,8 +312,8 @@ pub fn read_preferences() -> SysResult<()> {
     prefs.color = read_int(&key_guard, PrefKey::Color).unwrap_or(default_color) != 0;
 
     // If sound is enabled, initialize the sound system
-    if prefs.sound_state == SoundState::On {
-        prefs.sound_state = SoundState::init();
+    if prefs.sound_enabled {
+        prefs.sound_enabled = Sound::init();
     }
     Ok(())
 }
@@ -357,7 +345,11 @@ pub fn write_preferences() -> AnyResult<()> {
     write_int(&key_guard, PrefKey::AlreadyPlayed, 1)?;
 
     write_int(&key_guard, PrefKey::Color, u32::from(prefs.color))?;
-    write_int(&key_guard, PrefKey::Sound, prefs.sound_state as u32)?;
+    write_int(
+        &key_guard,
+        PrefKey::Sound,
+        if prefs.sound_enabled { 3 } else { 2 },
+    )?;
     write_int(&key_guard, PrefKey::Xpos, prefs.wnd_x_pos as u32)?;
     write_int(&key_guard, PrefKey::Ypos, prefs.wnd_y_pos as u32)?;
 

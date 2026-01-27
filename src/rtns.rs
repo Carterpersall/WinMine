@@ -13,8 +13,8 @@ use winsafe::{AnyResult, HWND, POINT, prelude::*};
 use crate::grafix::{
     ButtonSprite, display_button, draw_block, draw_bomb_count, draw_grid, draw_timer, load_bitmaps,
 };
-use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref, SoundState};
-use crate::sound::Tune;
+use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref};
+use crate::sound::Sound;
 use crate::util::rnd;
 use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 
@@ -123,7 +123,7 @@ pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
                 width: 0,
                 wnd_x_pos: 0,
                 wnd_y_pos: 0,
-                sound_state: SoundState::Off,
+                sound_enabled: false,
                 mark_enabled: false,
                 timer: false,
                 menu_mode: MenuMode::AlwaysOn,
@@ -604,9 +604,9 @@ impl GameState {
         )?;
         if win {
             self.bombs_left = 0;
-            Tune::WinGame.play(&hwnd.hinstance());
+            Sound::WinGame.play(&hwnd.hinstance());
         } else {
-            Tune::LoseGame.play(&hwnd.hinstance());
+            Sound::LoseGame.play(&hwnd.hinstance());
         }
         self.game_status = StatusFlag::GameOver;
 
@@ -825,7 +825,7 @@ impl GameState {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
             draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
-            Tune::Tick.play(&hwnd.hinstance());
+            Sound::Tick.play(&hwnd.hinstance());
         }
         Ok(())
     }
@@ -1000,7 +1000,7 @@ impl GameState {
             // If the number of visits and elapsed seconds are both zero, the game has not started yet
             if self.boxes_visited == 0 && self.secs_elapsed == 0 {
                 // Play the tick sound, display the initial time, and start the timer
-                Tune::Tick.play(&hwnd.hinstance());
+                Sound::Tick.play(&hwnd.hinstance());
                 self.secs_elapsed = 1;
                 draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
                 self.timer_running = true;
@@ -1029,7 +1029,7 @@ impl GameState {
 
     /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.
     pub fn pause_game(&mut self) {
-        SoundState::stop_all();
+        Sound::stop_all();
 
         if !self.game_status.contains(StatusFlag::Pause) {
             F_OLD_TIMER_STATUS.store(self.timer_running, Ordering::Relaxed);

@@ -28,10 +28,10 @@ use crate::grafix::{
     load_bitmaps, scale_dpi,
 };
 use crate::pref::{
-    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, SoundState, read_preferences,
-    write_preferences,
+    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, read_preferences, write_preferences,
 };
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag, preferences_mutex};
+use crate::sound::Sound;
 use crate::util::{IconId, StateLock, do_help, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
@@ -302,26 +302,22 @@ impl WinMineMainWindow {
     fn handle_keydown(&self, key: VK) -> AnyResult<()> {
         match key {
             code if code == VK::F4 => {
-                let current_sound = { preferences_mutex().sound_state };
+                let new_sound = match preferences_mutex().sound_enabled {
+                    true => {
+                        Sound::stop_all();
+                        false
+                    }
+                    false => Sound::init(),
+                };
 
-                if matches!(current_sound, SoundState::On | SoundState::Off) {
-                    let new_sound = match current_sound {
-                        SoundState::On => {
-                            SoundState::stop_all();
-                            SoundState::Off
-                        }
-                        SoundState::Off => SoundState::init(),
-                    };
+                let f_menu = {
+                    let mut prefs = preferences_mutex();
+                    prefs.sound_enabled = new_sound;
+                    prefs.menu_mode
+                };
 
-                    let f_menu = {
-                        let mut prefs = preferences_mutex();
-                        prefs.sound_state = new_sound;
-                        prefs.menu_mode
-                    };
-
-                    UPDATE_INI.store(true, Ordering::Relaxed);
-                    self.set_menu_bar(f_menu)?;
-                }
+                UPDATE_INI.store(true, Ordering::Relaxed);
+                self.set_menu_bar(f_menu)?;
             }
             code if code == VK::F5 => {
                 let menu_value = { preferences_mutex().menu_mode };
@@ -1011,17 +1007,16 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Sound as u16, {
                 let self2 = self.clone();
                 move || {
-                    let current_sound = { preferences_mutex().sound_state };
-                    let new_sound = match current_sound {
-                        SoundState::On => {
-                            SoundState::stop_all();
-                            SoundState::Off
+                    let new_sound = match preferences_mutex().sound_enabled {
+                        true => {
+                            Sound::stop_all();
+                            false
                         }
-                        SoundState::Off => SoundState::init(),
+                        false => Sound::init(),
                     };
                     let f_menu = {
                         let mut prefs = preferences_mutex();
-                        prefs.sound_state = new_sound;
+                        prefs.sound_enabled = new_sound;
                         prefs.menu_mode
                     };
                     UPDATE_INI.store(true, Ordering::Relaxed);

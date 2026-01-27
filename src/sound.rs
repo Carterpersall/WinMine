@@ -5,11 +5,11 @@ use core::ptr::{null, null_mut};
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 use winsafe::HINSTANCE;
 
-use crate::{pref::SoundState, rtns::preferences_mutex};
+use crate::rtns::preferences_mutex;
 
 /// Logical UI tunes that map to embedded wave resources.
 #[repr(u16)]
-pub enum Tune {
+pub enum Sound {
     /// Short tick used for timer and click feedback.
     Tick = 432,
     /// Win jingle played after successfully clearing the board.
@@ -18,14 +18,12 @@ pub enum Tune {
     LoseGame = 434,
 }
 
-impl Tune {
+impl Sound {
     /// Play a specific UI tune using the sounds in the resource file, if sound effects are enabled.
     /// # Arguments
     /// * `tune` - The tune to play
     pub fn play(self, hinst: &HINSTANCE) {
-        let sound_on = { preferences_mutex().sound_state == SoundState::On };
-
-        if sound_on {
+        if preferences_mutex().sound_enabled {
             let resource_ptr = self as usize as *const u16;
             // Playback uses the async flag so the UI thread is never blocked.
             unsafe {
@@ -33,20 +31,14 @@ impl Tune {
             }
         }
     }
-}
 
-impl SoundState {
     /// Initialize the sound system and determine whether sound effects can be played.
     /// # Returns
-    /// A `SoundState` enum indicating whether sound effects can be played.
-    pub fn init() -> SoundState {
+    /// `true` if sound effects can be played, `false` otherwise.
+    pub fn init() -> bool {
         // Attempt to stop any playing sounds; if the API fails we assume the
         // machine cannot play audio and disable sound effects in preferences.
-        if Self::stop_all() {
-            SoundState::On
-        } else {
-            SoundState::Off
-        }
+        Self::stop_all()
     }
 
     /// Stop all currently playing sounds.

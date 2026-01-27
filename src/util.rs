@@ -8,7 +8,7 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use winsafe::co::{HELPW, KEY, REG_OPTION};
 use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
-use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR, SoundState};
+use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
 
@@ -165,7 +165,7 @@ impl WinMineMainWindow {
                 prefs.game_type,
                 prefs.color,
                 prefs.mark_enabled,
-                prefs.sound_state,
+                prefs.sound_enabled,
             )
         };
 
@@ -178,7 +178,7 @@ impl WinMineMainWindow {
 
         menu_check(&hmenu, MenuCommand::Color, color)?;
         menu_check(&hmenu, MenuCommand::Mark, mark)?;
-        menu_check(&hmenu, MenuCommand::Sound, sound == SoundState::On)?;
+        menu_check(&hmenu, MenuCommand::Sound, sound)?;
 
         // Show or hide the menu bar as set in preferences
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
