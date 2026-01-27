@@ -4,7 +4,7 @@
 use core::mem::size_of;
 use core::ptr::null;
 use core::sync::atomic::Ordering::Relaxed;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 use winsafe::{
@@ -161,8 +161,14 @@ static GRAFIX_STATE: OnceLock<Mutex<GrafixState>> = OnceLock::new();
 /// Accessor for the shared graphics state
 /// # Returns
 /// Reference to the Mutex protecting the `GrafixState`
-fn grafix_state() -> &'static Mutex<GrafixState> {
-    GRAFIX_STATE.get_or_init(|| Mutex::new(GrafixState::default()))
+fn grafix_state() -> MutexGuard<'static, GrafixState> {
+    match GRAFIX_STATE
+        .get_or_init(|| Mutex::new(GrafixState::default()))
+        .lock()
+    {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    }
 }
 
 /// Draw a single block at the specified board coordinates.
@@ -174,10 +180,7 @@ fn grafix_state() -> &'static Mutex<GrafixState> {
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
 pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[i8]) -> AnyResult<()> {
-    let state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let state = grafix_state();
     let Some(src) = block_dc(&state, x, y, board) else {
         return Ok(());
     };
@@ -207,10 +210,7 @@ pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[i8]) -> AnyResu
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
 pub fn draw_grid(hdc: &ReleaseDCGuard, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
-    let state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let state = grafix_state();
     let dst_w = scale_dpi(DX_BLK_96);
     let dst_h = scale_dpi(DY_BLK_96);
 
@@ -245,10 +245,7 @@ pub fn draw_grid(hdc: &ReleaseDCGuard, width: i32, height: i32, board: &[i8]) ->
 /// TODO: Could `led_index` be an enum?
 fn draw_led(hdc: &HDC, x: i32, led_index: u16) -> AnyResult<()> {
     // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
-    let state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let state = grafix_state();
     if led_index >= I_LED_MAX as u16 {
         return Ok(());
     }
@@ -357,15 +354,12 @@ fn draw_button(hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
     let dst_h = scale_dpi(DY_BUTTON_96);
     let x = (dx_window - dst_w) / 2;
 
-    let state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
     let idx = sprite as usize;
     if idx >= BUTTON_SPRITE_COUNT {
         return Ok(());
     }
 
+    let state = grafix_state();
     let Some(src) = state.mem_button_dc[idx].as_ref() else {
         return Ok(());
     };
@@ -549,22 +543,14 @@ fn set_border_pen(hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
     // Select the appropriate pen based on the border style
     if border_style == BorderStyle::Sunken {
         // Use cached white pen for sunken borders
-        let state = match grafix_state().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if let Some(ref white_pen) = state.h_white_pen {
+        if let Some(ref white_pen) = grafix_state().h_white_pen {
             // Note: This somehow does not cause a resource leak
             hdc.SelectObject(&**white_pen)
                 .map(|mut guard| guard.leak())?;
         }
     } else {
         // Use cached gray pen for raised and flat borders
-        let state = match grafix_state().lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        if let Some(ref gray_pen) = state.h_gray_pen {
+        if let Some(ref gray_pen) = grafix_state().h_gray_pen {
             // Note: This somehow does not cause a resource leak
             hdc.SelectObject(&**gray_pen)
                 .map(|mut guard| guard.leak())?;
@@ -752,10 +738,7 @@ pub fn draw_screen(hdc: &ReleaseDCGuard, state: &GameState) -> AnyResult<()> {
 /// Ok(()) if successful, or an error if loading resources failed.
 pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
     let color_on = { preferences_mutex().color };
-    let mut state = match grafix_state().lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
+    let mut state = grafix_state();
 
     let Some((h_blks, lp_blks)) =
         load_bitmap_resource(&hwnd.hinstance(), BitmapId::Blocks, color_on)

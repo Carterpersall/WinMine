@@ -970,7 +970,7 @@ impl GameState {
                 }
             }
 
-            // TODO: Why is this check needed here?
+            // If the game is not in play mode, reset the cursor position to a location off the board
             if (GAME_STATUS.load(Ordering::Relaxed) & (StatusFlag::Play as i32)) == 0 {
                 self.cursor_pos = POINT { x: -2, y: -2 };
             }
