@@ -3,9 +3,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
-
-use winsafe::co::{HELPW, KEY, REG_OPTION};
+use winsafe::co::{KEY, REG_OPTION};
 use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
 use crate::pref::{GameType, SZ_WINMINE_REG_STR};
@@ -58,9 +56,6 @@ pub enum IconId {
     /// Main application icon.
     Main = 100,
 }
-
-/// Maximum path buffer used when resolving help files.
-const CCH_MAX_PATHNAME: usize = 250;
 
 /// Seed the RNG with the specified seed value.
 /// # Arguments
@@ -182,54 +177,6 @@ impl WinMineMainWindow {
         self.adjust_window(AdjustFlag::Resize)?;
 
         Ok(())
-    }
-}
-
-/// Display the Help dialog for the given command.
-///
-/// TODO: Refactor this function to only use the help dialog built into the resource file
-/// TODO: Move this function into a help module
-/// # Arguments
-/// * `w_command` - The help command (e.g., HELPONHELP).
-/// * `l_param` - Additional parameter for the help command.
-pub fn do_help(hwnd: &HWND, w_command: HELPW, l_param: u32) {
-    // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
-    let mut buffer = [0u8; CCH_MAX_PATHNAME];
-
-    if w_command == HELPW::HELPONHELP {
-        const HELP_FILE: &[u8] = b"NTHelp.chm\0";
-        buffer[..HELP_FILE.len()].copy_from_slice(HELP_FILE);
-    } else {
-        let exe_path = hwnd.hinstance().GetModuleFileName().unwrap_or_default();
-        let mut bytes = exe_path.into_bytes();
-        if bytes.len() + 1 > CCH_MAX_PATHNAME {
-            bytes.truncate(CCH_MAX_PATHNAME - 1);
-        }
-        bytes.push(0);
-        let len = bytes.len() - 1;
-        buffer[..bytes.len()].copy_from_slice(&bytes);
-
-        let mut dot = None;
-        for i in (0..len).rev() {
-            if buffer[i] == b'.' {
-                dot = Some(i);
-                break;
-            }
-            if buffer[i] == b'\\' {
-                break;
-            }
-        }
-        let pos = dot.unwrap_or(len);
-        const EXT: &[u8] = b".chm\0";
-        let mut i = 0;
-        while i < EXT.len() && pos + i < buffer.len() {
-            buffer[pos + i] = EXT[i];
-            i += 1;
-        }
-    }
-
-    unsafe {
-        HtmlHelpA(hwnd.ptr(), buffer.as_ptr(), l_param, 0);
     }
 }
 

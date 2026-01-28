@@ -5,14 +5,12 @@ use core::ffi::c_void;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use windows_sys::Win32::Data::HtmlHelp::{
-    HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA,
-};
+use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
 
 use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
-    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HELPINFO, HINSTANCE, HWND,
+    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, HWND,
     INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, MSG, POINT, PeekMessage, PtsRc,
     RECT, SIZE, WINDOWPOS, gui, prelude::*,
 };
@@ -26,12 +24,13 @@ use crate::grafix::{
     DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, display_button, draw_screen,
     load_bitmaps, scale_dpi,
 };
+use crate::help::Help;
 use crate::pref::{
     CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, read_preferences, write_preferences,
 };
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag, preferences_mutex};
 use crate::sound::Sound;
-use crate::util::{IconId, StateLock, do_help, get_dlg_int, init_const};
+use crate::util::{IconId, StateLock, get_dlg_int, init_const};
 
 /// Indicates that preferences have changed and should be saved
 static UPDATE_INI: AtomicBool = AtomicBool::new(false);
@@ -125,7 +124,7 @@ enum DialogTemplateId {
 /// Control identifiers shared across dialogs.
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
-enum ControlId {
+pub enum ControlId {
     /// Edit control for board height
     EditHeight = 141,
     /// Edit control for board width
@@ -167,79 +166,6 @@ enum ControlId {
     /// Static text for board width
     TxtWidth = 113,
 }
-
-/// Help context identifiers.
-#[repr(u32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum HelpContextId {
-    /// Edit control for board height
-    PrefEditHeight = 1000,
-    /// Edit control for board width
-    PrefEditWidth = 1001,
-    /// Edit control for number of mines
-    PrefEditMines = 1002,
-    /// Reset best times button
-    BestBtnReset = 1003,
-    /// Static text for best times
-    SText = 1004,
-}
-
-/// Help file name
-const HELP_FILE: &str = "winmine.chm\0";
-
-/// Help context ID mappings for dialogs
-///
-/// Used by `WinHelp` to map control IDs to help context IDs.
-/// # Notes
-/// - The arrays are in pairs of (control ID, help context ID).
-/// - The arrays end with two zeros to signal the end of the mapping.
-const PREF_HELP_IDS: [u32; 14] = [
-    ControlId::EditHeight as u32,
-    HelpContextId::PrefEditHeight as u32,
-    ControlId::EditWidth as u32,
-    HelpContextId::PrefEditWidth as u32,
-    ControlId::EditMines as u32,
-    HelpContextId::PrefEditMines as u32,
-    ControlId::TxtHeight as u32,
-    HelpContextId::PrefEditHeight as u32,
-    ControlId::TxtWidth as u32,
-    HelpContextId::PrefEditWidth as u32,
-    ControlId::TxtMines as u32,
-    HelpContextId::PrefEditMines as u32,
-    0,
-    0,
-];
-
-/// Help context ID mappings for the best times dialog
-///
-/// Used by `WinHelp` to map control IDs to help context IDs.
-/// # Notes
-/// - The arrays are in pairs of (control ID, help context ID).
-/// - The arrays end with two zeros to signal the end of the mapping.
-const BEST_HELP_IDS: [u32; 22] = [
-    ControlId::BtnReset as u32,
-    HelpContextId::BestBtnReset as u32,
-    ControlId::SText1 as u32,
-    HelpContextId::SText as u32,
-    ControlId::SText2 as u32,
-    HelpContextId::SText as u32,
-    ControlId::SText3 as u32,
-    HelpContextId::SText as u32,
-    ControlId::TimeBegin as u32,
-    HelpContextId::SText as u32,
-    ControlId::TimeInter as u32,
-    HelpContextId::SText as u32,
-    ControlId::TimeExpert as u32,
-    HelpContextId::SText as u32,
-    ControlId::NameBegin as u32,
-    HelpContextId::SText as u32,
-    ControlId::NameInter as u32,
-    HelpContextId::SText as u32,
-    ControlId::NameExpert as u32,
-    HelpContextId::SText as u32,
-    0,
-    0,
-];
 
 /// Struct containing the main window with its event handlers and the shared state.
 #[derive(Clone)]
@@ -1052,7 +978,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Help as u16, {
                 let self2 = self.clone();
                 move || {
-                    do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
                     Ok(())
                 }
             });
@@ -1062,7 +988,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::SearchHelp as u16, {
                 let self2 = self.clone();
                 move || {
-                    do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
                     Ok(())
                 }
             });
@@ -1072,7 +998,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::UsingHelp as u16, {
                 let self2 = self.clone();
                 move || {
-                    do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
                     Ok(())
                 }
             });
@@ -1243,7 +1169,7 @@ impl PrefDialog {
 
         self.dlg.on().wm_help({
             move |help| {
-                apply_help_from_info(help.helpinfo, &PREF_HELP_IDS);
+                Help::apply_help_from_info(help.helpinfo, &Help::PREF_HELP_IDS);
                 Ok(())
             }
         });
@@ -1252,7 +1178,7 @@ impl PrefDialog {
         self.dlg.on().wm(WM::CONTEXTMENU, {
             move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };
-                apply_help_to_control(&target, &PREF_HELP_IDS);
+                Help::apply_help_to_control(&target, &Help::PREF_HELP_IDS);
                 Ok(1)
             }
         });
@@ -1408,7 +1334,7 @@ impl BestDialog {
 
         self.dlg.on().wm_help({
             move |help| {
-                apply_help_from_info(help.helpinfo, &BEST_HELP_IDS);
+                Help::apply_help_from_info(help.helpinfo, &Help::BEST_HELP_IDS);
                 Ok(())
             }
         });
@@ -1416,7 +1342,7 @@ impl BestDialog {
         self.dlg.on().wm(WM::CONTEXTMENU, {
             move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };
-                apply_help_to_control(&target, &BEST_HELP_IDS);
+                Help::apply_help_to_control(&target, &Help::BEST_HELP_IDS);
                 Ok(1)
             }
         });
@@ -1527,42 +1453,5 @@ impl EnterDialog {
                 Ok(())
             }
         });
-    }
-}
-
-/// Applies help context based on the HELPINFO structure pointed to by `l_param`.
-/// # Arguments
-/// * `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
-/// * `ids` - The array of help context IDs.
-/// # Returns
-/// True if help was applied, false otherwise.
-fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
-    unsafe {
-        HtmlHelpA(
-            help.hItemHandle().as_isize() as *mut c_void,
-            HELP_FILE.as_ptr(),
-            HH_TP_HELP_WM_HELP as u32,
-            ids.as_ptr() as usize,
-        );
-    }
-}
-
-/// Applies help context to a specific control.
-///
-/// TODO: There is a DC leak somewhere around here.
-/// TODO: Move help stuff into its own module.
-/// # Arguments
-/// * `hwnd` - The handle to the control.
-/// * `ids` - The array of help context IDs.
-fn apply_help_to_control(hwnd: &HWND, ids: &[u32]) {
-    if let Some(control) = hwnd.as_opt() {
-        unsafe {
-            HtmlHelpA(
-                control.ptr(),
-                HELP_FILE.as_ptr(),
-                HH_TP_HELP_CONTEXTMENU as u32,
-                ids.as_ptr() as usize,
-            );
-        }
     }
 }

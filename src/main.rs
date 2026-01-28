@@ -24,6 +24,7 @@
 
 mod globals;
 mod grafix;
+mod help;
 mod pref;
 mod rtns;
 mod sound;
