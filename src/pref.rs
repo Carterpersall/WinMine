@@ -33,10 +33,13 @@ pub enum PrefKey {
     Sound = 6,
     /// Whether right-click marking is enabled.
     Mark = 7,
-    /// Whether the menu bar is shown.
-    Menu = 8,
-    /// Whether the game timer is enabled.
-    Tick = 9,
+    // Note: The following preferences are defined in the original
+    // WinMine codebase, but are locked behind the compilation flag `WRITE_HIDDEN`,
+    // which never seems to be enabled. They are therefore commented out here.
+    // Whether the menu bar is shown.
+    //Menu = 8,
+    // Whether the game timer is enabled.
+    //Tick = 9,
     /// Whether to use color assets.
     Color = 10,
     /// Best time for Beginner level.
@@ -53,34 +56,6 @@ pub enum PrefKey {
     Name3 = 16,
     /// Flag indicating if the user has played the game before.
     AlreadyPlayed = 17,
-}
-
-/// Menu visibility preferences.
-#[repr(i32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum MenuMode {
-    /// Menu is always shown.
-    AlwaysOn = 0,
-    /// Menu is always hidden.
-    Hidden = 1,
-    /// TODO: Is this mode used anywhere? And if it is, what does it do?
-    On = 2,
-}
-
-impl MenuMode {
-    /// Create a MenuMode from a u32 value, defaulting to AlwaysOn for invalid values.
-    /// # Arguments
-    /// * `val` - The u32 value to convert.
-    /// # Returns
-    /// A MenuMode corresponding to the given value, or AlwaysOn if the value is invalid.
-    pub const fn from(val: u32) -> MenuMode {
-        match val {
-            0 => MenuMode::AlwaysOn,
-            1 => MenuMode::Hidden,
-            2 => MenuMode::On,
-            _ => MenuMode::AlwaysOn,
-        }
-    }
 }
 
 /// Minimum board height allowed by the game.
@@ -189,10 +164,6 @@ pub struct Pref {
     pub sound_enabled: bool,
     /// Whether right-click marking is enabled.
     pub mark_enabled: bool,
-    /// Whether the game timer is enabled.
-    pub timer: bool,
-    /// Menu visibility mode.
-    pub menu_mode: MenuMode,
     /// Whether to use color assets.
     pub color: bool,
     /// Best times for each difficulty level.
@@ -286,8 +257,6 @@ pub fn read_preferences() -> SysResult<()> {
     // Get sound, marking, ticking, and menu preferences
     prefs.sound_enabled = matches!(read_int(&key_guard, PrefKey::Sound), Ok(3));
     prefs.mark_enabled = read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
-    prefs.timer = read_int(&key_guard, PrefKey::Tick).unwrap_or(0) != 0;
-    prefs.menu_mode = MenuMode::from(read_int(&key_guard, PrefKey::Menu).unwrap_or(0));
 
     // Get best times and player names for each difficulty level
     prefs.best_times[GameType::Begin as usize] = read_int(&key_guard, PrefKey::Time1)

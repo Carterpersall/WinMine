@@ -13,7 +13,7 @@ use winsafe::{AnyResult, HWND, POINT, prelude::*};
 use crate::grafix::{
     ButtonSprite, display_button, draw_block, draw_bomb_count, draw_grid, draw_timer, load_bitmaps,
 };
-use crate::pref::{CCH_NAME_MAX, GameType, MenuMode, Pref};
+use crate::pref::{CCH_NAME_MAX, GameType, Pref};
 use crate::sound::Sound;
 use crate::util::rnd;
 use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
@@ -125,8 +125,6 @@ pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
                 wnd_y_pos: 0,
                 sound_enabled: false,
                 mark_enabled: false,
-                timer: false,
-                menu_mode: MenuMode::AlwaysOn,
                 color: false,
                 best_times: [0; 3],
                 beginner_name: String::with_capacity(CCH_NAME_MAX),

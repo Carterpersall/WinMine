@@ -8,7 +8,7 @@ use windows_sys::Win32::Data::HtmlHelp::HtmlHelpA;
 use winsafe::co::{HELPW, KEY, REG_OPTION};
 use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
-use crate::pref::{GameType, MenuMode, SZ_WINMINE_REG_STR};
+use crate::pref::{GameType, SZ_WINMINE_REG_STR};
 use crate::rtns::{AdjustFlag, preferences_mutex};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
 
@@ -150,18 +150,14 @@ pub fn menu_check(hmenu: &HMENU, idm: MenuCommand, f_check: bool) -> AnyResult<(
 }
 
 impl WinMineMainWindow {
-    /// Show or hide the menu bar based on the specified mode.
-    /// # Arguments
-    /// * `f_active` - The desired menu mode.
+    /// Update the menu bar to reflect current preferences.
     /// # Returns
     /// An `Ok(())` if successful, or an error if updating the menu bar failed.
-    pub fn set_menu_bar(&self, f_active: MenuMode) -> AnyResult<()> {
+    pub fn set_menu_bar(&self) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
-        let (menu_on, game_type, color, mark, sound) = {
-            let mut prefs = preferences_mutex();
-            prefs.menu_mode = f_active;
+        let (game_type, color, mark, sound) = {
+            let prefs = preferences_mutex();
             (
-                !matches!(prefs.menu_mode, MenuMode::Hidden),
                 prefs.game_type,
                 prefs.color,
                 prefs.mark_enabled,
@@ -180,10 +176,9 @@ impl WinMineMainWindow {
         menu_check(&hmenu, MenuCommand::Mark, mark)?;
         menu_check(&hmenu, MenuCommand::Sound, sound)?;
 
-        // Show or hide the menu bar as set in preferences
+        // Update the menu bar to reflect current preferences
         let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
-        let menu_arg = if menu_on { &menu } else { &HMENU::NULL };
-        self.wnd.hwnd().SetMenu(menu_arg)?;
+        self.wnd.hwnd().SetMenu(&menu)?;
         self.adjust_window(AdjustFlag::Resize)?;
 
         Ok(())

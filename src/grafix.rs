@@ -586,15 +586,14 @@ pub fn display_button(hwnd: &HWND, sprite: ButtonSprite) -> AnyResult<()> {
 }
 
 /// Border styles for drawing beveled borders.
-#[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum BorderStyle {
     /// Raised beveled border.
-    Raised = 0b00,
+    Raised,
     /// Sunken beveled border.
-    Sunken = 0b01,
+    Sunken,
     /// Flat border (no bevel).
-    Flat = 0b10,
+    Flat,
 }
 
 impl BorderStyle {

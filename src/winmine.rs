@@ -28,7 +28,7 @@ use crate::grafix::{
     load_bitmaps, scale_dpi,
 };
 use crate::pref::{
-    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, MenuMode, read_preferences, write_preferences,
+    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, read_preferences, write_preferences,
 };
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag, preferences_mutex};
 use crate::sound::Sound;
@@ -310,28 +310,13 @@ impl WinMineMainWindow {
                     false => Sound::init(),
                 };
 
-                let f_menu = {
+                {
                     let mut prefs = preferences_mutex();
                     prefs.sound_enabled = new_sound;
-                    prefs.menu_mode
                 };
 
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self.set_menu_bar(f_menu)?;
-            }
-            code if code == VK::F5 => {
-                let menu_value = { preferences_mutex().menu_mode };
-
-                if !matches!(menu_value, MenuMode::AlwaysOn) {
-                    self.set_menu_bar(MenuMode::Hidden)?;
-                }
-            }
-            code if code == VK::F6 => {
-                let menu_value = { preferences_mutex().menu_mode };
-
-                if !matches!(menu_value, MenuMode::AlwaysOn) {
-                    self.set_menu_bar(MenuMode::On)?;
-                }
+                self.set_menu_bar()?;
             }
             code if code == VK::SHIFT => self.handle_xyzzys_shift(),
             _ => self.handle_xyzzys_default_key(key),
@@ -517,9 +502,6 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if adjustment failed.
     pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
-        // Get the current menu handle
-        let menu_handle = self.wnd.hwnd().GetMenu();
-
         // Calculate desired window size based on board dimensions and DPI scaling
         let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width
             + scale_dpi(DX_LEFT_SPACE_96)
@@ -530,14 +512,11 @@ impl WinMineMainWindow {
         WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
         WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
 
-        // Get the current window position and menu mode from preferences
-        let (mut x_window, mut y_window, f_menu) = {
+        // Get the current window position from preferences
+        let (mut x_window, mut y_window) = {
             let prefs = preferences_mutex();
-            (prefs.wnd_x_pos, prefs.wnd_y_pos, prefs.menu_mode)
+            (prefs.wnd_x_pos, prefs.wnd_y_pos)
         };
-
-        // Determine if the menu is visible based on preferences and menu handle availability
-        let menu_visible = !matches!(f_menu, MenuMode::Hidden) && menu_handle.is_some();
 
         let desired = RECT {
             left: 0,
@@ -549,7 +528,7 @@ impl WinMineMainWindow {
         let adjusted = AdjustWindowRectExForDpi(
             desired,
             self.wnd.hwnd().style(),
-            menu_visible,
+            true,
             self.wnd.hwnd().style_ex(),
             UI_DPI.load(Ordering::Relaxed),
         )?;
@@ -667,9 +646,8 @@ impl WinMineMainWindow {
                 // Initialize local resources.
                 self2.state.write().init_game(self2.wnd.hwnd())?;
 
-                // Apply menu visibility and start the game.
-                let f_menu = { preferences_mutex().menu_mode };
-                self2.set_menu_bar(f_menu)?;
+                // Update the menu bar and start a new game
+                self2.set_menu_bar()?;
                 self2.start_game()?;
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(create) };
@@ -943,7 +921,7 @@ impl WinMineMainWindow {
                     _ => GameType::Other,
                 };
 
-                let f_menu = {
+                {
                     let mut prefs = preferences_mutex();
                     if let Some(data) = game.preset_data() {
                         prefs.game_type = game;
@@ -951,10 +929,9 @@ impl WinMineMainWindow {
                         prefs.height = data.1 as i32;
                         prefs.width = data.2 as i32;
                     }
-                    prefs.menu_mode
-                };
+                }
                 UPDATE_INI.store(true, Ordering::Relaxed);
-                self2.set_menu_bar(f_menu)?;
+                self2.set_menu_bar()?;
                 self2.start_game()?;
                 Ok(())
             }
@@ -990,13 +967,12 @@ impl WinMineMainWindow {
                     // Show the preferences dialog
                     PrefDialog::new().show_modal(&self2.wnd);
 
-                    let fmenu = {
+                    {
                         let mut prefs = preferences_mutex();
                         prefs.game_type = GameType::Other;
-                        prefs.menu_mode
                     };
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    self2.set_menu_bar(fmenu)?;
+                    self2.set_menu_bar()?;
                     self2.start_game()?;
                     Ok(())
                 }
@@ -1014,13 +990,12 @@ impl WinMineMainWindow {
                         }
                         false => Sound::init(),
                     };
-                    let f_menu = {
+                    {
                         let mut prefs = preferences_mutex();
                         prefs.sound_enabled = new_sound;
-                        prefs.menu_mode
                     };
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    self2.set_menu_bar(f_menu)?;
+                    self2.set_menu_bar()?;
                     Ok(())
                 }
             });
@@ -1030,20 +1005,17 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Color as u16, {
                 let self2 = self.clone();
                 move || {
-                    let f_menu = {
+                    {
                         let mut prefs = preferences_mutex();
                         prefs.color = !prefs.color;
-                        prefs.menu_mode
                     };
 
-                    if let Err(e) = load_bitmaps(self2.wnd.hwnd()) {
-                        eprintln!("Failed to reload bitmaps: {e}");
-                    }
+                    load_bitmaps(self2.wnd.hwnd())?;
 
                     // Repaint immediately so toggling color off updates without restarting.
                     draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    self2.set_menu_bar(f_menu)?;
+                    self2.set_menu_bar()?;
                     Ok(())
                 }
             });
@@ -1053,13 +1025,12 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Mark as u16, {
                 let self2 = self.clone();
                 move || {
-                    let f_menu = {
+                    {
                         let mut prefs = preferences_mutex();
                         prefs.mark_enabled = !prefs.mark_enabled;
-                        prefs.menu_mode
                     };
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    self2.set_menu_bar(f_menu)?;
+                    self2.set_menu_bar()?;
                     Ok(())
                 }
             });
