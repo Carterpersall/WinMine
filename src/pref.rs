@@ -103,6 +103,24 @@ impl GameType {
         }
     }
 
+    /// Returns the message string shown when the player achieves the fastest time for each difficulty.
+    /// # Returns
+    /// The fastest time message string.
+    pub const fn fastest_time_msg(&self) -> &'static str {
+        match self {
+            GameType::Begin => {
+                "You have the fastest time\rfor beginner level.\rPlease enter your name."
+            }
+            GameType::Inter => {
+                "You have the fastest time\rfor intermediate level.\rPlease enter your name."
+            }
+            GameType::Expert => {
+                "You have the fastest time\rfor expert level.\rPlease enter your name."
+            }
+            GameType::Other => "",
+        }
+    }
+
     /// Create a GameType from a u32 value, defaulting to Other for invalid values.
     /// # Arguments
     /// * `val` - The u32 value to convert.

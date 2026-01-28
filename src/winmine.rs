@@ -18,9 +18,8 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, DEFAULT_PLAYER_NAME, DRAG_ACTIVE, GAME_NAME, IGNORE_NEXT_CLICK, MSG_CREDIT,
-    MSG_FASTEST_BEGINNER, MSG_FASTEST_EXPERT, MSG_FASTEST_INTERMEDIATE, MSG_VERSION_NAME, UI_DPI,
-    WINDOW_HEIGHT, WINDOW_WIDTH,
+    BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME, UI_DPI, WINDOW_HEIGHT,
+    WINDOW_WIDTH,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
@@ -249,6 +248,12 @@ pub struct WinMineMainWindow {
     pub wnd: gui::WindowMain,
     /// Shared state for the game
     pub state: Arc<StateLock<GameState>>,
+    /// Whether a drag operation is currently active
+    drag_active: Arc<AtomicBool>,
+    /// Signals that the next click should be ignored
+    ///
+    /// This is used after window activation to prevent accidental clicks.
+    ignore_next_click: Arc<AtomicBool>,
 }
 
 impl WinMineMainWindow {
@@ -261,6 +266,8 @@ impl WinMineMainWindow {
         let new_self = Self {
             wnd,
             state: Arc::new(StateLock::new(GameState::new())),
+            drag_active: Arc::new(AtomicBool::new(false)),
+            ignore_next_click: Arc::new(AtomicBool::new(false)),
         };
         new_self.events();
         new_self
@@ -272,7 +279,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
-        DRAG_ACTIVE.store(true, Ordering::Relaxed);
+        self.drag_active.store(true, Ordering::Relaxed);
         self.state.write().cursor_pos = POINT { x: -1, y: -1 };
         display_button(self.wnd.hwnd(), ButtonSprite::Caution)
     }
@@ -281,7 +288,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
-        DRAG_ACTIVE.store(false, Ordering::Relaxed);
+        self.drag_active.store(false, Ordering::Relaxed);
         if self.state.read().game_status.contains(StatusFlag::Play) {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
@@ -332,7 +339,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
-        if DRAG_ACTIVE.load(Ordering::Relaxed) {
+        if self.drag_active.load(Ordering::Relaxed) {
             // If the user is dragging, track the mouse position
             if self.state.read().game_status.contains(StatusFlag::Play) {
                 self.state.write().track_mouse(
@@ -358,7 +365,7 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if handling the right button down failed.
     fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
         // Ignore right-clicks if the next click is set to be ignored
-        if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed)
+        if self.ignore_next_click.swap(false, Ordering::Relaxed)
             || !self.state.read().game_status.contains(StatusFlag::Play)
         {
             return Ok(());
@@ -398,7 +405,7 @@ impl WinMineMainWindow {
             state.game_status.remove(StatusFlag::Pause);
             state.game_status.remove(StatusFlag::Minimized);
             state.resume_game();
-            IGNORE_NEXT_CLICK.store(false, Ordering::Relaxed);
+            self.ignore_next_click.store(false, Ordering::Relaxed);
         }
     }
 
@@ -801,7 +808,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |m_btn| {
                 // Ignore middle-clicks if the next click is to be ignored
-                if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) {
+                if self2.ignore_next_click.swap(false, Ordering::Relaxed) {
                     return Ok(());
                 }
 
@@ -831,7 +838,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_l_button_down({
             let self2 = self.clone();
             move |l_btn| {
-                if IGNORE_NEXT_CLICK.swap(false, Ordering::Relaxed) {
+                if self2.ignore_next_click.swap(false, Ordering::Relaxed) {
                     return Ok(());
                 }
                 // TODO: This logic can be simplified
@@ -863,7 +870,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |activate| {
                 if activate.event == WA::CLICKACTIVE {
-                    IGNORE_NEXT_CLICK.store(true, Ordering::Relaxed);
+                    self2.ignore_next_click.store(true, Ordering::Relaxed);
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(activate) };
                 Ok(())
@@ -1482,17 +1489,7 @@ impl EnterDialog {
 
                 dlg.hwnd()
                     .GetDlgItem(ControlId::TextBest as u16)
-                    .and_then(|best_hwnd| {
-                        let string = match game_type {
-                            GameType::Begin => MSG_FASTEST_BEGINNER,
-                            GameType::Inter => MSG_FASTEST_INTERMEDIATE,
-                            GameType::Expert => MSG_FASTEST_EXPERT,
-                            // Unreachable
-                            GameType::Other => "",
-                        };
-
-                        best_hwnd.SetWindowText(string)
-                    })?;
+                    .and_then(|best_hwnd| best_hwnd.SetWindowText(game_type.fastest_time_msg()))?;
 
                 dlg.hwnd()
                     .GetDlgItem(ControlId::EditName as u16)
