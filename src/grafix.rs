@@ -878,9 +878,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
 
         // Paint the sprite into the 96-DPI bitmap.
         {
-            if let Ok(mut sel_guard) = dc_guard.SelectObject(&*base_bmp) {
+            dc_guard.SelectObject(&*base_bmp).map(|mut sel_guard| {
                 let _ = sel_guard.leak();
-            }
+            })?;
             unsafe {
                 SetDIBitsToDevice(
                     dc_guard.ptr(),
@@ -910,9 +910,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
         };
 
         // Ensure the DC holds the final bitmap.
-        if let Ok(mut sel_guard) = dc_guard.SelectObject(&*final_bmp) {
+        dc_guard.SelectObject(&*final_bmp).map(|mut sel_guard| {
             let _ = sel_guard.leak();
-        }
+        })?;
 
         state.mem_blk_dc[i] = Some(dc_guard);
         state.mem_blk_bitmap[i] = Some(final_bmp);
@@ -929,9 +929,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
             && let Some(dc_guard) = state.mem_led_dc[i].as_ref()
             && let Some(bmp_guard) = state.mem_led_bitmap[i].as_ref()
         {
-            if let Ok(mut sel_guard) = dc_guard.SelectObject(&**bmp_guard) {
+            dc_guard.SelectObject(&**bmp_guard).map(|mut sel_guard| {
                 let _ = sel_guard.leak();
-            }
+            })?;
             unsafe {
                 SetDIBitsToDevice(
                     dc_guard.ptr(),
@@ -966,9 +966,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
 
         // Paint the sprite into the 96-DPI bitmap.
         {
-            if let Ok(mut sel_guard) = dc_guard.SelectObject(&*base_bmp) {
+            dc_guard.SelectObject(&*base_bmp).map(|mut sel_guard| {
                 let _ = sel_guard.leak();
-            }
+            })?;
             unsafe {
                 SetDIBitsToDevice(
                     dc_guard.ptr(),
@@ -1005,9 +1005,9 @@ pub fn load_bitmaps(hwnd: &HWND) -> AnyResult<()> {
         };
 
         // Ensure the DC holds the final bitmap.
-        if let Ok(mut sel_guard) = dc_guard.SelectObject(&*final_bmp) {
+        dc_guard.SelectObject(&*final_bmp).map(|mut sel_guard| {
             let _ = sel_guard.leak();
-        }
+        })?;
 
         state.mem_button_dc[i] = Some(dc_guard);
         state.mem_button_bitmap[i] = Some(final_bmp);

@@ -83,7 +83,8 @@ impl WinMineMainWindow {
                 && y_pos > 0
                 && x_pos <= self.state.read().board_width
                 && y_pos <= self.state.read().board_height;
-            if in_range && let Ok(hdc) = HWND::DESKTOP.GetDC() {
+            if in_range {
+                let hdc = HWND::DESKTOP.GetDC()?;
                 let is_bomb = {
                     // Get the mouse cursor's position in the board
                     if let Some(index) = board_index(x_pos, y_pos)

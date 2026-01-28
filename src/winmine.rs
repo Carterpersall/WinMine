@@ -689,9 +689,7 @@ impl WinMineMainWindow {
                 }
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
-                if let Err(e) = load_bitmaps(self2.wnd.hwnd()) {
-                    eprintln!("Failed to reload bitmaps after DPI change: {e}");
-                }
+                load_bitmaps(self2.wnd.hwnd())?;
 
                 self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
                 Ok(0)
@@ -721,9 +719,9 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
-                    EnterDialog::new().show_modal(&self2.wnd);
+                    EnterDialog::new().show_modal(&self2.wnd)?;
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    BestDialog::new().show_modal(&self2.wnd);
+                    BestDialog::new().show_modal(&self2.wnd)?;
                     return Ok(0);
                 }
 
@@ -965,7 +963,7 @@ impl WinMineMainWindow {
                     // be started when the dialog is closed, even if the user clicked "Cancel". Fix
 
                     // Show the preferences dialog
-                    PrefDialog::new().show_modal(&self2.wnd);
+                    PrefDialog::new().show_modal(&self2.wnd)?;
 
                     {
                         let mut prefs = preferences_mutex();
@@ -1039,10 +1037,7 @@ impl WinMineMainWindow {
             .on()
             .wm_command_acc_menu(MenuCommand::Best as u16, {
                 let self2 = self.clone();
-                move || {
-                    BestDialog::new().show_modal(&self2.wnd);
-                    Ok(())
-                }
+                move || BestDialog::new().show_modal(&self2.wnd)
             });
 
         self.wnd
@@ -1179,10 +1174,8 @@ impl PrefDialog {
     /// Displays the Preferences dialog as a modal window.
     /// # Arguments
     /// * `parent`: The parent GUI element for the modal dialog.
-    fn show_modal(&self, parent: &impl GuiParent) {
-        if let Err(e) = self.dlg.show_modal(parent) {
-            eprintln!("Failed to show preferences dialog: {e}");
-        }
+    fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
+        self.dlg.show_modal(parent)
     }
 
     /// Hooks the dialog window messages to their respective handlers.
@@ -1280,10 +1273,8 @@ impl BestDialog {
     /// Displays the best-times dialog as a modal window.
     /// # Arguments
     /// * `parent`: The parent GUI element for the modal dialog.
-    fn show_modal(&self, parent: &impl GuiParent) {
-        if let Err(e) = self.dlg.show_modal(parent) {
-            eprintln!("Failed to show best-times dialog: {e}");
-        }
+    fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
+        self.dlg.show_modal(parent)
     }
 
     /* Helper Functions */
@@ -1446,10 +1437,8 @@ impl EnterDialog {
     /// Displays the name entry dialog as a modal window.
     /// # Arguments
     /// * `parent`: The parent GUI element for the modal dialog.
-    fn show_modal(&self, parent: &impl GuiParent) {
-        if let Err(e) = self.dlg.show_modal(parent) {
-            eprintln!("Failed to show name-entry dialog: {e}");
-        }
+    fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
+        self.dlg.show_modal(parent)
     }
 
     /// Saves the entered high-score name to preferences.
@@ -1491,27 +1480,32 @@ impl EnterDialog {
                     (prefs.game_type, name)
                 };
 
-                if let Ok(best_hwnd) = dlg.hwnd().GetDlgItem(ControlId::TextBest as u16) {
-                    let string = match game_type {
-                        GameType::Begin => MSG_FASTEST_BEGINNER,
-                        GameType::Inter => MSG_FASTEST_INTERMEDIATE,
-                        GameType::Expert => MSG_FASTEST_EXPERT,
-                        // Unreachable
-                        GameType::Other => "",
-                    };
+                dlg.hwnd()
+                    .GetDlgItem(ControlId::TextBest as u16)
+                    .and_then(|best_hwnd| {
+                        let string = match game_type {
+                            GameType::Begin => MSG_FASTEST_BEGINNER,
+                            GameType::Inter => MSG_FASTEST_INTERMEDIATE,
+                            GameType::Expert => MSG_FASTEST_EXPERT,
+                            // Unreachable
+                            GameType::Other => "",
+                        };
 
-                    best_hwnd.SetWindowText(string)?;
-                }
+                        best_hwnd.SetWindowText(string)
+                    })?;
 
-                if let Ok(edit_hwnd) = dlg.hwnd().GetDlgItem(ControlId::EditName as u16) {
-                    unsafe {
-                        edit_hwnd.SendMessage(SetLimitText {
-                            max_chars: Some(CCH_NAME_MAX as u32),
-                        });
-                    };
+                dlg.hwnd()
+                    .GetDlgItem(ControlId::EditName as u16)
+                    .and_then(|edit_hwnd| {
+                        // TODO: Is there a way to do this without sending a message?
+                        unsafe {
+                            edit_hwnd.SendMessage(SetLimitText {
+                                max_chars: Some(CCH_NAME_MAX as u32),
+                            });
+                        };
 
-                    edit_hwnd.SetWindowText(&current_name)?;
-                }
+                        edit_hwnd.SetWindowText(&current_name)
+                    })?;
 
                 Ok(true)
             }
