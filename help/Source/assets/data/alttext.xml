@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alttext>
+<sPreviousTip>Previous topic</sPreviousTip>
+<sNextTip>Next topic</sNextTip>
+<sExpandTip>Expand/collapse</sExpandTip>
+<sPopupTip>View definition</sPopupTip>
+<!-- DO NOT LOCALIZE entries below this point -->
+<path2reuse>winmine.chm::/assets/data/</path2reuse>
+<!-- path (on installed build) to reusable text XML file -->
+<path2glossary>winmine.chm::/assets/data/</path2glossary>
+<!-- path (on installed build) to glossary XML file -->
+<reltopgif>no</reltopgif>
+<!-- enter yes if you want the gif to display -->
+<chmName></chmName>
+<!-- NOT YET IMPLEMENTED - leave blank (enter chmname.chm or nothing for jscript within) -->
+<emailer>no</emailer>
+<!-- enter yes if you want the e-mail link on top of the page-->
+<sendtext>Send feedback on this topic to</sendtext>
+<sendto>somebody@microsoft.com</sendto>
+<!-- enter yes if you want the e-mail link on top of the page-->
+<smartreusabletext>winmine.chm::/assets/data/defaultsettings.xml</smartreusabletext>
+</alttext>

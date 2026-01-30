@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE glossary SYSTEM "gloss.dtd">
+<glossary>
+  <locSection>
+    <locItem locItemID="EmptyText">There are no glossary terms that begin with this letter.</locItem>
+    <locItem locItemID="See">See definition for:</locItem>
+    <locItem locItemID="SeeAlso">See also:</locItem>
+  </locSection>
+  <glossSection>
+    <glossLetter bookmark="groupD">D</glossLetter>
+    <entry entryID="gls_drag">
+      <term originalTerm="drag">drag</term>
+      <group target="groupD" />
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="personal:gls_drag" />
+        <scope status="approved" scopeTermID="professional:gls_drag" />
+        <scope status="approved" scopeTermID="server:gls_drag" />
+        <def><para>To move an item on the screen by selecting the item and then pressing and holding down the mouse button while moving the mouse. For example, you can move a window to another location on the screen by dragging its title bar.</para></def>
+      </scopeDef>
+    </entry>
+  </glossSection>
+  <glossSection>
+    <glossLetter bookmark="groupG">G</glossLetter>
+    <entry entryID="glos_glo_ddjh">
+      <term originalTerm="graphical user interface (GUI)">graphical user interface (GUI)</term>
+      <group target="groupG" />
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="OPK:glos_glo_ddjh" />
+        <def><para>A display format, like that of Windows, that represents a program's functions with graphic images such as buttons and icons. GUIs allow a user to perform operations and make choices by pointing and clicking with a mouse.</para></def>
+      </scopeDef>
+    </entry>
+  </glossSection>
+  <glossSection>
+    <glossLetter bookmark="groupM">M</glossLetter>
+    <entry entryID="gls_maximize">
+      <term originalTerm="maximize">maximize</term>
+      <group target="groupM" />
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="server:gls_maximize" />
+        <scope status="approved" scopeTermID="personal:gls_maximize" />
+        <scope status="approved" scopeTermID="professional:gls_maximize" />
+        <def><para>To enlarge a window to its largest size by clicking the &lt;b&gt;Maximize&lt;/b&gt; button (at the right of the title bar), or by pressing ALT+SPACEBAR and then pressing X.</para></def>
+        <seeAlso seeAlsoTermID="gls_minimize" />
+        <seeAlso seeAlsoTermID="gls_title_bar" />
+      </scopeDef>
+    </entry>
+    <entry entryID="gls_minimize">
+      <term originalTerm="minimize">minimize</term>
+      <group target="groupM" />
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="personal:gls_minimize" />
+        <scope status="approved" scopeTermID="professional:gls_minimize" />
+        <scope status="approved" scopeTermID="server:gls_minimize" />
+        <def><para>To reduce a window to a button on the taskbar by clicking the &lt;b&gt;Minimize&lt;/b&gt; button (at the right of the title bar), or by pressing ALT+SPACEBAR and then pressing N.</para></def>
+        <seeAlso seeAlsoTermID="gls_maximize" />
+        <seeAlso seeAlsoTermID="gls_title_bar" />
+      </scopeDef>
+    </entry>
+  </glossSection>
+  <glossSection>
+    <glossLetter bookmark="groupT">T</glossLetter>
+    <entry entryID="gls_title_bar">
+      <term originalTerm="title bar">title bar</term>
+      <group target="groupT" />
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="server:gls_title_bar" />
+        <scope status="approved" scopeTermID="personal:gls_title_bar" />
+        <scope status="approved" scopeTermID="professional:gls_title_bar" />
+        <def><para>The horizontal bar at the top of a window that contains the name of the window. On many windows, the title bar also contains the program icon, the &lt;b&gt;Maximize&lt;/b&gt;, &lt;b&gt;Minimize&lt;/b&gt;, and &lt;b&gt;Close&lt;/b&gt; buttons, and the optional &lt;b&gt;?&lt;/b&gt; button for context-sensitive Help. To display a menu with commands such as &lt;b&gt;Restore&lt;/b&gt; and &lt;b&gt;Move&lt;/b&gt;, right-click the title bar.</para></def>
+        <seeAlso seeAlsoTermID="gls_minimize" />
+        <seeAlso seeAlsoTermID="gls_maximize" />
+      </scopeDef>
+    </entry>
+    <entry entryID="toolbar">
+      <term originalTerm="toolbar">toolbar</term>
+      <group target="groupT" />
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="professional:toolbar" />
+        <scope status="approved" scopeTermID="personal:toolbar" />
+        <def><para>In a program in a graphical user interface, a row, column, or block of on-screen buttons or icons. When clicked, these buttons or icons activate certain functions, or tasks, of the program. For example, the toolbar in Microsoft Word contains buttons for, among other actions, changing text to italic or boldface, and for saving or opening a document. Users can often customize toolbars and move them around on the screen.</para></def>
+        <seeAlso seeAlsoTermID="glos_glo_ddjh" />
+      </scopeDef>
+    </entry>
+  </glossSection>
+</glossary>

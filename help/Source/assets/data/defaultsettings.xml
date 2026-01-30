@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?> 
+<defaultsettings>
+<smarterrortext><B><FONT color="red">XOXOX</FONT></B></smarterrortext> 
+<!-- text to display during really catastrophic errors -->
+<smartstartdefault>_smsimple</smartstartdefault> 
+<!--  default mode for start menu on this sku --> 
+<smartcpaneldefault>_cpsimple</smartcpaneldefault> 
+<!--  default mode for control panel on this sku --> 
+</defaultsettings>

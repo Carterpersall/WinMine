@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE glossary SYSTEM "gloss.dtd">
+<glossary>
+  <glossSection>
+    <entry entryID="windowsxp">
+      <term originalTerm="windowsxp">windowsxp</term>
+      <group target="groupW"/>
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="Reusable Common:windowsxp"/>
+        <def><para>Windows XP</para></def>
+      </scopeDef>
+    </entry>
+    <entry entryID="pro">
+      <term originalTerm="pro">pro</term>
+      <group target="groupP"/>
+      <rubytext>defaultrubytext</rubytext>
+      <scopeDef>
+        <scope status="approved" scopeTermID="Reusable Common:Pro"/>
+        <def><para>Windows XP Professional</para></def>
+      </scopeDef>
+    </entry>
+  </glossSection>
+</glossary>

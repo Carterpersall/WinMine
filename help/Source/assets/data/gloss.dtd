@@ -1,0 +1,26 @@
+<!ELEMENT glossary (locSection, glossSection*)>
+<!ELEMENT locSection (locItem+)>
+<!ELEMENT locItem (#PCDATA)>
+<!ATTLIST locItem locItemID ID #REQUIRED>
+<!ELEMENT glossSection (glossLetter, (empty | entry+))>
+<!ELEMENT glossLetter (#PCDATA)>
+<!ATTLIST glossLetter bookmark CDATA #REQUIRED>
+<!ELEMENT empty EMPTY>
+<!ELEMENT entry (term, group, rubytext, scopeDef+)>
+<!ATTLIST entry entryID ID #REQUIRED>
+<!ELEMENT term (#PCDATA)>
+<!ATTLIST term originalTerm CDATA #REQUIRED>
+<!ELEMENT group EMPTY>
+<!ATTLIST group target CDATA #REQUIRED>
+<!ELEMENT rubytext (#PCDATA)>
+<!--<!ELEMENT scopeDef (def)+>-->
+<!ELEMENT scopeDef (scope+, ((seeEntry*) | (def,seeAlso*)))>
+<!ELEMENT scope EMPTY>
+<!ATTLIST scope status CDATA #REQUIRED scopeTermID CDATA #REQUIRED>
+<!ELEMENT seeEntry EMPTY>
+<!ATTLIST seeEntry seeTermID IDREF #REQUIRED>
+<!--<!ELEMENT def (scope+,seeAlso*,para+)>--> 
+<!ELEMENT def (para)*>
+<!ELEMENT seeAlso (#PCDATA)>
+<!ATTLIST seeAlso seeAlsoTermID IDREF #REQUIRED>
+<!ELEMENT para (#PCDATA)>

@@ -1,24 +1,61 @@
 [OPTIONS]
 Compiled file=winmine.chm
-Default topic=mine_object.htm
+Default topic=topics/mine_object.htm
 Title=Minesweeper
 Default Window=windefault
 Full-text search=Yes
 
 [FILES]
-compile_date.htm
-mine_customize_field.htm
-mine_object.htm
-mine_play.htm
-mine_tips.htm
+assets\css\coUA.css
+assets\css\coUAprint.css
+assets\data\alttext.xml
+assets\data\defaultsettings.xml
+assets\data\gloss.dtd
+assets\data\glossary.xml
+assets\data\reusable.xml
+assets\img\arrowpro.gif
+assets\img\backhelp.gif
+assets\img\caution.gif
+assets\img\cshelp.gif
+assets\img\double-headed arrow.gif
+assets\img\elle.gif
+assets\img\elle_rtl.gif
+assets\img\empty.gif
+assets\img\forwardhelp.gif
+assets\img\help_button.gif
+assets\img\hide.gif
+assets\img\important.gif
+assets\img\minusCold.gif
+assets\img\minusHot.GIF
+assets\img\nextCold.gif
+assets\img\nextHot.gif
+assets\img\note.gif
+assets\img\plusCold.gif
+assets\img\plusHot.GIF
+assets\img\previousCold.gif
+assets\img\previousHot.gif
+assets\img\pro_header.jpg
+assets\img\shortcutCold.gif
+assets\img\shortcutHot.gif
+assets\img\show.gif
+assets\img\three.gif
+assets\img\tip.gif
+assets\img\Uabrand.gif
+assets\img\warning.gif
+assets\js\shared.js
+topics\compile_date.htm
+topics\copyright.htm
+topics\default.htm
+topics\mine_customize_field.htm
+topics\mine_object.htm
+topics\mine_play.htm
+topics\mine_tips.htm
+topics\nthelp_keyboard_shortcuts.htm
+topics\nthelp_modify_viewer.htm
+topics\nthelp_overview.htm
+topics\nthelp_use_help.htm
 winmine.hhc
 winmine.hhk
 
 [WINDOWS]
-windefault="Minesweeper","winmine.hhc","winmine.hhk","mine_object.htm","MS-ITS:ntdef.chm::/default.htm",,,,,0x40420,250,0x100e,[230,30,780,480],,,,,,0,
-
-[MERGE FILES]
-NTArt.chm
-ntshared.chm
-NTDef.chm
-NTHelp.chm
+windefault="Minesweeper","winmine.hhc","winmine.hhk","topics/mine_object.htm","topics/default.htm",,,,,0x40420,250,0x100e,[230,30,780,480],,,,,,0,
