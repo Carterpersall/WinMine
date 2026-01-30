@@ -5,7 +5,7 @@ use core::ffi::c_void;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC};
+use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TAB_CONTENTS};
 
 use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
@@ -978,7 +978,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Help as u16, {
                 let self2 = self.clone();
                 move || {
-                    Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOPIC as u32);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_TAB_CONTENTS);
                     Ok(())
                 }
             });
@@ -988,7 +988,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::SearchHelp as u16, {
                 let self2 = self.clone();
                 move || {
-                    Help::do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX as u32);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX);
                     Ok(())
                 }
             });
@@ -998,7 +998,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::UsingHelp as u16, {
                 let self2 = self.clone();
                 move || {
-                    Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC as u32);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC);
                     Ok(())
                 }
             });

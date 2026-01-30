@@ -1,0 +1,76 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<HTML DIR="LTR">
+<HEAD>
+<meta name="GENERATOR" content="Microsoft&reg; HTML Help Workshop 4.1">
+<!-- Sitemap 1.0 -->
+</HEAD><BODY>
+<OBJECT type="text/site properties">
+	<param name="FrameName" value="current">
+</OBJECT>
+<UL>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="customizing playing field">
+		<param name="Name" value="Customize the playing field">
+		<param name="Local" value="mine_customize_field.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="hints and tips">
+		<param name="Name" value="Play Minesweeper">
+		<param name="Local" value="mine_play.htm">
+		<param name="Name" value="Strategies and tips">
+		<param name="Local" value="mine_tips.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="how to play">
+		<param name="Name" value="Play Minesweeper">
+		<param name="Local" value="mine_play.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="marking suspected squares">
+		<param name="Name" value="Play Minesweeper">
+		<param name="Local" value="mine_play.htm">
+		<param name="Name" value="Strategies and tips">
+		<param name="Local" value="mine_tips.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="new games">
+		<param name="Name" value="Play Minesweeper">
+		<param name="Local" value="mine_play.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="numbered squares">
+		<param name="Name" value="Play Minesweeper">
+		<param name="Local" value="mine_play.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="object of the game">
+		<param name="Name" value="Minesweeper overview">
+		<param name="Local" value="mine_object.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="playing the game">
+		<param name="Name" value="Play Minesweeper">
+		<param name="Local" value="mine_play.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="setting up playing field">
+		<param name="Name" value="Customize the playing field">
+		<param name="Local" value="mine_customize_field.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="strategies">
+		<param name="Name" value="Strategies and tips">
+		<param name="Local" value="mine_tips.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="timer">
+		<param name="Name" value="Strategies and tips">
+		<param name="Local" value="mine_tips.htm">
+		</OBJECT>
+	<LI> <OBJECT type="text/sitemap">
+		<param name="Name" value="winning">
+		<param name="Name" value="Minesweeper overview">
+		<param name="Local" value="mine_object.htm">
+		</OBJECT>
+</UL>
+</BODY></HTML>

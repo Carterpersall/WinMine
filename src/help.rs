@@ -2,14 +2,13 @@
 
 use core::ffi::c_void;
 
-use windows_sys::Win32::Data::HtmlHelp::{HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HtmlHelpA};
+use windows_sys::Win32::Data::HtmlHelp::{
+    HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HTML_HELP_COMMAND, HtmlHelpA,
+};
 
 use winsafe::{HELPINFO, HWND, co::HELPW, prelude::Handle as _};
 
 use crate::winmine::ControlId;
-
-/// Maximum path buffer used when resolving help files.
-const CCH_MAX_PATHNAME: usize = 250;
 
 /// Help file name
 const HELP_FILE: &str = "winmine.chm\0";
@@ -125,22 +124,39 @@ impl Help {
 
     /// Display the Help dialog for the given command.
     ///
-    /// TODO: Refactor this function to only use the help dialog built into the resource file
+    /// TODO: Integrate help files directly into the executable
     /// # Arguments
     /// * `w_command` - The help command (e.g., HELPONHELP).
     /// * `l_param` - Additional parameter for the help command.
-    pub fn do_help(hwnd: &HWND, w_command: HELPW, l_param: u32) {
-        // htmlhelp.dll expects either the localized .chm next to the EXE or the fallback NTHelp file.
-        let mut buffer = [0u8; CCH_MAX_PATHNAME];
+    /// # Notes
+    /// - If `w_command` is `HELPONHELP`, the standard Windows help file `NTHelp.chm` is used.
+    /// - For other commands, the help file is derived from the executable's path, replacing its extension with `.chm`.
+    /// - The help file is expected to be located in the same directory as the executable.
+    /// - The "help on help" feature currently relies on the presence of `NTHelp.chm` in the current working directory.
+    /// - The maximum path length for the executable is 245 characters. Any value exceeding this causes help to malfunction.
+    pub fn do_help(hwnd: &HWND, w_command: HELPW, l_param: HTML_HELP_COMMAND) {
+        // Longest path name supported before help begins to break
+        const MAX_PATH_LEN: usize = 245;
+
+        // Buffer to hold the help file path
+        let mut buffer = [0u8; MAX_PATH_LEN];
 
         if w_command == HELPW::HELPONHELP {
+            // If the user requests help on help, we provide the standard Windows help file
+            // TODO: This assumes that the current working directory contains NTHelp.chm
             const HELP_FILE: &[u8] = b"NTHelp.chm\0";
             buffer[..HELP_FILE.len()].copy_from_slice(HELP_FILE);
         } else {
+            // Otherwise, we construct the path to the .chm help file based on the executable's path
             let exe_path = hwnd.hinstance().GetModuleFileName().unwrap_or_default();
             let mut bytes = exe_path.into_bytes();
-            if bytes.len() + 1 > CCH_MAX_PATHNAME {
-                bytes.truncate(CCH_MAX_PATHNAME - 1);
+            // If the path is too long, print an error
+            if bytes.len() > MAX_PATH_LEN {
+                // TODO: Create a way to handle non-fatal errors
+                eprintln!(
+                    "Executable path longer than 245 characters: {}",
+                    bytes.len()
+                );
             }
             bytes.push(0);
             let len = bytes.len() - 1;
@@ -166,7 +182,7 @@ impl Help {
         }
 
         unsafe {
-            HtmlHelpA(hwnd.ptr(), buffer.as_ptr(), l_param, 0);
+            HtmlHelpA(hwnd.ptr(), buffer.as_ptr(), l_param as u32, 0);
         }
     }
 }

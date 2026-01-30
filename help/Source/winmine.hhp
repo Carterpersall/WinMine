@@ -1,0 +1,24 @@
+[OPTIONS]
+Compiled file=winmine.chm
+Default topic=mine_object.htm
+Title=Minesweeper
+Default Window=windefault
+Full-text search=Yes
+
+[FILES]
+compile_date.htm
+mine_customize_field.htm
+mine_object.htm
+mine_play.htm
+mine_tips.htm
+winmine.hhc
+winmine.hhk
+
+[WINDOWS]
+windefault="Minesweeper","winmine.hhc","winmine.hhk","mine_object.htm","MS-ITS:ntdef.chm::/default.htm",,,,,0x40420,250,0x100e,[230,30,780,480],,,,,,0,
+
+[MERGE FILES]
+NTArt.chm
+ntshared.chm
+NTDef.chm
+NTHelp.chm
