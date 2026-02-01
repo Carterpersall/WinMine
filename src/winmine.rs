@@ -5,7 +5,7 @@ use core::ffi::c_void;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOPIC, HH_TAB_CONTENTS};
+use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
 
 use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
@@ -978,7 +978,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::Help as u16, {
                 let self2 = self.clone();
                 move || {
-                    Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_TAB_CONTENTS);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOC);
                     Ok(())
                 }
             });
@@ -998,7 +998,7 @@ impl WinMineMainWindow {
             .wm_command_acc_menu(MenuCommand::UsingHelp as u16, {
                 let self2 = self.clone();
                 move || {
-                    Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOPIC);
+                    Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOC);
                     Ok(())
                 }
             });
@@ -1176,9 +1176,15 @@ impl PrefDialog {
 
         // TODO: WinSafe's wm_context_menu doesn't have any arguments, that might be a bug
         self.dlg.on().wm(WM::CONTEXTMENU, {
+            let self2 = self.clone();
             move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };
-                Help::apply_help_to_control(&target, &Help::PREF_HELP_IDS);
+                // Apply context-sensitive help to all controls except the dialog itself
+                if target.GetDlgCtrlID() != Ok(0) {
+                    Help::apply_help_to_control(&target, &Help::PREF_HELP_IDS);
+                } else {
+                    unsafe { self2.dlg.hwnd().DefWindowProc(msg) };
+                }
                 Ok(1)
             }
         });
@@ -1340,9 +1346,15 @@ impl BestDialog {
         });
 
         self.dlg.on().wm(WM::CONTEXTMENU, {
+            let self2 = self.clone();
             move |msg: WndMsg| -> AnyResult<isize> {
                 let target = unsafe { HWND::from_ptr(msg.wparam as *mut c_void) };
-                Help::apply_help_to_control(&target, &Help::BEST_HELP_IDS);
+                // Apply context-sensitive help to all controls except the dialog itself
+                if target.GetDlgCtrlID() != Ok(0) {
+                    Help::apply_help_to_control(&target, &Help::BEST_HELP_IDS);
+                } else {
+                    unsafe { self2.dlg.hwnd().DefWindowProc(msg) };
+                }
                 Ok(1)
             }
         });

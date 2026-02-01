@@ -1,0 +1,14 @@
+.topic IDH_CUSTOM_HEIGHT
+Specifies the number of vertical squares on the playing field.
+
+.topic IDH_CUSTOM_WIDTH
+Specifies the number of horizontal squares on the playing field.
+
+.topic IDH_CUSTOM_MINES
+Specifies the number of mines to be placed on the playing field.
+
+.topic IDH_BESTTIMES_BTN_RESET
+Click to clear the current high scores.
+
+.topic IDH_BESTTIMES_DISPLAY
+Displays a player's best game time, and the player's name, for each level of play: Beginner, Intermediate, and Expert.

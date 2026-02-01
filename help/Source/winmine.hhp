@@ -1,9 +1,16 @@
 [OPTIONS]
+Compatibility=1.1 or later
 Compiled file=winmine.chm
-Default topic=topics/mine_object.htm
-Title=Minesweeper
 Default Window=windefault
+Default topic=topics/mine_object.htm
+Display compile progress=No
 Full-text search=Yes
+Language=0x409 English (United States)
+Title=Minesweeper
+
+[WINDOWS]
+windefault="Minesweeper","winmine.hhc","winmine.hhk","topics/mine_object.htm","topics/default.htm",,,,,0x40420,250,0x100e,[230,30,780,480],,,,,,0,0
+
 
 [FILES]
 assets\css\coUA.css
@@ -57,5 +64,12 @@ topics\nthelp_use_help.htm
 winmine.hhc
 winmine.hhk
 
-[WINDOWS]
-windefault="Minesweeper","winmine.hhc","winmine.hhk","topics/mine_object.htm","topics/default.htm",,,,,0x40420,250,0x100e,[230,30,780,480],,,,,,0,
+[MAP]
+#include winmine_context.h
+
+[TEXT POPUPS]
+winmine_context.h
+Cshelp.txt
+
+[INFOTYPES]
+
