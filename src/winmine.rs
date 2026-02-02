@@ -212,7 +212,10 @@ impl WinMineMainWindow {
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(true, Ordering::Relaxed);
         self.state.write().cursor_pos = POINT { x: -1, y: -1 };
-        self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Caution)
+        self.state
+            .read()
+            .grafix
+            .display_button(self.wnd.hwnd(), ButtonSprite::Caution)
     }
 
     /// Finishes a primary button drag operation.
@@ -389,7 +392,10 @@ impl WinMineMainWindow {
             return Ok(false);
         }
 
-        self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
+        self.state
+            .read()
+            .grafix
+            .display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
         self.wnd
             .hwnd()
             .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
@@ -407,7 +413,10 @@ impl WinMineMainWindow {
                     WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             self.state.write().btn_face_state = ButtonSprite::Happy;
-                            self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
+                            self.state
+                                .read()
+                                .grafix
+                                .display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
                             self.start_game()?;
                         }
                         return Ok(true);
@@ -416,11 +425,17 @@ impl WinMineMainWindow {
                         if winsafe::PtInRect(rc, msg.pt) {
                             if !pressed {
                                 pressed = true;
-                                self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
+                                self.state
+                                    .read()
+                                    .grafix
+                                    .display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
                             }
                         } else if pressed {
                             pressed = false;
-                            self.state.read().grafix.display_button(self.wnd.hwnd(), self.state.read().btn_face_state)?;
+                            self.state.read().grafix.display_button(
+                                self.wnd.hwnd(),
+                                self.state.read().btn_face_state,
+                            )?;
                         }
                     }
                     _ => {}
@@ -821,7 +836,11 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 let _paint_guard = self2.wnd.hwnd().BeginPaint()?;
-                self2.state.read().grafix.draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
+                self2
+                    .state
+                    .read()
+                    .grafix
+                    .draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                 Ok(())
             }
         });
@@ -938,7 +957,11 @@ impl WinMineMainWindow {
                 self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd())?;
 
                 // Repaint immediately so toggling color off updates without restarting.
-                self2.state.read().grafix.draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
+                self2
+                    .state
+                    .read()
+                    .grafix
+                    .draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
                 Ok(())

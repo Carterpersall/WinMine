@@ -546,7 +546,8 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: BlockInfo) -> AnyResult<()> {
         self.set_block_value(x, y, block);
-        self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+        self.grafix
+            .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
         Ok(())
     }
 
@@ -594,7 +595,8 @@ impl GameState {
                 visited: true,
                 block_type: BlockCell::from(bombs),
             };
-            self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+            self.grafix
+                .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
 
             if bombs == 0 && *tail < I_STEP_MAX {
                 queue[*tail] = (x, y);
@@ -784,7 +786,8 @@ impl GameState {
         let block = if self.block_flagged(x, y) {
             // Increment the bomb count
             self.bombs_left += 1;
-            self.grafix.draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+            self.grafix
+                .draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
 
             // If marks are allowed, change to question mark; otherwise, change to blank
             if allow_marks {
@@ -799,7 +802,8 @@ impl GameState {
         } else {
             // Currently blank; change to flagged and decrement bomb count
             self.bombs_left -= 1;
-            self.grafix.draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+            self.grafix
+                .draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
             BlockCell::BombUp
         };
 
@@ -948,7 +952,10 @@ impl WinMineMainWindow {
         self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
         self.state.write().game_status = StatusFlag::Play;
 
-        self.state.write().grafix.draw_bomb_count(&self.wnd.hwnd().GetDC()?, total_bombs)?;
+        self.state
+            .write()
+            .grafix
+            .draw_bomb_count(&self.wnd.hwnd().GetDC()?, total_bombs)?;
 
         self.adjust_window(f_adjust)?;
 
@@ -999,7 +1006,8 @@ impl GameState {
                         if !self.is_visit(x, y) {
                             // Restore the box to its raised state
                             self.pop_box_up(x, y);
-                            self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+                            self.grafix
+                                .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -1014,7 +1022,8 @@ impl GameState {
                         if !self.is_visit(x, y) {
                             // Depress the box visually
                             self.push_box_down(x, y);
-                            self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+                            self.grafix
+                                .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -1038,7 +1047,8 @@ impl GameState {
             if self.in_range(pt_new.x, pt_new.y) && self.in_range_step(pt_new.x, pt_new.y) {
                 // Depress the new box visually
                 self.push_box_down(pt_new.x, pt_new.y);
-                self.grafix.draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
+                self.grafix
+                    .draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
             }
         }
         // Store the new cursor position

@@ -164,7 +164,13 @@ impl GrafixState {
     /// * `board` - Array slice containing the board state.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
-    pub fn draw_block(&self, hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[BlockInfo]) -> AnyResult<()> {
+    pub fn draw_block(
+        &self,
+        hdc: &ReleaseDCGuard,
+        x: i32,
+        y: i32,
+        board: &[BlockInfo],
+    ) -> AnyResult<()> {
         let Some(src) = self.block_dc(x, y, board) else {
             return Ok(());
         };
@@ -797,7 +803,8 @@ impl GrafixState {
         else {
             return Err("Failed to load block bitmap resource".into());
         };
-        let Some((h_led, lp_led)) = self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Led, color_on)
+        let Some((h_led, lp_led)) =
+            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Led, color_on)
         else {
             return Err("Failed to load LED bitmap resource".into());
         };
@@ -881,10 +888,7 @@ impl GrafixState {
                         0,
                         0,
                         DY_BLK_96 as u32,
-                        self
-                            .lp_dib_blks
-                            .byte_add(self.rg_dib_off[i])
-                            .cast(),
+                        self.lp_dib_blks.byte_add(self.rg_dib_off[i]).cast(),
                         self.lp_dib_blks as *const _,
                         DIB::RGB_COLORS.raw(),
                     );
@@ -932,10 +936,7 @@ impl GrafixState {
                         0,
                         0,
                         DY_LED_96 as u32,
-                        self
-                            .lp_dib_led
-                            .byte_add(self.rg_dib_led_off[i])
-                            .cast(),
+                        self.lp_dib_led.byte_add(self.rg_dib_led_off[i]).cast(),
                         self.lp_dib_led as *const _,
                         DIB::RGB_COLORS.raw(),
                     );
@@ -969,8 +970,7 @@ impl GrafixState {
                         0,
                         0,
                         DY_BUTTON_96 as u32,
-                        self
-                            .lp_dib_button
+                        self.lp_dib_button
                             .byte_add(self.rg_dib_button_off[i])
                             .cast(),
                         self.lp_dib_button as *const _,
@@ -1064,12 +1064,7 @@ impl GrafixState {
     /// * `board` - Slice representing the board state
     /// # Returns
     /// Optionally, a reference to the compatible DC for the block sprite
-    fn block_dc(
-        &self,
-        x: i32,
-        y: i32,
-        board: &[BlockInfo],
-    ) -> Option<&DeleteDCGuard> {
+    fn block_dc(&self, x: i32, y: i32, board: &[BlockInfo]) -> Option<&DeleteDCGuard> {
         let idx = self.block_sprite_index(x, y, board);
         if idx >= I_BLK_MAX {
             return None;
