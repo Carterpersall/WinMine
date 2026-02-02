@@ -8,15 +8,15 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 use winsafe::{
-    self as w, AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN,
-    HRSRCMEM, HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE,
+    AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
+    HWND, IdStr, MulDiv, POINT, RGBQUAD, RtStr, SIZE,
     co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE},
     guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard},
     prelude::*,
 };
 
 use crate::globals::{BASE_DPI, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
-use crate::rtns::{BOARD_INDEX_SHIFT, BlockMask, GameState, preferences_mutex};
+use crate::rtns::{BOARD_INDEX_SHIFT, BlockInfo, GameState, preferences_mutex};
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -59,7 +59,7 @@ pub const DX_RIGHT_TIME_96: i32 = DX_RIGHT_SPACE_96 + 5;
 /// # Returns
 /// The measurement scaled to the current UI DPI.
 pub fn scale_dpi(value_96: i32) -> i32 {
-    w::MulDiv(value_96, UI_DPI.load(Relaxed) as i32, BASE_DPI as i32)
+    MulDiv(value_96, UI_DPI.load(Relaxed) as i32, BASE_DPI as i32)
 }
 
 /// Number of cell sprites packed into the block bitmap sheet.
@@ -177,10 +177,10 @@ fn grafix_state() -> MutexGuard<'static, GrafixState> {
 /// * `hdc` - The device context to draw on.
 /// * `x` - The X coordinate of the block (1-based).
 /// * `y` - The Y coordinate of the block (1-based).
-/// * `board` - Slice representing the board state.
+/// * `board` - Array slice containing the board state.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[i8]) -> AnyResult<()> {
+pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[BlockInfo]) -> AnyResult<()> {
     let state = grafix_state();
     let Some(src) = block_dc(&state, x, y, board) else {
         return Ok(());
@@ -207,10 +207,15 @@ pub fn draw_block(hdc: &ReleaseDCGuard, x: i32, y: i32, board: &[i8]) -> AnyResu
 /// * `hdc` - The device context to draw on.
 /// * `width` - The width of the board in blocks.
 /// * `height` - The height of the board in blocks.
-/// * `board` - Slice representing the board state.
+/// * `board` - Array slice containing the board state.
 /// # Returns
 /// `Ok(())` if successful, or an error if drawing failed.
-pub fn draw_grid(hdc: &ReleaseDCGuard, width: i32, height: i32, board: &[i8]) -> AnyResult<()> {
+pub fn draw_grid(
+    hdc: &ReleaseDCGuard,
+    width: i32,
+    height: i32,
+    board: &[BlockInfo],
+) -> AnyResult<()> {
     let state = grafix_state();
     let dst_w = scale_dpi(DX_BLK_96);
     let dst_h = scale_dpi(DY_BLK_96);
@@ -1075,7 +1080,12 @@ const fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
 /// * `board` - Slice representing the board state
 /// # Returns
 /// Optionally, a reference to the compatible DC for the block sprite
-fn block_dc<'a>(state: &'a GrafixState, x: i32, y: i32, board: &[i8]) -> Option<&'a DeleteDCGuard> {
+fn block_dc<'a>(
+    state: &'a GrafixState,
+    x: i32,
+    y: i32,
+    board: &[BlockInfo],
+) -> Option<&'a DeleteDCGuard> {
     let idx = block_sprite_index(x, y, board);
     if idx >= I_BLK_MAX {
         return None;
@@ -1088,20 +1098,20 @@ fn block_dc<'a>(state: &'a GrafixState, x: i32, y: i32, board: &[i8]) -> Option<
 /// # Arguments
 /// * `x` - X coordinate on the board
 /// * `y` - Y coordinate on the board
-/// * `board` - Slice representing the board state
+/// * `board` - Array slice containing the board state
 /// # Returns
 /// The sprite index for the block at the specified coordinates
 /// # Notes
 /// The x and y values are stored as `i32` due to much of the Win32 API using `i32` for coordinates. (`POINT`, `SIZE`, `RECT`, etc.)
-fn block_sprite_index(x: i32, y: i32, board: &[i8]) -> usize {
+fn block_sprite_index(x: i32, y: i32, board: &[BlockInfo]) -> usize {
     // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
+    // TODO: Maybe BlockInfo should be a 2D array to avoid this calculation?
     let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
     if offset < 0 {
         return 0;
     }
-    let idx = offset as usize;
+
     board
-        .get(idx)
-        .copied()
-        .map_or(0, |value| (value & BlockMask::Data as i8) as usize)
+        .get(offset as usize)
+        .map_or(0, |value| value.block_type as usize)
 }

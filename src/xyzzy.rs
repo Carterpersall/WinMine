@@ -14,7 +14,7 @@ use core::sync::atomic::{AtomicI32, Ordering};
 use winsafe::co::{MK, PS, VK};
 use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
 
-use crate::rtns::{BlockMask, C_BLK_MAX, board_index};
+use crate::rtns::{C_BLK_MAX, board_index};
 use crate::winmine::WinMineMainWindow;
 
 /// Length of the XYZZY cheat code sequence.
@@ -91,7 +91,7 @@ impl WinMineMainWindow {
                         && index < C_BLK_MAX
                     {
                         // Check if the block at the calculated index is a bomb
-                        (self.state.read().board_cells[index] as u8 & BlockMask::Bomb as u8) != 0
+                        self.state.read().board_cells[index].bomb
                     } else {
                         // If the mouse is not in the game board, the mouse is not over a bomb
                         false

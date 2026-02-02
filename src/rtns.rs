@@ -21,10 +21,26 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 /// Encoded board values used to track each tile state.
 ///
 /// These values are used to get the visual representation of each cell, in reverse order.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BlockCell {
     /// A blank cell with no adjacent bombs.
     Blank = 0,
+    /// A cell with 1 adjacent bomb.
+    One = 1,
+    /// A cell with 2 adjacent bombs.
+    Two = 2,
+    /// A cell with 3 adjacent bombs.
+    Three = 3,
+    /// A cell with 4 adjacent bombs.
+    Four = 4,
+    /// A cell with 5 adjacent bombs.
+    Five = 5,
+    /// A cell with 6 adjacent bombs.
+    Six = 6,
+    /// A cell with 7 adjacent bombs.
+    Seven = 7,
+    /// A cell with 8 adjacent bombs.
+    Eight = 8,
     /// The depressed version of the guess (?) mark.
     GuessDown = 9,
     /// A cell containing a bomb that has been revealed.
@@ -45,22 +61,62 @@ pub enum BlockCell {
     Border = 16,
 }
 
-/// Bit masks applied to the packed board cell value.
-///
-/// TODO: Make this a struct instead of an enum.
-#[repr(u8)]
+impl From<u8> for BlockCell {
+    /// Convert a `u8` value to a `BlockCell` enum.
+    /// # Arguments
+    /// * `value` - The `u8` value to convert.
+    /// # Returns
+    /// The corresponding `BlockCell` enum variant.
+    fn from(value: u8) -> Self {
+        match value {
+            0 => BlockCell::Blank,
+            1 => BlockCell::One,
+            2 => BlockCell::Two,
+            3 => BlockCell::Three,
+            4 => BlockCell::Four,
+            5 => BlockCell::Five,
+            6 => BlockCell::Six,
+            7 => BlockCell::Seven,
+            8 => BlockCell::Eight,
+            9 => BlockCell::GuessDown,
+            10 => BlockCell::BombDown,
+            11 => BlockCell::Wrong,
+            12 => BlockCell::Explode,
+            13 => BlockCell::GuessUp,
+            14 => BlockCell::BombUp,
+            15 => BlockCell::BlankUp,
+            16 => BlockCell::Border,
+            _ => BlockCell::Blank,
+        }
+    }
+}
+
+/// Struct representing information about a single block on the board.
 #[derive(Copy, Clone, Eq, PartialEq)]
-pub enum BlockMask {
-    /// Marks a cell that contains a bomb.
-    Bomb = 0x80,
-    /// Marks a cell that has been visited.
-    Visit = 0x40,
-    /// Covers all flag bits in a board cell.
-    Flags = 0xE0,
-    /// Covers the data bits (adjacent bomb count) in a cell.
-    Data = 0x1F,
-    /// Clears the bomb bit from a cell value.
-    NotBomb = 0x7F,
+pub struct BlockInfo {
+    /// Indicates whether the block contains a bomb.
+    pub bomb: bool,
+    /// Indicates whether the block has been visited (revealed).
+    pub visited: bool,
+    /// The type of block (visual representation).
+    pub block_type: BlockCell,
+}
+
+impl From<BlockCell> for BlockInfo {
+    /// Convert a `BlockCell` enum to a `BlockInfo` struct.
+    ///
+    /// The `bomb` and `visited` fields are set to `false` by default.
+    /// # Arguments
+    /// * `cell` - The `BlockCell` enum to convert.
+    /// # Returns
+    /// The corresponding `BlockInfo` struct.
+    fn from(cell: BlockCell) -> Self {
+        Self {
+            bomb: false,
+            visited: false,
+            block_type: cell,
+        }
+    }
 }
 
 /// Maximum number of board cells (27 columns by 32 rows including border).
@@ -111,8 +167,6 @@ static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
 /// Retrieve the global preferences mutex.
 /// # Returns
 /// A reference to the global preferences mutex.
-///
-/// TODO: Handle locking as well.
 pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
     match PREFERENCES
         .get_or_init(|| {
@@ -173,11 +227,10 @@ pub struct GameState {
     /// - Only the middle button is held down
     /// - Shift is held _then_ left button is held down
     pub chord_active: bool,
-    /// Packed board cell values stored row-major including border
+    /// Array representing the state of each cell on the board, stored row-major including border.
     ///
-    /// TODO: Replace with a better data structure, perhaps using a struct?
-    /// TODO: Use an enum for the cell values instead of i8
-    pub board_cells: [i8; C_BLK_MAX],
+    /// TODO: What does row-major even mean?
+    pub board_cells: [BlockInfo; C_BLK_MAX],
     /// Initial number of bombs at the start of the game
     pub total_bombs: i16,
     /// Total number of visited boxes needed to win
@@ -199,7 +252,11 @@ impl GameState {
             boxes_visited: 0,
             cursor_pos: POINT::default(),
             chord_active: false,
-            board_cells: [BlockCell::BlankUp as i8; C_BLK_MAX],
+            board_cells: [BlockInfo {
+                bomb: false,
+                visited: false,
+                block_type: BlockCell::BlankUp,
+            }; C_BLK_MAX],
             total_bombs: 0,
             boxes_to_win: 0,
             timer_running: false,
@@ -242,35 +299,37 @@ impl GameState {
 
     /// Retrieve the value of a block at the specified coordinates.
     ///
-    /// TODO: Return a `BlockCell` instead of an u8
     /// TODO: Does this function need to exist?
+    /// TODO: Should this return an `Option`/`Result` instead of a default value?
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// # Returns
-    /// The value of the block, or 0 if out of range.
-    fn block_value(&self, x: i32, y: i32) -> u8 {
-        board_index(x, y)
-            .and_then(|idx| self.board_cells.get(idx).copied())
-            .unwrap_or(BlockCell::Blank as i8) as u8
+    /// The `BlockInfo` value at the specified coordinates, or a blank block if out of range.
+    fn block_value(&self, x: i32, y: i32) -> BlockInfo {
+        if let Some(idx) = board_index(x, y) {
+            self.board_cells[idx]
+        } else {
+            BlockInfo::from(BlockCell::Blank)
+        }
     }
 
     /// Set the value of a block at the specified coordinates.
-    ///
-    /// TODO: Make value a `BlockCell` instead of u8
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
-    /// * `value` - The value to set.
-    const fn set_block_value(&mut self, x: i32, y: i32, value: u8) {
+    /// * `value` - The `BlockInfo` value to set.
+    ///
+    /// TODO: Should this function be split into separate functions for each field?
+    ///       Or should it be merged with the bomb setters? Or should it be removed entirely?
+    const fn set_block_value(&mut self, x: i32, y: i32, value: BlockInfo) {
         if let Some(idx) = board_index(x, y) {
-            let prev = self.board_cells[idx] as u8;
-
-            // Preserve existing flag bits, but allow callers to explicitly set the Visit bit.
-            // (Bomb placement is handled separately via set_bomb/clear_bomb.)
-            let flags = (prev & BlockMask::Flags as u8) | (value & BlockMask::Visit as u8);
-            let data = value & BlockMask::Data as u8;
-            self.board_cells[idx] = (flags | data) as i8;
+            // The bomb flag is preserved since it is handled separately.
+            self.board_cells[idx] = BlockInfo {
+                bomb: self.board_cells[idx].bomb,
+                visited: value.visited,
+                block_type: value.block_type,
+            }
         }
     }
 
@@ -282,20 +341,20 @@ impl GameState {
     /// * `y` - The Y coordinate.
     const fn set_border(&mut self, x: i32, y: i32) {
         if let Some(idx) = board_index(x, y) {
-            self.board_cells[idx] = BlockCell::Border as i8;
+            self.board_cells[idx].block_type = BlockCell::Border;
         }
     }
 
     /// Set a block as containing a bomb at the specified coordinates.
     ///
-    /// TODO: Could these functions be moved under a BlockMask impl?
+    /// TODO: Could these functions be moved under a BlockInfo impl?
+    ///       Or should this function just be removed entirely?
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     const fn set_bomb(&mut self, x: i32, y: i32) {
         if let Some(idx) = board_index(x, y) {
-            let prev = self.board_cells[idx];
-            self.board_cells[idx] = prev | BlockMask::Bomb as i8;
+            self.board_cells[idx].bomb = true;
         }
     }
 
@@ -305,29 +364,32 @@ impl GameState {
     /// * `y` - The Y coordinate.
     const fn clear_bomb(&mut self, x: i32, y: i32) {
         if let Some(idx) = board_index(x, y) {
-            let prev = self.board_cells[idx] as u8;
-            self.board_cells[idx] = (prev & BlockMask::NotBomb as u8) as i8;
+            self.board_cells[idx].bomb = false;
         }
     }
 
     /// Check if a block at the specified coordinates contains a bomb.
+    ///
+    /// TODO: Remove this function.
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// # Returns
     /// `true` if the block contains a bomb, `false` otherwise.
     fn is_bomb(&self, x: i32, y: i32) -> bool {
-        (self.block_value(x, y) & BlockMask::Bomb as u8) != 0
+        self.block_value(x, y).bomb
     }
 
     /// Check if a block at the specified coordinates has been visited.
+    ///
+    /// TODO: Remove this function.
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// # Returns
     /// `true` if the block has been visited, `false` otherwise.
     fn is_visit(&self, x: i32, y: i32) -> bool {
-        (self.block_value(x, y) & BlockMask::Visit as u8) != 0
+        self.block_value(x, y).visited
     }
 
     /// Check if a block at the specified coordinates is currently flagged as a bomb.
@@ -337,7 +399,7 @@ impl GameState {
     /// # Returns
     /// `true` if the block is guessed to contain a bomb, `false` otherwise.
     fn block_flagged(&self, x: i32, y: i32) -> bool {
-        self.block_value(x, y) & BlockMask::Data as u8 == BlockCell::BombUp as u8
+        self.block_value(x, y).block_type == BlockCell::BombUp
     }
 
     /// Check if a block at the specified coordinates is currently guessed (marked with a ?).
@@ -347,7 +409,7 @@ impl GameState {
     /// # Returns
     /// `true` if the block is guessed to be marked, `false` otherwise.
     fn block_guessed(&self, x: i32, y: i32) -> bool {
-        self.block_value(x, y) & BlockMask::Data as u8 == BlockCell::GuessUp as u8
+        self.block_value(x, y).block_type == BlockCell::GuessUp
     }
 
     /// Check if the given coordinates are within the valid range of the board.
@@ -360,34 +422,21 @@ impl GameState {
         x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
     }
 
-    /// Set a raw block value at the specified coordinates, preserving only data and visit bits.
-    /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
-    /// * `block` - The raw block value to set.
-    ///
-    /// TODO: make `block` a `BlockCell` instead of u8
-    const fn set_raw_block(&mut self, x: i32, y: i32, block: u8) {
-        // Keep only the data bits plus the Visit bit (when present).
-        let masked = block & (BlockMask::Data as u8 | BlockMask::Visit as u8);
-        self.set_block_value(x, y, masked);
-    }
-
     /// Get the data bits of a block at the specified coordinates.
+    ///
+    /// TODO: Remove this function.
     /// # Arguments
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     /// # Returns
-    /// The data bits of the block.
-    ///
-    /// TODO: Return a `BlockCell` instead of u8
-    fn block_data(&self, x: i32, y: i32) -> u8 {
-        self.block_value(x, y) & BlockMask::Data as u8
+    /// The `BlockCell` type of the block.
+    fn block_data(&self, x: i32, y: i32) -> BlockCell {
+        self.block_value(x, y).block_type
     }
 
     /// Check if the player has won the game.
     ///
-    /// TODO: Remove this function.
+    /// TODO: Should this function be removed?
     /// # Returns
     /// `true` if the player has won, `false` otherwise.
     const fn check_win(&self) -> bool {
@@ -399,7 +448,11 @@ impl GameState {
     /// This is called when the game ends to show the final board state.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
-    /// * `cell` - The block cell type to use for revealed bombs.
+    /// * `cell` - The `BlockCell` type to use for revealed bombs:
+    ///     - `BlockCell::BombDown` for a loss
+    ///     - `BlockCell::BombUp` for a win
+    ///
+    /// TODO: Should the caller just pass in whether the game was won or lost instead of a `BlockCell`?
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) -> AnyResult<()> {
@@ -408,10 +461,11 @@ impl GameState {
                 if !self.is_visit(x, y) {
                     if self.is_bomb(x, y) {
                         if !self.block_flagged(x, y) {
-                            self.set_raw_block(x, y, cell as u8);
+                            self.set_block_value(x, y, BlockInfo::from(cell));
                         }
                     } else if self.block_flagged(x, y) {
-                        self.set_raw_block(x, y, BlockCell::Wrong as u8);
+                        // TODO: Could `set_block_value` take a `BlockCell` directly?
+                        self.set_block_value(x, y, BlockInfo::from(BlockCell::Wrong));
                     }
                 }
             }
@@ -487,11 +541,11 @@ impl GameState {
     /// * `hwnd` - Handle to the main window.
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
-    /// * `block` - The new block value.
+    /// * `block` - The new `BlockInfo` value to set.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
-    fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: u8) -> AnyResult<()> {
-        self.set_raw_block(x, y, block);
+    fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: BlockInfo) -> AnyResult<()> {
+        self.set_block_value(x, y, block);
         draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
         Ok(())
     }
@@ -515,13 +569,12 @@ impl GameState {
     ) -> AnyResult<()> {
         // Visit a square; enqueue it when empty so we flood-fill neighbors later.
         if let Some(idx) = board_index(x, y) {
-            let mut blk = self.board_cells[idx] as u8;
-            if (blk & BlockMask::Visit as u8) != 0 {
+            let blk = self.board_cells[idx];
+            if blk.visited {
                 return Ok(());
             }
 
-            let data = blk & BlockMask::Data as u8;
-            if data == BlockCell::Border as u8 || data == BlockCell::BombUp as u8 {
+            if blk.block_type == BlockCell::Border || blk.block_type == BlockCell::BombUp {
                 return Ok(());
             }
 
@@ -529,16 +582,18 @@ impl GameState {
             let mut bombs = 0;
             for y_n in (y - 1)..=(y + 1) {
                 for x_n in (x - 1)..=(x + 1) {
-                    if let Some(nidx) = board_index(x_n, y_n) {
-                        let cell = self.board_cells[nidx] as u8;
-                        if (cell & BlockMask::Bomb as u8) != 0 {
-                            bombs += 1;
-                        }
+                    if let Some(nidx) = board_index(x_n, y_n)
+                        && self.board_cells[nidx].bomb
+                    {
+                        bombs += 1;
                     }
                 }
             }
-            blk = BlockMask::Visit as u8 | ((bombs as u8) & BlockMask::Data as u8);
-            self.board_cells[idx] = blk as i8;
+            self.board_cells[idx] = BlockInfo {
+                bomb: false,
+                visited: true,
+                block_type: BlockCell::from(bombs),
+            };
             draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
 
             if bombs == 0 && *tail < I_STEP_MAX {
@@ -641,7 +696,11 @@ impl GameState {
                     hwnd,
                     x,
                     y,
-                    BlockMask::Visit as u8 | BlockCell::Explode as u8,
+                    BlockInfo {
+                        bomb: true,
+                        visited: true,
+                        block_type: BlockCell::Explode,
+                    },
                 )?;
                 self.game_over(hwnd, false)?;
             }
@@ -664,7 +723,7 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_block(&mut self, hwnd: &HWND, x_center: i32, y_center: i32) -> AnyResult<()> {
         if !self.is_visit(x_center, y_center)
-            || self.block_data(x_center, y_center) != self.count_marks(x_center, y_center)
+            || self.block_data(x_center, y_center) as u8 != self.count_marks(x_center, y_center)
         {
             self.track_mouse(hwnd, -2, -2)?;
             return Ok(());
@@ -683,7 +742,11 @@ impl GameState {
                         hwnd,
                         x,
                         y,
-                        BlockMask::Visit as u8 | BlockCell::Explode as u8,
+                        BlockInfo {
+                            bomb: true,
+                            visited: true,
+                            block_type: BlockCell::Explode,
+                        },
                     )?;
                 } else {
                     self.step_box(hwnd, x, y)?;
@@ -725,23 +788,23 @@ impl GameState {
 
             // If marks are allowed, change to question mark; otherwise, change to blank
             if allow_marks {
-                BlockCell::GuessUp as u8
+                BlockCell::GuessUp
             } else {
-                BlockCell::BlankUp as u8
+                BlockCell::BlankUp
             }
         } else if self.block_guessed(x, y) {
             // If currently marked with a question mark, change to blank
             // No need to update the bomb count since the guess mark doesn't affect it
-            BlockCell::BlankUp as u8
+            BlockCell::BlankUp
         } else {
             // Currently blank; change to flagged and decrement bomb count
             self.bombs_left -= 1;
             draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
-            BlockCell::BombUp as u8
+            BlockCell::BombUp
         };
 
         // Update the block visually
-        self.change_blk(hwnd, x, y, block)?;
+        self.change_blk(hwnd, x, y, BlockInfo::from(block))?;
 
         // If the user has flagged the last bomb, they have won
         if self.block_flagged(x, y) && self.check_win() {
@@ -762,11 +825,11 @@ impl GameState {
     fn push_box_down(&mut self, x: i32, y: i32) {
         let mut blk = self.block_data(x, y);
         blk = match blk {
-            b if b == BlockCell::GuessUp as u8 => BlockCell::GuessDown as u8,
-            b if b == BlockCell::BlankUp as u8 => BlockCell::Blank as u8,
+            BlockCell::GuessUp => BlockCell::GuessDown,
+            BlockCell::BlankUp => BlockCell::Blank,
             _ => blk,
         };
-        self.set_raw_block(x, y, blk);
+        self.set_block_value(x, y, BlockInfo::from(blk));
     }
 
     /// Restore a depressed box visually.
@@ -778,11 +841,11 @@ impl GameState {
     fn pop_box_up(&mut self, x: i32, y: i32) {
         let mut blk = self.block_data(x, y);
         blk = match blk {
-            b if b == BlockCell::GuessDown as u8 => BlockCell::GuessUp as u8,
-            b if b == BlockCell::Blank as u8 => BlockCell::BlankUp as u8,
+            BlockCell::GuessDown => BlockCell::GuessUp,
+            BlockCell::Blank => BlockCell::BlankUp,
             _ => blk,
         };
-        self.set_raw_block(x, y, blk);
+        self.set_block_value(x, y, BlockInfo::from(blk));
     }
 
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
@@ -799,7 +862,7 @@ impl GameState {
     pub fn clear_field(&mut self) {
         self.board_cells
             .iter_mut()
-            .for_each(|b| *b = BlockCell::BlankUp as i8);
+            .for_each(|b| *b = BlockInfo::from(BlockCell::BlankUp));
 
         let x_max = self.board_width;
         let y_max = self.board_height;
