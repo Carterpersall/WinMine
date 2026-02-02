@@ -78,6 +78,8 @@ pub enum ButtonSprite {
 /// Number of face button sprites.
 const BUTTON_SPRITE_COUNT: usize = 5;
 /// Bitmap resources embedded in the executable.
+///
+/// TODO: Move all resource IDs into a single enum.
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum BitmapId {
@@ -87,6 +89,77 @@ enum BitmapId {
     Led = 420,
     /// Face button spritesheet (color + monochrome variants).
     Button = 430,
+}
+
+/// LED digit sprites used in the bomb counter and timer.
+#[repr(u8)]
+enum LEDSprite {
+    /// Digit 0
+    Zero = 0,
+    /// Digit 1
+    One = 1,
+    /// Digit 2
+    Two = 2,
+    /// Digit 3
+    Three = 3,
+    /// Digit 4
+    Four = 4,
+    /// Digit 5
+    Five = 5,
+    /// Digit 6
+    Six = 6,
+    /// Digit 7
+    Seven = 7,
+    /// Digit 8
+    Eight = 8,
+    /// Digit 9
+    Nine = 9,
+    /// No digit (blank)
+    Blank = 10,
+    /// Negative sign
+    Negative = 11,
+}
+
+impl From<u16> for LEDSprite {
+    /// Create an `LEDSprite` from a `u16` value.
+    /// # Arguments
+    /// * `value` - The `u16` value to convert.
+    fn from(value: u16) -> Self {
+        match value.into() {
+            0 => LEDSprite::Zero,
+            1 => LEDSprite::One,
+            2 => LEDSprite::Two,
+            3 => LEDSprite::Three,
+            4 => LEDSprite::Four,
+            5 => LEDSprite::Five,
+            6 => LEDSprite::Six,
+            7 => LEDSprite::Seven,
+            8 => LEDSprite::Eight,
+            9 => LEDSprite::Nine,
+            10 => LEDSprite::Blank,
+            11 => LEDSprite::Negative,
+            _ => LEDSprite::Blank,
+        }
+    }
+}
+impl From<i16> for LEDSprite {
+    /// Create an `LEDSprite` from an `i16` value.
+    /// # Arguments
+    /// * `value` - The `i16` value to convert.
+    fn from(value: i16) -> Self {
+        LEDSprite::from(value.unsigned_abs())
+    }
+}
+
+/// Border styles for drawing beveled borders.
+#[derive(Copy, Clone, Eq, PartialEq)]
+enum BorderStyle {
+    /// Raised beveled border.
+    Raised,
+    /// Sunken beveled border.
+    Sunken,
+    /// Flat border (no bevel).
+    Flat,
 }
 
 /// Internal state tracking loaded graphics resources and cached DCs
@@ -228,69 +301,7 @@ impl GrafixState {
         }
         Ok(())
     }
-}
 
-/// LED digit sprites used in the bomb counter and timer.
-#[repr(u8)]
-enum LEDSprite {
-    /// Digit 0
-    Zero = 0,
-    /// Digit 1
-    One = 1,
-    /// Digit 2
-    Two = 2,
-    /// Digit 3
-    Three = 3,
-    /// Digit 4
-    Four = 4,
-    /// Digit 5
-    Five = 5,
-    /// Digit 6
-    Six = 6,
-    /// Digit 7
-    Seven = 7,
-    /// Digit 8
-    Eight = 8,
-    /// Digit 9
-    Nine = 9,
-    /// No digit (blank)
-    Blank = 10,
-    /// Negative sign
-    Negative = 11,
-}
-
-impl From<u16> for LEDSprite {
-    /// Create an `LEDSprite` from a `u16` value.
-    /// # Arguments
-    /// * `value` - The `u16` value to convert.
-    fn from(value: u16) -> Self {
-        match value.into() {
-            0 => LEDSprite::Zero,
-            1 => LEDSprite::One,
-            2 => LEDSprite::Two,
-            3 => LEDSprite::Three,
-            4 => LEDSprite::Four,
-            5 => LEDSprite::Five,
-            6 => LEDSprite::Six,
-            7 => LEDSprite::Seven,
-            8 => LEDSprite::Eight,
-            9 => LEDSprite::Nine,
-            10 => LEDSprite::Blank,
-            11 => LEDSprite::Negative,
-            _ => LEDSprite::Blank,
-        }
-    }
-}
-impl From<i16> for LEDSprite {
-    /// Create an `LEDSprite` from an `i16` value.
-    /// # Arguments
-    /// * `value` - The `i16` value to convert.
-    fn from(value: i16) -> Self {
-        LEDSprite::from(value.unsigned_abs())
-    }
-}
-
-impl GrafixState {
     /// Draw a single LED digit at the specified X coordinate.
     /// # Arguments
     /// * `hdc` - The device context to draw on.
@@ -580,20 +591,7 @@ impl GrafixState {
         hwnd.GetDC()
             .map_or_else(|e| Err(e.into()), |hdc| self.draw_button(&hdc, sprite))
     }
-}
 
-/// Border styles for drawing beveled borders.
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum BorderStyle {
-    /// Raised beveled border.
-    Raised,
-    /// Sunken beveled border.
-    Sunken,
-    /// Flat border (no bevel).
-    Flat,
-}
-
-impl GrafixState {
     /// Set the pen for drawing based on the normal flag.
     /// # Arguments
     /// * `hdc` - The device context to set the pen on.
