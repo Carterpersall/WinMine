@@ -1,4 +1,8 @@
 //! Handles displaying help topics and context-sensitive help.
+//!
+//! # Notes
+//! - `HtmlHelp` leaks a `DC` whenever the popup help menu is displayed and leaks a `HBRUSH`
+//!   when opening the help window. This is likely a bug in the Win32 API itself.
 
 use core::ffi::c_void;
 use std::os::windows::ffi::OsStrExt as _;
@@ -137,8 +141,6 @@ impl Help {
     }
 
     /// Applies help context to a specific control.
-    ///
-    /// TODO: There is a DC leak somewhere around here.
     /// # Arguments
     /// * `hwnd` - The handle to the control.
     /// * `ids` - The array of help context IDs.

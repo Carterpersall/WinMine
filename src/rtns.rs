@@ -10,9 +10,7 @@ use winsafe::co::WM;
 use winsafe::msg::WndMsg;
 use winsafe::{AnyResult, HWND, POINT, prelude::*};
 
-use crate::grafix::{
-    ButtonSprite, display_button, draw_block, draw_bomb_count, draw_grid, draw_timer, load_bitmaps,
-};
+use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
 use crate::sound::Sound;
 use crate::util::rnd;
@@ -194,8 +192,9 @@ pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
 }
 
 /// Represents the current state of the game.
-#[derive(Clone)]
 pub struct GameState {
+    /// Graphics state containing bitmaps and rendering logic.
+    pub grafix: GrafixState,
     /// Aggregated status flags defining the current game state.
     pub game_status: StatusFlag,
     /// Current board width in cells (excluding border)
@@ -243,6 +242,7 @@ impl GameState {
     /// Creates a new default GameState
     pub fn new() -> Self {
         Self {
+            grafix: GrafixState::default(),
             game_status: StatusFlag::Minimized | StatusFlag::GameOver,
             board_width: 0,
             board_height: 0,
@@ -292,7 +292,7 @@ impl GameState {
     /// # Returns
     /// `Ok(())` if successful, or an error if loading resources failed.
     pub fn init_game(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        load_bitmaps(hwnd)?;
+        self.grafix.load_bitmaps(hwnd)?;
         self.clear_field();
         Ok(())
     }
@@ -470,7 +470,7 @@ impl GameState {
                 }
             }
         }
-        draw_grid(
+        self.grafix.draw_grid(
             &hwnd.GetDC()?,
             self.board_width,
             self.board_height,
@@ -510,7 +510,7 @@ impl GameState {
             ButtonSprite::Lose
         };
         self.btn_face_state = state;
-        display_button(hwnd, state)?;
+        self.grafix.display_button(hwnd, state)?;
         Ok(())
     }
 
@@ -546,7 +546,7 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn change_blk(&mut self, hwnd: &HWND, x: i32, y: i32, block: BlockInfo) -> AnyResult<()> {
         self.set_block_value(x, y, block);
-        draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+        self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
         Ok(())
     }
 
@@ -594,7 +594,7 @@ impl GameState {
                 visited: true,
                 block_type: BlockCell::from(bombs),
             };
-            draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+            self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
 
             if bombs == 0 && *tail < I_STEP_MAX {
                 queue[*tail] = (x, y);
@@ -784,7 +784,7 @@ impl GameState {
         let block = if self.block_flagged(x, y) {
             // Increment the bomb count
             self.bombs_left += 1;
-            draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+            self.grafix.draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
 
             // If marks are allowed, change to question mark; otherwise, change to blank
             if allow_marks {
@@ -799,7 +799,7 @@ impl GameState {
         } else {
             // Currently blank; change to flagged and decrement bomb count
             self.bombs_left -= 1;
-            draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+            self.grafix.draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
             BlockCell::BombUp
         };
 
@@ -885,7 +885,7 @@ impl GameState {
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
-            draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
+            self.grafix.draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
             Sound::Tick.play(&hwnd.hinstance());
         }
         Ok(())
@@ -948,7 +948,7 @@ impl WinMineMainWindow {
         self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
         self.state.write().game_status = StatusFlag::Play;
 
-        draw_bomb_count(&self.wnd.hwnd().GetDC()?, self.state.read().bombs_left)?;
+        self.state.write().grafix.draw_bomb_count(&self.wnd.hwnd().GetDC()?, total_bombs)?;
 
         self.adjust_window(f_adjust)?;
 
@@ -999,7 +999,7 @@ impl GameState {
                         if !self.is_visit(x, y) {
                             // Restore the box to its raised state
                             self.pop_box_up(x, y);
-                            draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+                            self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -1014,7 +1014,7 @@ impl GameState {
                         if !self.is_visit(x, y) {
                             // Depress the box visually
                             self.push_box_down(x, y);
-                            draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+                            self.grafix.draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -1027,7 +1027,7 @@ impl GameState {
             {
                 // Restore the old box to its raised state
                 self.pop_box_up(self.cursor_pos.x, self.cursor_pos.y);
-                draw_block(
+                self.grafix.draw_block(
                     &hwnd.GetDC()?,
                     self.cursor_pos.x,
                     self.cursor_pos.y,
@@ -1038,7 +1038,7 @@ impl GameState {
             if self.in_range(pt_new.x, pt_new.y) && self.in_range_step(pt_new.x, pt_new.y) {
                 // Depress the new box visually
                 self.push_box_down(pt_new.x, pt_new.y);
-                draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
+                self.grafix.draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
             }
         }
         // Store the new cursor position
@@ -1063,7 +1063,7 @@ impl GameState {
                 // Play the tick sound, display the initial time, and start the timer
                 Sound::Tick.play(&hwnd.hinstance());
                 self.secs_elapsed = 1;
-                draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
+                self.grafix.draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
                 self.timer_running = true;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
@@ -1083,7 +1083,7 @@ impl GameState {
             }
         }
 
-        display_button(hwnd, self.btn_face_state)?;
+        self.grafix.display_button(hwnd, self.btn_face_state)?;
 
         Ok(())
     }

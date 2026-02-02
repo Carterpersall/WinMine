@@ -338,5 +338,5 @@ dependencies = [
 
 [[package]]
 name = "winsafe"
-version = "0.0.26"
-source = "git+https://github.com/rodrigocfd/winsafe.git?rev=45efa9c37a1b428ddcb131411d9e488a9acd0caf#45efa9c37a1b428ddcb131411d9e488a9acd0caf"
+version = "0.0.27"
+source = "git+https://github.com/rodrigocfd/winsafe.git?rev=b00d4f5bf5568a07d440690f67ac7c9cfdd74e22#b00d4f5bf5568a07d440690f67ac7c9cfdd74e22"

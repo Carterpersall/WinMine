@@ -21,8 +21,7 @@ use crate::globals::{
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
-    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, display_button, draw_screen,
-    load_bitmaps, scale_dpi,
+    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, scale_dpi,
 };
 use crate::help::Help;
 use crate::pref::{
@@ -213,7 +212,7 @@ impl WinMineMainWindow {
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(true, Ordering::Relaxed);
         self.state.write().cursor_pos = POINT { x: -1, y: -1 };
-        display_button(self.wnd.hwnd(), ButtonSprite::Caution)
+        self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Caution)
     }
 
     /// Finishes a primary button drag operation.
@@ -390,7 +389,7 @@ impl WinMineMainWindow {
             return Ok(false);
         }
 
-        display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
+        self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
         self.wnd
             .hwnd()
             .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
@@ -408,7 +407,7 @@ impl WinMineMainWindow {
                     WM::LBUTTONUP => {
                         if pressed && winsafe::PtInRect(rc, msg.pt) {
                             self.state.write().btn_face_state = ButtonSprite::Happy;
-                            display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
+                            self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
                             self.start_game()?;
                         }
                         return Ok(true);
@@ -417,11 +416,11 @@ impl WinMineMainWindow {
                         if winsafe::PtInRect(rc, msg.pt) {
                             if !pressed {
                                 pressed = true;
-                                display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
+                                self.state.read().grafix.display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
                             }
                         } else if pressed {
                             pressed = false;
-                            display_button(self.wnd.hwnd(), self.state.read().btn_face_state)?;
+                            self.state.read().grafix.display_button(self.wnd.hwnd(), self.state.read().btn_face_state)?;
                         }
                     }
                     _ => {}
@@ -628,7 +627,7 @@ impl WinMineMainWindow {
                 }
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
-                load_bitmaps(self2.wnd.hwnd())?;
+                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd())?;
 
                 self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
                 Ok(0)
@@ -767,6 +766,7 @@ impl WinMineMainWindow {
             }
         });
 
+        // TODO: Handle double clicks
         self.wnd.on().wm_l_button_down({
             let self2 = self.clone();
             move |l_btn| {
@@ -821,7 +821,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 let _paint_guard = self2.wnd.hwnd().BeginPaint()?;
-                draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
+                self2.state.read().grafix.draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                 Ok(())
             }
         });
@@ -935,10 +935,10 @@ impl WinMineMainWindow {
                     prefs.color = !prefs.color;
                 };
 
-                load_bitmaps(self2.wnd.hwnd())?;
+                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd())?;
 
                 // Repaint immediately so toggling color off updates without restarting.
-                draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
+                self2.state.read().grafix.draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
                 Ok(())

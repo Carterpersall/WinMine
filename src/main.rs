@@ -21,6 +21,8 @@
 #![warn(clippy::std_instead_of_core)]
 #![warn(clippy::unused_trait_names)]
 #![warn(clippy::useless_let_if_seq)]
+// TODO: Address this lint
+#![allow(clippy::too_many_arguments)]
 
 mod globals;
 mod grafix;
