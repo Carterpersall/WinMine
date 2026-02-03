@@ -7,7 +7,7 @@ use winsafe::co::{KEY, REG_OPTION};
 use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
 use crate::pref::{GameType, SZ_WINMINE_REG_STR};
-use crate::rtns::{AdjustFlag, preferences_mutex};
+use crate::rtns::preferences_mutex;
 use crate::winmine::{MenuCommand, WinMineMainWindow};
 
 /// A wrapper around `RwLock` that handles poisoning by returning the inner data.
@@ -170,11 +170,6 @@ impl WinMineMainWindow {
         menu_check(&hmenu, MenuCommand::Color, color)?;
         menu_check(&hmenu, MenuCommand::Mark, mark)?;
         menu_check(&hmenu, MenuCommand::Sound, sound)?;
-
-        // Update the menu bar to reflect current preferences
-        let menu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
-        self.wnd.hwnd().SetMenu(&menu)?;
-        self.adjust_window(AdjustFlag::Resize)?;
 
         Ok(())
     }

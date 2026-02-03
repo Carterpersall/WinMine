@@ -3,6 +3,7 @@
 use core::cmp::{max, min};
 use core::ffi::c_void;
 use core::sync::atomic::{AtomicBool, Ordering};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
@@ -178,7 +179,7 @@ pub struct WinMineMainWindow {
     /// The main window, containing the HWND and event callbacks
     pub wnd: gui::WindowMain,
     /// Shared state for the game
-    pub state: Arc<StateLock<GameState>>,
+    pub state: Rc<StateLock<GameState>>,
     /// Whether a drag operation is currently active
     drag_active: Arc<AtomicBool>,
     /// Signals that the next click should be ignored
@@ -196,7 +197,7 @@ impl WinMineMainWindow {
     fn new(wnd: gui::WindowMain) -> Self {
         let new_self = Self {
             wnd,
-            state: Arc::new(StateLock::new(GameState::new())),
+            state: Rc::new(StateLock::new(GameState::new())),
             drag_active: Arc::new(AtomicBool::new(false)),
             ignore_next_click: Arc::new(AtomicBool::new(false)),
         };
@@ -588,13 +589,10 @@ impl WinMineMainWindow {
     fn events(&self) {
         self.wnd.on().wm_create({
             let self2 = self.clone();
-            move |create| -> winsafe::AnyResult<i32> {
+            move |_create| -> winsafe::AnyResult<i32> {
                 // Sync global DPI state to the actual monitor DPI where the window was created.
                 let dpi = self2.wnd.hwnd().GetDpiForWindow();
                 UI_DPI.store(if dpi == 0 { BASE_DPI } else { dpi }, Ordering::Relaxed);
-
-                // Ensure the client area matches the board size for the active DPI.
-                self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
 
                 // Initialize local resources.
                 self2.state.write().init_game(self2.wnd.hwnd())?;
@@ -603,7 +601,6 @@ impl WinMineMainWindow {
                 self2.set_menu_bar()?;
                 self2.start_game()?;
 
-                unsafe { self2.wnd.hwnd().DefWindowProc(create) };
                 Ok(0)
             }
         });
@@ -653,7 +650,6 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |wnd_pos| {
                 self2.handle_window_pos_changed(wnd_pos.windowpos);
-                unsafe { self2.wnd.hwnd().DefWindowProc(wnd_pos) };
                 Ok(())
             }
         });

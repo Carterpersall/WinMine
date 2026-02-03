@@ -38,8 +38,6 @@ impl Help {
     /// Help context ID mappings for dialogs
     ///
     /// Used by `WinHelp` to map control IDs to help context IDs.
-    ///
-    /// TODO: Context help is broken.
     /// # Notes
     /// - The arrays are in pairs of (control ID, help context ID).
     /// - The arrays end with two zeros to signal the end of the mapping.

@@ -368,50 +368,6 @@ impl GameState {
         }
     }
 
-    /// Check if a block at the specified coordinates contains a bomb.
-    ///
-    /// TODO: Remove this function.
-    /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
-    /// # Returns
-    /// `true` if the block contains a bomb, `false` otherwise.
-    fn is_bomb(&self, x: i32, y: i32) -> bool {
-        self.block_value(x, y).bomb
-    }
-
-    /// Check if a block at the specified coordinates has been visited.
-    ///
-    /// TODO: Remove this function.
-    /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
-    /// # Returns
-    /// `true` if the block has been visited, `false` otherwise.
-    fn is_visit(&self, x: i32, y: i32) -> bool {
-        self.block_value(x, y).visited
-    }
-
-    /// Check if a block at the specified coordinates is currently flagged as a bomb.
-    /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
-    /// # Returns
-    /// `true` if the block is guessed to contain a bomb, `false` otherwise.
-    fn block_flagged(&self, x: i32, y: i32) -> bool {
-        self.block_value(x, y).block_type == BlockCell::BombUp
-    }
-
-    /// Check if a block at the specified coordinates is currently guessed (marked with a ?).
-    /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
-    /// # Returns
-    /// `true` if the block is guessed to be marked, `false` otherwise.
-    fn block_guessed(&self, x: i32, y: i32) -> bool {
-        self.block_value(x, y).block_type == BlockCell::GuessUp
-    }
-
     /// Check if the given coordinates are within the valid range of the board.
     /// # Arguments
     /// * `x` - The X coordinate.
@@ -420,18 +376,6 @@ impl GameState {
     /// `true` if the coordinates are within range, `false` otherwise.
     const fn in_range(&self, x: i32, y: i32) -> bool {
         x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
-    }
-
-    /// Get the data bits of a block at the specified coordinates.
-    ///
-    /// TODO: Remove this function.
-    /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
-    /// # Returns
-    /// The `BlockCell` type of the block.
-    fn block_data(&self, x: i32, y: i32) -> BlockCell {
-        self.block_value(x, y).block_type
     }
 
     /// Check if the player has won the game.
@@ -458,12 +402,12 @@ impl GameState {
     fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) -> AnyResult<()> {
         for y in 1..=self.board_height {
             for x in 1..=self.board_width {
-                if !self.is_visit(x, y) {
-                    if self.is_bomb(x, y) {
-                        if !self.block_flagged(x, y) {
+                if !self.block_value(x, y).visited {
+                    if self.block_value(x, y).bomb {
+                        if self.block_value(x, y).block_type != BlockCell::BombUp {
                             self.set_block_value(x, y, BlockInfo::from(cell));
                         }
-                    } else if self.block_flagged(x, y) {
+                    } else if self.block_value(x, y).block_type == BlockCell::BombUp {
                         // TODO: Could `set_block_value` take a `BlockCell` directly?
                         self.set_block_value(x, y, BlockInfo::from(BlockCell::Wrong));
                     }
@@ -489,7 +433,7 @@ impl GameState {
         let mut count = 0;
         for y in (y_center - 1)..=(y_center + 1) {
             for x in (x_center - 1)..=(x_center + 1) {
-                if self.block_flagged(x, y) {
+                if self.block_value(x, y).block_type == BlockCell::BombUp {
                     count += 1;
                 }
             }
@@ -680,12 +624,12 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_square(&mut self, hwnd: &HWND, x: i32, y: i32) -> AnyResult<()> {
-        if self.is_bomb(x, y) {
+        if self.block_value(x, y).bomb {
             let visits = self.boxes_visited;
             if visits == 0 {
                 for y_t in 1..self.board_height {
                     for x_t in 1..self.board_width {
-                        if !self.is_bomb(x_t, y_t) {
+                        if !self.block_value(x_t, y_t).bomb {
                             self.clear_bomb(x, y);
                             self.set_bomb(x_t, y_t);
                             self.step_box(hwnd, x, y)?;
@@ -724,8 +668,9 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_block(&mut self, hwnd: &HWND, x_center: i32, y_center: i32) -> AnyResult<()> {
-        if !self.is_visit(x_center, y_center)
-            || self.block_data(x_center, y_center) as u8 != self.count_marks(x_center, y_center)
+        if !self.block_value(x_center, y_center).visited
+            || self.block_value(x_center, y_center).block_type as u8
+                != self.count_marks(x_center, y_center)
         {
             self.track_mouse(hwnd, -2, -2)?;
             return Ok(());
@@ -734,11 +679,11 @@ impl GameState {
         let mut lose = false;
         for y in (y_center - 1)..=(y_center + 1) {
             for x in (x_center - 1)..=(x_center + 1) {
-                if self.block_flagged(x, y) {
+                if self.block_value(x, y).block_type == BlockCell::BombUp {
                     continue;
                 }
 
-                if self.is_bomb(x, y) {
+                if self.block_value(x, y).bomb {
                     lose = true;
                     self.change_blk(
                         hwnd,
@@ -776,14 +721,14 @@ impl GameState {
         // Cycle through blank -> flag -> question mark states depending on preferences.
 
         // Return if the square is out of range or already visited.
-        if !self.in_range(x, y) || self.is_visit(x, y) {
+        if !self.in_range(x, y) || self.block_value(x, y).visited {
             return Ok(());
         }
 
         let allow_marks = { preferences_mutex().mark_enabled };
 
         // If currently flagged
-        let block = if self.block_flagged(x, y) {
+        let block = if self.block_value(x, y).block_type == BlockCell::BombUp {
             // Increment the bomb count
             self.bombs_left += 1;
             self.grafix
@@ -795,7 +740,7 @@ impl GameState {
             } else {
                 BlockCell::BlankUp
             }
-        } else if self.block_guessed(x, y) {
+        } else if self.block_value(x, y).block_type == BlockCell::GuessUp {
             // If currently marked with a question mark, change to blank
             // No need to update the bomb count since the guess mark doesn't affect it
             BlockCell::BlankUp
@@ -811,7 +756,7 @@ impl GameState {
         self.change_blk(hwnd, x, y, BlockInfo::from(block))?;
 
         // If the user has flagged the last bomb, they have won
-        if self.block_flagged(x, y) && self.check_win() {
+        if self.block_value(x, y).block_type == BlockCell::BombUp && self.check_win() {
             self.game_over(hwnd, true)?;
         }
 
@@ -827,7 +772,7 @@ impl GameState {
     /// * `x` - The X coordinate of the box.
     /// * `y` - The Y coordinate of the box.
     fn push_box_down(&mut self, x: i32, y: i32) {
-        let mut blk = self.block_data(x, y);
+        let mut blk = self.block_value(x, y).block_type;
         blk = match blk {
             BlockCell::GuessUp => BlockCell::GuessDown,
             BlockCell::BlankUp => BlockCell::Blank,
@@ -843,7 +788,7 @@ impl GameState {
     /// * `x` - The X coordinate of the box.
     /// * `y` - The Y coordinate of the box.
     fn pop_box_up(&mut self, x: i32, y: i32) {
-        let mut blk = self.block_data(x, y);
+        let mut blk = self.block_value(x, y).block_type;
         blk = match blk {
             BlockCell::GuessDown => BlockCell::GuessUp,
             BlockCell::Blank => BlockCell::BlankUp,
@@ -859,7 +804,9 @@ impl GameState {
     /// # Returns
     /// `true` if the coordinate is valid for flood-fill, `false` otherwise.
     fn in_range_step(&mut self, x: i32, y: i32) -> bool {
-        self.in_range(x, y) && !self.is_visit(x, y) && !self.block_flagged(x, y)
+        self.in_range(x, y)
+            && !self.block_value(x, y).visited
+            && self.block_value(x, y).block_type != BlockCell::BombUp
     }
 
     /// Reset the game field to its initial blank state and rebuild the border.
@@ -903,8 +850,6 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if resizing or updating the display failed.
     pub fn start_game(&self) -> AnyResult<()> {
-        self.state.write().timer_running = false;
-
         let x_prev = self.state.read().board_width;
         let y_prev = self.state.read().board_height;
 
@@ -938,7 +883,7 @@ impl WinMineMainWindow {
             loop {
                 x = rnd(width as u32) + 1;
                 y = rnd(height as u32) + 1;
-                if !self.state.read().is_bomb(x as i32, y as i32) {
+                if !self.state.read().block_value(x as i32, y as i32).bomb {
                     break;
                 }
             }
@@ -1003,7 +948,7 @@ impl GameState {
                 for y in y_old_min..=y_old_max {
                     for x in x_old_min..=x_old_max {
                         // Only pop up boxes that are not visited
-                        if !self.is_visit(x, y) {
+                        if !self.block_value(x, y).visited {
                             // Restore the box to its raised state
                             self.pop_box_up(x, y);
                             self.grafix
@@ -1019,7 +964,7 @@ impl GameState {
                 for y in y_cur_min..=y_cur_max {
                     for x in x_cur_min..=x_cur_max {
                         // Only push down boxes that are not visited
-                        if !self.is_visit(x, y) {
+                        if !self.block_value(x, y).visited {
                             // Depress the box visually
                             self.push_box_down(x, y);
                             self.grafix
@@ -1032,7 +977,9 @@ impl GameState {
             // Otherwise, handle single-box push/pop
             // Check if the old cursor position is in range and not yet visited
             if self.in_range(self.cursor_pos.x, self.cursor_pos.y)
-                && !self.is_visit(self.cursor_pos.x, self.cursor_pos.y)
+                && !self
+                    .block_value(self.cursor_pos.x, self.cursor_pos.y)
+                    .visited
             {
                 // Restore the old box to its raised state
                 self.pop_box_up(self.cursor_pos.x, self.cursor_pos.y);
