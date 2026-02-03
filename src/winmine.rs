@@ -227,7 +227,7 @@ impl WinMineMainWindow {
         if self.state.read().game_status.contains(StatusFlag::Play) {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
-            self.state.write().track_mouse(self.wnd.hwnd(), -2, -2)?;
+            self.state.write().track_mouse(self.wnd.hwnd(), usize::MAX, usize::MAX)?;
         }
         // If a chord operation was active, end it now
         self.state.write().chord_active = false;
@@ -310,7 +310,7 @@ impl WinMineMainWindow {
         if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
             let state = &mut self.state.write();
             state.chord_active = true;
-            state.track_mouse(self.wnd.hwnd(), -3, -3)?;
+            state.track_mouse(self.wnd.hwnd(), usize::MAX, usize::MAX)?;
             self.begin_primary_button_drag()?;
             self.handle_mouse_move(btn, point)?;
             return Ok(());
@@ -562,12 +562,12 @@ impl WinMineMainWindow {
     /// * `x`: The x-coordinate in pixels.
     /// # Returns
     /// The corresponding box index.
-    pub fn x_box_from_xpos(&self, x: i32) -> i32 {
+    pub fn x_box_from_xpos(&self, x: i32) -> usize {
         let cell = scale_dpi(DX_BLK_96);
         if cell <= 0 {
             return 0;
         }
-        (x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell
+        ((x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell) as usize
     }
 
     /// Converts a y-coordinate in pixels to a box index.
@@ -575,12 +575,12 @@ impl WinMineMainWindow {
     /// * `y`: The y-coordinate in pixels.
     /// # Returns
     /// The corresponding box index.
-    pub fn y_box_from_ypos(&self, y: i32) -> i32 {
+    pub fn y_box_from_ypos(&self, y: i32) -> usize {
         let cell = scale_dpi(DY_BLK_96);
         if cell <= 0 {
             return 0;
         }
-        (y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell
+        ((y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell) as usize
     }
 
     /* Event Handlers */
