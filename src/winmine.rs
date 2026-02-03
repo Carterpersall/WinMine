@@ -703,7 +703,11 @@ impl WinMineMainWindow {
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
                 let color = self2.state.read().prefs.color;
-                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd(), color)?;
+                self2
+                    .state
+                    .write()
+                    .grafix
+                    .load_bitmaps(self2.wnd.hwnd(), color)?;
 
                 self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
                 Ok(0)
@@ -1011,7 +1015,11 @@ impl WinMineMainWindow {
                 let color = !self2.state.read().prefs.color;
                 self2.state.write().prefs.color = color;
 
-                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd(), color)?;
+                self2
+                    .state
+                    .write()
+                    .grafix
+                    .load_bitmaps(self2.wnd.hwnd(), color)?;
 
                 // Repaint immediately so toggling color off updates without restarting.
                 self2
@@ -1126,13 +1134,19 @@ impl PrefDialog {
                 };
 
                 // Populate the dialog controls with the current settings
-                self2.dlg.hwnd()
+                self2
+                    .dlg
+                    .hwnd()
                     .GetDlgItem(ControlId::EditHeight as u16)
                     .and_then(|edit| edit.SetWindowText(&height.to_string()))?;
-                self2.dlg.hwnd()
+                self2
+                    .dlg
+                    .hwnd()
                     .GetDlgItem(ControlId::EditWidth as u16)
                     .and_then(|edit| edit.SetWindowText(&width.to_string()))?;
-                self2.dlg.hwnd()
+                self2
+                    .dlg
+                    .hwnd()
                     .GetDlgItem(ControlId::EditMines as u16)
                     .and_then(|edit| edit.SetWindowText(&mines.to_string()))?;
 
@@ -1433,11 +1447,15 @@ impl EnterDialog {
                     (state.prefs.game_type, name)
                 };
 
-                self2.dlg.hwnd()
+                self2
+                    .dlg
+                    .hwnd()
                     .GetDlgItem(ControlId::TextBest as u16)
                     .and_then(|best_hwnd| best_hwnd.SetWindowText(game_type.fastest_time_msg()))?;
 
-                self2.dlg.hwnd()
+                self2
+                    .dlg
+                    .hwnd()
                     .GetDlgItem(ControlId::EditName as u16)
                     .and_then(|edit_hwnd| {
                         // TODO: Is there a way to do this without sending a message?

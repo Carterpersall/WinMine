@@ -249,26 +249,32 @@ impl Pref {
         )?;
 
         // Get the height of the board
-        self.height = self.read_int(&key_guard, PrefKey::Height)
+        self.height = self
+            .read_int(&key_guard, PrefKey::Height)
             .unwrap_or(DEFHEIGHT)
             .clamp(MINHEIGHT, 25) as usize;
 
         // Get the width of the board
-        self.width = self.read_int(&key_guard, PrefKey::Width)
+        self.width = self
+            .read_int(&key_guard, PrefKey::Width)
             .unwrap_or(DEFWIDTH)
             .clamp(MINWIDTH, 30) as usize;
 
         // Get the game difficulty
-        self.game_type = GameType::from(self.read_int(&key_guard, PrefKey::Difficulty).unwrap_or(0));
+        self.game_type =
+            GameType::from(self.read_int(&key_guard, PrefKey::Difficulty).unwrap_or(0));
         // Get the number of mines on the board and the window position
-        self.mines = self.read_int(&key_guard, PrefKey::Mines)
+        self.mines = self
+            .read_int(&key_guard, PrefKey::Mines)
             .unwrap_or(10)
             .clamp(10, 999) as i16;
         // TODO: The original bounds for window position were 0-1024, which made sense on 1990s displays, but is too small for modern screens.
-        self.wnd_x_pos = self.read_int(&key_guard, PrefKey::Xpos)
+        self.wnd_x_pos = self
+            .read_int(&key_guard, PrefKey::Xpos)
             .unwrap_or(80)
             .clamp(0, 1024) as i32;
-        self.wnd_y_pos = self.read_int(&key_guard, PrefKey::Ypos)
+        self.wnd_y_pos = self
+            .read_int(&key_guard, PrefKey::Ypos)
             .unwrap_or(80)
             .clamp(0, 1024) as i32;
 
@@ -277,13 +283,16 @@ impl Pref {
         self.mark_enabled = self.read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
 
         // Get best times and player names for each difficulty level
-        self.best_times[GameType::Begin as usize] = self.read_int(&key_guard, PrefKey::Time1)
+        self.best_times[GameType::Begin as usize] = self
+            .read_int(&key_guard, PrefKey::Time1)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.best_times[GameType::Inter as usize] = self.read_int(&key_guard, PrefKey::Time2)
+        self.best_times[GameType::Inter as usize] = self
+            .read_int(&key_guard, PrefKey::Time2)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.best_times[GameType::Expert as usize] = self.read_int(&key_guard, PrefKey::Time3)
+        self.best_times[GameType::Expert as usize] = self
+            .read_int(&key_guard, PrefKey::Time3)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
         self.beginner_name = self.read_sz(&key_guard, PrefKey::Name1);
@@ -296,7 +305,10 @@ impl Pref {
             Ok(hdc) if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 => 1,
             _ => 0,
         };
-        self.color = self.read_int(&key_guard, PrefKey::Color).unwrap_or(default_color) != 0;
+        self.color = self
+            .read_int(&key_guard, PrefKey::Color)
+            .unwrap_or(default_color)
+            != 0;
         // If sound is enabled, initialize the sound system
         if self.sound_enabled {
             self.sound_enabled = Sound::init();

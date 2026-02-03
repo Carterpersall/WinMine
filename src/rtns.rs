@@ -357,7 +357,9 @@ impl GameState {
         let game = self.prefs.game_type;
         if game != GameType::Other {
             let game_idx = game as usize;
-            if game_idx < self.prefs.best_times.len() && self.secs_elapsed < self.prefs.best_times[game_idx] {
+            if game_idx < self.prefs.best_times.len()
+                && self.secs_elapsed < self.prefs.best_times[game_idx]
+            {
                 {
                     self.prefs.best_times[game_idx] = self.secs_elapsed;
                 }
