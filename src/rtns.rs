@@ -117,8 +117,9 @@ impl From<BlockCell> for BlockInfo {
     }
 }
 
-/// Maximum number of board cells (27 columns by 32 rows including border).
-pub const C_BLK_MAX: usize = 27 * 32;
+/// Maximum number of board cells
+pub const MAX_X_BLKS: usize = 27;
+pub const MAX_Y_BLKS: usize = 32;
 /// Upper bound on the flood-fill work queue used for empty regions.
 const I_STEP_MAX: usize = 100;
 
@@ -155,9 +156,6 @@ bitflags! {
         const GameOver = 0b1000;
     }
 }
-
-/// Shift applied when converting x/y to the packed board index.
-pub const BOARD_INDEX_SHIFT: usize = 5;
 
 /// Current preferences stored in a global Mutex.
 static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
@@ -226,10 +224,8 @@ pub struct GameState {
     /// - Only the middle button is held down
     /// - Shift is held _then_ left button is held down
     pub chord_active: bool,
-    /// Array representing the state of each cell on the board, stored row-major including border.
-    ///
-    /// TODO: What does row-major even mean?
-    pub board_cells: [BlockInfo; C_BLK_MAX],
+    /// 2D Array representing the state of each cell on the board
+    pub board_cells: [[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
     /// Initial number of bombs at the start of the game
     pub total_bombs: i16,
     /// Total number of visited boxes needed to win
@@ -252,11 +248,11 @@ impl GameState {
             boxes_visited: 0,
             cursor_pos: POINT::default(),
             chord_active: false,
-            board_cells: [BlockInfo {
+            board_cells: [[BlockInfo {
                 bomb: false,
                 visited: false,
                 block_type: BlockCell::BlankUp,
-            }; C_BLK_MAX],
+            }; MAX_X_BLKS]; MAX_Y_BLKS],
             total_bombs: 0,
             boxes_to_win: 0,
             timer_running: false,
@@ -266,24 +262,6 @@ impl GameState {
 
 /// Previous timer running state used to detect changes
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
-
-/// Calculate the board index for the given coordinates.
-///
-/// TODO: Return Result instead of Option
-/// # Arguments
-/// * `x` - The X coordinate.
-/// * `y` - The Y coordinate.
-/// # Returns
-/// An option containing the board index if valid, or None if out of range.
-pub const fn board_index(x: i32, y: i32) -> Option<usize> {
-    // Calculate the offset in the packed board array.
-    let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
-    if offset < 0 {
-        return None;
-    }
-    let idx = offset as usize;
-    if idx < C_BLK_MAX { Some(idx) } else { None }
-}
 
 impl GameState {
     /// Initialize local graphics resources and reset the minefield before the game starts.
@@ -306,12 +284,8 @@ impl GameState {
     /// * `y` - The Y coordinate.
     /// # Returns
     /// The `BlockInfo` value at the specified coordinates, or a blank block if out of range.
-    fn block_value(&self, x: i32, y: i32) -> BlockInfo {
-        if let Some(idx) = board_index(x, y) {
-            self.board_cells[idx]
-        } else {
-            BlockInfo::from(BlockCell::Blank)
-        }
+    const fn block_value(&self, x: i32, y: i32) -> BlockInfo {
+        self.board_cells[x as usize][y as usize]
     }
 
     /// Set the value of a block at the specified coordinates.
@@ -323,13 +297,11 @@ impl GameState {
     /// TODO: Should this function be split into separate functions for each field?
     ///       Or should it be merged with the bomb setters? Or should it be removed entirely?
     const fn set_block_value(&mut self, x: i32, y: i32, value: BlockInfo) {
-        if let Some(idx) = board_index(x, y) {
-            // The bomb flag is preserved since it is handled separately.
-            self.board_cells[idx] = BlockInfo {
-                bomb: self.board_cells[idx].bomb,
-                visited: value.visited,
-                block_type: value.block_type,
-            }
+        // The bomb flag is preserved since it is handled separately.
+        self.board_cells[x as usize][y as usize] = BlockInfo {
+            bomb: self.board_cells[x as usize][y as usize].bomb,
+            visited: value.visited,
+            block_type: value.block_type,
         }
     }
 
@@ -340,9 +312,7 @@ impl GameState {
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     const fn set_border(&mut self, x: i32, y: i32) {
-        if let Some(idx) = board_index(x, y) {
-            self.board_cells[idx].block_type = BlockCell::Border;
-        }
+        self.board_cells[x as usize][y as usize].block_type = BlockCell::Border;
     }
 
     /// Set a block as containing a bomb at the specified coordinates.
@@ -353,9 +323,7 @@ impl GameState {
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     const fn set_bomb(&mut self, x: i32, y: i32) {
-        if let Some(idx) = board_index(x, y) {
-            self.board_cells[idx].bomb = true;
-        }
+        self.board_cells[x as usize][y as usize].bomb = true;
     }
 
     /// Clear the bomb flag from a block at the specified coordinates.
@@ -363,9 +331,7 @@ impl GameState {
     /// * `x` - The X coordinate.
     /// * `y` - The Y coordinate.
     const fn clear_bomb(&mut self, x: i32, y: i32) {
-        if let Some(idx) = board_index(x, y) {
-            self.board_cells[idx].bomb = false;
-        }
+        self.board_cells[x as usize][y as usize].bomb = false;
     }
 
     /// Check if the given coordinates are within the valid range of the board.
@@ -513,39 +479,35 @@ impl GameState {
         y: i32,
     ) -> AnyResult<()> {
         // Visit a square; enqueue it when empty so we flood-fill neighbors later.
-        if let Some(idx) = board_index(x, y) {
-            let blk = self.board_cells[idx];
-            if blk.visited {
-                return Ok(());
-            }
+        let blk = self.board_cells[x as usize][y as usize];
+        if blk.visited {
+            return Ok(());
+        }
 
-            if blk.block_type == BlockCell::Border || blk.block_type == BlockCell::BombUp {
-                return Ok(());
-            }
+        if blk.block_type == BlockCell::Border || blk.block_type == BlockCell::BombUp {
+            return Ok(());
+        }
 
-            self.boxes_visited += 1;
-            let mut bombs = 0;
-            for y_n in (y - 1)..=(y + 1) {
-                for x_n in (x - 1)..=(x + 1) {
-                    if let Some(nidx) = board_index(x_n, y_n)
-                        && self.board_cells[nidx].bomb
-                    {
-                        bombs += 1;
-                    }
+        self.boxes_visited += 1;
+        let mut bombs = 0;
+        for y_n in (y - 1)..=(y + 1) {
+            for x_n in (x - 1)..=(x + 1) {
+                if self.board_cells[x_n as usize][y_n as usize].bomb {
+                    bombs += 1;
                 }
             }
-            self.board_cells[idx] = BlockInfo {
-                bomb: false,
-                visited: true,
-                block_type: BlockCell::from(bombs),
-            };
-            self.grafix
-                .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+        }
+        self.board_cells[x as usize][y as usize] = BlockInfo {
+            bomb: false,
+            visited: true,
+            block_type: BlockCell::from(bombs),
+        };
+        self.grafix
+            .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
 
-            if bombs == 0 && *tail < I_STEP_MAX {
-                queue[*tail] = (x, y);
-                *tail += 1;
-            }
+        if bombs == 0 && *tail < I_STEP_MAX {
+            queue[*tail] = (x, y);
+            *tail += 1;
         }
         Ok(())
     }
@@ -813,6 +775,7 @@ impl GameState {
     pub fn clear_field(&mut self) {
         self.board_cells
             .iter_mut()
+            .flatten()
             .for_each(|b| *b = BlockInfo::from(BlockCell::BlankUp));
 
         let x_max = self.board_width;

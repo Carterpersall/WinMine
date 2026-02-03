@@ -15,7 +15,7 @@ use winsafe::{
 };
 
 use crate::globals::{BASE_DPI, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
-use crate::rtns::{BOARD_INDEX_SHIFT, BlockInfo, GameState, preferences_mutex};
+use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS, preferences_mutex};
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -238,7 +238,7 @@ impl GrafixState {
         hdc: &ReleaseDCGuard,
         x: i32,
         y: i32,
-        board: &[BlockInfo],
+        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
     ) -> AnyResult<()> {
         let Some(src) = self.block_dc(x, y, board) else {
             return Ok(());
@@ -273,7 +273,7 @@ impl GrafixState {
         hdc: &ReleaseDCGuard,
         width: i32,
         height: i32,
-        board: &[BlockInfo],
+        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
     ) -> AnyResult<()> {
         let dst_w = scale_dpi(DX_BLK_96);
         let dst_h = scale_dpi(DY_BLK_96);
@@ -1058,7 +1058,7 @@ impl GrafixState {
     /// * `board` - Slice representing the board state
     /// # Returns
     /// Optionally, a reference to the compatible DC for the block sprite
-    fn block_dc(&self, x: i32, y: i32, board: &[BlockInfo]) -> Option<&DeleteDCGuard> {
+    const fn block_dc(&self, x: i32, y: i32, board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS]) -> Option<&DeleteDCGuard> {
         let idx = self.block_sprite_index(x, y, board);
         if idx >= I_BLK_MAX {
             return None;
@@ -1076,16 +1076,7 @@ impl GrafixState {
     /// The sprite index for the block at the specified coordinates
     /// # Notes
     /// The x and y values are stored as `i32` due to much of the Win32 API using `i32` for coordinates. (`POINT`, `SIZE`, `RECT`, etc.)
-    fn block_sprite_index(&self, x: i32, y: i32, board: &[BlockInfo]) -> usize {
-        // The board encoding packs state into rgBlk; mask out metadata to find the sprite index.
-        // TODO: Maybe BlockInfo should be a 2D array to avoid this calculation?
-        let offset = ((y as isize) << BOARD_INDEX_SHIFT) + x as isize;
-        if offset < 0 {
-            return 0;
-        }
-
-        board
-            .get(offset as usize)
-            .map_or(0, |value| value.block_type as usize)
+    const fn block_sprite_index(&self, x: i32, y: i32, board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS]) -> usize {
+        board[x as usize][y as usize].block_type as usize
     }
 }

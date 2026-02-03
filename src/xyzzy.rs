@@ -14,7 +14,6 @@ use core::sync::atomic::{AtomicI32, Ordering};
 use winsafe::co::{MK, PS, VK};
 use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
 
-use crate::rtns::{C_BLK_MAX, board_index};
 use crate::winmine::WinMineMainWindow;
 
 /// Length of the XYZZY cheat code sequence.
@@ -86,16 +85,8 @@ impl WinMineMainWindow {
             if in_range {
                 let hdc = HWND::DESKTOP.GetDC()?;
                 let is_bomb = {
-                    // Get the mouse cursor's position in the board
-                    if let Some(index) = board_index(x_pos, y_pos)
-                        && index < C_BLK_MAX
-                    {
-                        // Check if the block at the calculated index is a bomb
-                        self.state.read().board_cells[index].bomb
-                    } else {
-                        // If the mouse is not in the game board, the mouse is not over a bomb
-                        false
-                    }
+                    // Check if the block at the calculated index is a bomb
+                    self.state.read().board_cells[x_pos as usize][y_pos as usize].bomb
                 };
 
                 // Determine the color based on bomb status:
