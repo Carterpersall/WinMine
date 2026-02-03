@@ -74,9 +74,10 @@ impl WinMineMainWindow {
         // Check if the Control key is held down.
         let control_down = key == MK::CONTROL;
         if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
-            let x_pos = self.x_box_from_xpos(point.x) as i32;
-            let y_pos = self.y_box_from_ypos(point.y) as i32;
-            self.state.write().cursor_pos = POINT { x: x_pos, y: y_pos };
+            let x_pos = self.x_box_from_xpos(point.x);
+            let y_pos = self.y_box_from_ypos(point.y);
+            self.state.write().cursor_x = x_pos;
+            self.state.write().cursor_y = y_pos;
             // Check if the cursor is within the board's range
             let in_range = x_pos > 0
                 && y_pos > 0
@@ -86,7 +87,7 @@ impl WinMineMainWindow {
                 let hdc = HWND::DESKTOP.GetDC()?;
                 let is_bomb = {
                     // Check if the block at the calculated index is a bomb
-                    self.state.read().board_cells[x_pos as usize][y_pos as usize].bomb
+                    self.state.read().board_cells[x_pos][y_pos].bomb
                 };
 
                 // Determine the color based on bomb status:

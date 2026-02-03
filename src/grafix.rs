@@ -228,16 +228,16 @@ impl GrafixState {
     /// Draw a single block at the specified board coordinates.
     /// # Arguments
     /// * `hdc` - The device context to draw on.
-    /// * `x` - The X coordinate of the block (1-based).
-    /// * `y` - The Y coordinate of the block (1-based).
+    /// * `x` - The X coordinate of the block.
+    /// * `y` - The Y coordinate of the block.
     /// * `board` - Array slice containing the board state.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_block(
         &self,
         hdc: &ReleaseDCGuard,
-        x: i32,
-        y: i32,
+        x: usize,
+        y: usize,
         board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
     ) -> AnyResult<()> {
         let Some(src) = self.block_dc(x, y, board) else {
@@ -246,8 +246,8 @@ impl GrafixState {
 
         let dst_w = scale_dpi(DX_BLK_96);
         let dst_h = scale_dpi(DY_BLK_96);
-        let dst_x = (x * dst_w) + (scale_dpi(DX_LEFT_SPACE_96) - dst_w);
-        let dst_y = (y * dst_h) + (scale_dpi(DY_GRID_OFF_96) - dst_h);
+        let dst_x = (x as i32 * dst_w) + (scale_dpi(DX_LEFT_SPACE_96) - dst_w);
+        let dst_y = (y as i32 * dst_h) + (scale_dpi(DY_GRID_OFF_96) - dst_h);
 
         // Blocks are cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         hdc.BitBlt(
@@ -271,8 +271,8 @@ impl GrafixState {
     pub fn draw_grid(
         &self,
         hdc: &ReleaseDCGuard,
-        width: i32,
-        height: i32,
+        width: usize,
+        height: usize,
         board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
     ) -> AnyResult<()> {
         let dst_w = scale_dpi(DX_BLK_96);
@@ -1058,7 +1058,12 @@ impl GrafixState {
     /// * `board` - Slice representing the board state
     /// # Returns
     /// Optionally, a reference to the compatible DC for the block sprite
-    const fn block_dc(&self, x: i32, y: i32, board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS]) -> Option<&DeleteDCGuard> {
+    const fn block_dc(
+        &self,
+        x: usize,
+        y: usize,
+        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+    ) -> Option<&DeleteDCGuard> {
         let idx = self.block_sprite_index(x, y, board);
         if idx >= I_BLK_MAX {
             return None;
@@ -1074,9 +1079,12 @@ impl GrafixState {
     /// * `board` - Array slice containing the board state
     /// # Returns
     /// The sprite index for the block at the specified coordinates
-    /// # Notes
-    /// The x and y values are stored as `i32` due to much of the Win32 API using `i32` for coordinates. (`POINT`, `SIZE`, `RECT`, etc.)
-    const fn block_sprite_index(&self, x: i32, y: i32, board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS]) -> usize {
-        board[x as usize][y as usize].block_type as usize
+    const fn block_sprite_index(
+        &self,
+        x: usize,
+        y: usize,
+        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+    ) -> usize {
+        board[x][y].block_type as usize
     }
 }

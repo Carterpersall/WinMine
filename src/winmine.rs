@@ -212,7 +212,8 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(true, Ordering::Relaxed);
-        self.state.write().cursor_pos = POINT { x: -1, y: -1 };
+        self.state.write().cursor_x = usize::MAX;
+        self.state.write().cursor_y = usize::MAX;
         self.state
             .read()
             .grafix
@@ -227,7 +228,9 @@ impl WinMineMainWindow {
         if self.state.read().game_status.contains(StatusFlag::Play) {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
-            self.state.write().track_mouse(self.wnd.hwnd(), usize::MAX, usize::MAX)?;
+            self.state
+                .write()
+                .track_mouse(self.wnd.hwnd(), usize::MAX, usize::MAX)?;
         }
         // If a chord operation was active, end it now
         self.state.write().chord_active = false;
@@ -457,10 +460,10 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if adjustment failed.
     pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Calculate desired window size based on board dimensions and DPI scaling
-        let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width
+        let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width as i32
             + scale_dpi(DX_LEFT_SPACE_96)
             + scale_dpi(DX_RIGHT_SPACE_96);
-        let dy_window = scale_dpi(DY_BLK_96) * self.state.read().board_height
+        let dy_window = scale_dpi(DY_BLK_96) * self.state.read().board_height as i32
             + scale_dpi(DY_GRID_OFF_96)
             + scale_dpi(DY_BOTTOM_SPACE_96);
         WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
@@ -878,8 +881,8 @@ impl WinMineMainWindow {
                     if let Some(data) = game.preset_data() {
                         prefs.game_type = game;
                         prefs.mines = data.0;
-                        prefs.height = data.1 as i32;
-                        prefs.width = data.2 as i32;
+                        prefs.height = data.1 as usize;
+                        prefs.width = data.2 as usize;
                     }
                 }
                 UPDATE_INI.store(true, Ordering::Relaxed);
@@ -1151,8 +1154,8 @@ impl PrefDialog {
 
                 // Update preferences with the new settings
                 let mut prefs = preferences_mutex();
-                prefs.height = height as i32;
-                prefs.width = width as i32;
+                prefs.height = height as usize;
+                prefs.width = width as usize;
                 prefs.mines = mines as i16;
 
                 // Close the dialog

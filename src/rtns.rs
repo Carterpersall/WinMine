@@ -8,7 +8,7 @@ use std::sync::{Mutex, OnceLock};
 use bitflags::bitflags;
 use winsafe::co::WM;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HWND, POINT, prelude::*};
+use winsafe::{AnyResult, HWND, prelude::*};
 
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
@@ -196,9 +196,9 @@ pub struct GameState {
     /// Aggregated status flags defining the current game state.
     pub game_status: StatusFlag,
     /// Current board width in cells (excluding border)
-    pub board_width: i32,
+    pub board_width: usize,
     /// Current board height in cells (excluding border)
-    pub board_height: i32,
+    pub board_height: usize,
     /// Current button face sprite
     pub btn_face_state: ButtonSprite,
     /// Current number of bombs left to mark
@@ -213,8 +213,10 @@ pub struct GameState {
     ///
     /// Note: Maximum value is 2<sup>16</sup>, or a 256 x 256 board with no bombs.
     pub boxes_visited: u16,
-    /// Current cursor position in board coordinates
-    pub cursor_pos: POINT,
+    /// Current cursor x position in board coordinates
+    pub cursor_x: usize,
+    /// Current cursor y position in board coordinates
+    pub cursor_y: usize,
     /// Indicates whether a chord operation is currently active.
     ///
     /// A chord operation depresses a 3x3 area of cells around the cursor.
@@ -246,7 +248,8 @@ impl GameState {
             bombs_left: 0,
             secs_elapsed: 0,
             boxes_visited: 0,
-            cursor_pos: POINT::default(),
+            cursor_x: 0,
+            cursor_y: 0,
             chord_active: false,
             board_cells: [[BlockInfo {
                 bomb: false,
@@ -341,8 +344,7 @@ impl GameState {
     /// # Returns
     /// `true` if the coordinates are within range, `false` otherwise.
     const fn in_range(&self, x: usize, y: usize) -> bool {
-        // TODO: Propegate the usize change.
-        let (w, h) = (self.board_width as usize, self.board_height as usize);
+        let (w, h) = (self.board_width, self.board_height);
         x <= w && y <= h
     }
 
@@ -370,9 +372,6 @@ impl GameState {
     fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) -> AnyResult<()> {
         for y in 1..=self.board_height {
             for x in 1..=self.board_width {
-                // TODO: No.
-                let x = x as usize;
-                let y = y as usize;
                 if !self.block_value(x, y).visited {
                     if self.block_value(x, y).bomb {
                         if self.block_value(x, y).block_type != BlockCell::BombUp {
@@ -461,8 +460,6 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn change_blk(&mut self, hwnd: &HWND, x: usize, y: usize, block: BlockInfo) -> AnyResult<()> {
         self.set_block_value(x, y, block);
-        // TODO: Propegate the usize change.
-        let (x, y) = (x as i32, y as i32);
         self.grafix
             .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
         Ok(())
@@ -499,8 +496,7 @@ impl GameState {
         let mut bombs = 0;
         for y_n in (y - 1)..=(y + 1) {
             for x_n in (x - 1)..=(x + 1) {
-                if self.board_cells[x_n][y_n].bomb
-                {
+                if self.board_cells[x_n][y_n].bomb {
                     bombs += 1;
                 }
             }
@@ -510,9 +506,8 @@ impl GameState {
             visited: true,
             block_type: BlockCell::from(bombs),
         };
-        // TODO: Propegate the usize change.
         self.grafix
-            .draw_block(&hwnd.GetDC()?, x as i32, y as i32, &self.board_cells)?;
+            .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
 
         if bombs == 0 && *tail < I_STEP_MAX {
             queue[*tail] = (x, y);
@@ -600,8 +595,6 @@ impl GameState {
             if visits == 0 {
                 for y_t in 1..self.board_height {
                     for x_t in 1..self.board_width {
-                        // TODO: Propegate usize change.
-                        let (x_t, y_t) = (x_t as usize, y_t as usize);
                         if !self.block_value(x_t, y_t).bomb {
                             self.clear_bomb(x, y);
                             self.set_bomb(x_t, y_t);
@@ -789,8 +782,8 @@ impl GameState {
             .flatten()
             .for_each(|b| *b = BlockInfo::from(BlockCell::BlankUp));
 
-        let x_max = self.board_width as usize;
-        let y_max = self.board_height as usize;
+        let x_max = self.board_width;
+        let y_max = self.board_height;
 
         for x in 0..=(x_max + 1) {
             self.set_border(x, 0);
@@ -891,9 +884,8 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn track_mouse(&mut self, hwnd: &HWND, x_new: usize, y_new: usize) -> AnyResult<()> {
-        let pt_new = POINT { x: x_new as i32, y: y_new as i32 };
         // No change in position; nothing to do
-        if pt_new == self.cursor_pos {
+        if x_new == self.cursor_x && y_new == self.cursor_y {
             return Ok(());
         }
 
@@ -904,17 +896,17 @@ impl GameState {
         if self.chord_active {
             // Determine if the old and new positions are within range
             let valid_new = self.in_range(x_new, y_new);
-            let valid_old = self.in_range(self.cursor_pos.x as usize, self.cursor_pos.y as usize);
+            let valid_old = self.in_range(self.cursor_x, self.cursor_y);
 
             // Determine the affected area (3x3 grid around old and new positions)
-            let y_old_min = max(self.cursor_pos.y - 1, 1);
-            let y_old_max = min(self.cursor_pos.y + 1, y_max);
-            let y_cur_min = max(pt_new.y - 1, 1);
-            let y_cur_max = min(pt_new.y + 1, y_max);
-            let x_old_min = max(self.cursor_pos.x - 1, 1);
-            let x_old_max = min(self.cursor_pos.x + 1, x_max);
-            let x_cur_min = max(pt_new.x - 1, 1);
-            let x_cur_max = min(pt_new.x + 1, x_max);
+            let y_old_min = max(self.cursor_y - 1, 1);
+            let y_old_max = min(self.cursor_y + 1, y_max);
+            let y_cur_min = max(y_new - 1, 1);
+            let y_cur_max = min(y_new + 1, y_max);
+            let x_old_min = max(self.cursor_x - 1, 1);
+            let x_old_max = min(self.cursor_x + 1, x_max);
+            let x_cur_min = max(x_new - 1, 1);
+            let x_cur_max = min(x_new + 1, x_max);
 
             // If the old position is valid, pop up boxes in the previous area
             if valid_old {
@@ -922,9 +914,9 @@ impl GameState {
                 for y in y_old_min..=y_old_max {
                     for x in x_old_min..=x_old_max {
                         // Only pop up boxes that are not visited
-                        if !self.block_value(x as usize, y as usize).visited {
+                        if !self.block_value(x, y).visited {
                             // Restore the box to its raised state
-                            self.pop_box_up(x as usize, y as usize);
+                            self.pop_box_up(x, y);
                             self.grafix
                                 .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
@@ -938,9 +930,9 @@ impl GameState {
                 for y in y_cur_min..=y_cur_max {
                     for x in x_cur_min..=x_cur_max {
                         // Only push down boxes that are not visited
-                        if !self.block_value(x as usize, y as usize).visited {
+                        if !self.block_value(x, y).visited {
                             // Depress the box visually
-                            self.push_box_down(x as usize, y as usize);
+                            self.push_box_down(x, y);
                             self.grafix
                                 .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
                         }
@@ -950,30 +942,29 @@ impl GameState {
         } else {
             // Otherwise, handle single-box push/pop
             // Check if the old cursor position is in range and not yet visited
-            if self.in_range(self.cursor_pos.x as usize, self.cursor_pos.y as usize)
-                && !self
-                    .block_value(self.cursor_pos.x as usize, self.cursor_pos.y as usize)
-                    .visited
+            if self.in_range(self.cursor_x, self.cursor_y)
+                && !self.block_value(self.cursor_x, self.cursor_y).visited
             {
                 // Restore the old box to its raised state
-                self.pop_box_up(self.cursor_pos.x as usize, self.cursor_pos.y as usize);
+                self.pop_box_up(self.cursor_x, self.cursor_y);
                 self.grafix.draw_block(
                     &hwnd.GetDC()?,
-                    self.cursor_pos.x,
-                    self.cursor_pos.y,
+                    self.cursor_x,
+                    self.cursor_y,
                     &self.board_cells,
                 )?;
             }
             // Check if the new cursor position is in range and not yet visited
-            if self.in_range(pt_new.x as usize, pt_new.y as usize) && self.in_range_step(pt_new.x as usize, pt_new.y as usize) {
+            if self.in_range(x_new, y_new) && self.in_range_step(x_new, y_new) {
                 // Depress the new box visually
-                self.push_box_down(pt_new.x as usize, pt_new.y as usize);
+                self.push_box_down(x_new, y_new);
                 self.grafix
-                    .draw_block(&hwnd.GetDC()?, pt_new.x, pt_new.y, &self.board_cells)?;
+                    .draw_block(&hwnd.GetDC()?, x_new, y_new, &self.board_cells)?;
             }
         }
         // Store the new cursor position
-        self.cursor_pos = pt_new;
+        self.cursor_x = x_new;
+        self.cursor_y = y_new;
         Ok(())
     }
 
@@ -983,12 +974,8 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn do_button_1_up(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        // Get the current cursor position
-        let x_pos = self.cursor_pos.x as usize;
-        let y_pos = self.cursor_pos.y as usize;
-
         // Check if the cursor is within the valid range of the board
-        if self.in_range(x_pos, y_pos) {
+        if self.in_range(self.cursor_x, self.cursor_y) {
             // If the number of visits and elapsed seconds are both zero, the game has not started yet
             if self.boxes_visited == 0 && self.secs_elapsed == 0 {
                 // Play the tick sound, display the initial time, and start the timer
@@ -1003,14 +990,15 @@ impl GameState {
 
             // If the game is not in play mode, reset the cursor position to a location off the board
             if !self.game_status.contains(StatusFlag::Play) {
-                self.cursor_pos = POINT { x: -2, y: -2 };
+                self.cursor_x = usize::MAX;
+                self.cursor_y = usize::MAX;
             }
 
             // Determine whether to chord (select adjacent squares) or step (reveal a single square)
             if self.chord_active {
-                self.step_block(hwnd, x_pos, y_pos)?;
-            } else if self.in_range_step(x_pos, y_pos) {
-                self.step_square(hwnd, x_pos, y_pos)?;
+                self.step_block(hwnd, self.cursor_x, self.cursor_y)?;
+            } else if self.in_range_step(self.cursor_x, self.cursor_y) {
+                self.step_square(hwnd, self.cursor_x, self.cursor_y)?;
             }
         }
 

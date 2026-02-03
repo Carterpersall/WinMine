@@ -171,9 +171,9 @@ pub struct Pref {
     /// Note: The actual maximum number of bombs is `(max_height - 1) * (max_width - 1) = 667`.
     pub mines: i16,
     /// Board height in cells.
-    pub height: i32,
+    pub height: usize,
     /// Board width in cells.
-    pub width: i32,
+    pub width: usize,
     /// X position of the main window.
     pub wnd_x_pos: i32,
     /// Y position of the main window.
@@ -251,12 +251,12 @@ pub fn read_preferences() -> SysResult<()> {
     // Get the height of the board
     prefs.height = read_int(&key_guard, PrefKey::Height)
         .unwrap_or(DEFHEIGHT)
-        .clamp(MINHEIGHT, 25) as i32;
+        .clamp(MINHEIGHT, 25) as usize;
 
     // Get the width of the board
     prefs.width = read_int(&key_guard, PrefKey::Width)
         .unwrap_or(DEFWIDTH)
-        .clamp(MINWIDTH, 30) as i32;
+        .clamp(MINWIDTH, 30) as usize;
 
     // Get the game difficulty
     prefs.game_type = GameType::from(read_int(&key_guard, PrefKey::Difficulty).unwrap_or(0));
