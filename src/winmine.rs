@@ -212,8 +212,8 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(true, Ordering::Relaxed);
-        self.state.write().cursor_x = usize::MAX;
-        self.state.write().cursor_y = usize::MAX;
+        self.state.write().cursor_x = usize::MAX - 1;
+        self.state.write().cursor_y = usize::MAX - 1;
         self.state
             .read()
             .grafix
@@ -230,7 +230,7 @@ impl WinMineMainWindow {
         } else {
             self.state
                 .write()
-                .track_mouse(self.wnd.hwnd(), usize::MAX, usize::MAX)?;
+                .track_mouse(self.wnd.hwnd(), usize::MAX - 2, usize::MAX - 2)?;
         }
         // If a chord operation was active, end it now
         self.state.write().chord_active = false;
@@ -311,9 +311,10 @@ impl WinMineMainWindow {
 
         // If the left and right buttons are both down, and the middle button is not down, start a chord operation
         if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
-            let state = &mut self.state.write();
-            state.chord_active = true;
-            state.track_mouse(self.wnd.hwnd(), usize::MAX, usize::MAX)?;
+            self.state.write().chord_active = true;
+            self.state
+                .write()
+                .track_mouse(self.wnd.hwnd(), usize::MAX - 3, usize::MAX - 3)?;
             self.begin_primary_button_drag()?;
             self.handle_mouse_move(btn, point)?;
             return Ok(());
@@ -760,7 +761,8 @@ impl WinMineMainWindow {
                 if m_btn.vkey_code.has(MK::MBUTTON) {
                     // If the middle button is pressed, start a chord operation
                     // However, if a chord is already active, end the chord instead
-                    self2.state.write().chord_active = !self2.state.read().chord_active;
+                    let chord_active = self2.state.read().chord_active;
+                    self2.state.write().chord_active = !chord_active;
                 }
                 if self2.state.read().game_status.contains(StatusFlag::Play) {
                     self2.begin_primary_button_drag()?;
