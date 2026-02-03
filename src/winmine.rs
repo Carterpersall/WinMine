@@ -25,9 +25,7 @@ use crate::grafix::{
     DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, scale_dpi,
 };
 use crate::help::Help;
-use crate::pref::{
-    CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH, read_preferences, write_preferences,
-};
+use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag, preferences_mutex};
 use crate::sound::Sound;
 use crate::util::{IconId, StateLock, get_dlg_int, init_const};
@@ -203,6 +201,68 @@ impl WinMineMainWindow {
         };
         new_self.events();
         new_self
+    }
+
+    /// Runs the WinMine application.
+    /// # Arguments
+    /// * `h_instance`: The application instance handle.
+    /// # Returns
+    /// Ok(()) on success, or an error on failure.
+    pub fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
+        // Seed the RNG, initialize global values, and ensure the preferences registry key exists
+        init_const();
+
+        // Initialize DPI to 96 (default) before creating the window
+        UI_DPI.store(96, Ordering::Relaxed);
+
+        // Initialize common controls
+        let mut icc = INITCOMMONCONTROLSEX::default();
+        icc.icc = ICC::ANIMATE_CLASS
+            | ICC::BAR_CLASSES
+            | ICC::COOL_CLASSES
+            | ICC::HOTKEY_CLASS
+            | ICC::LISTVIEW_CLASSES
+            | ICC::PAGESCROLLER_CLASS
+            | ICC::PROGRESS_CLASS
+            | ICC::TAB_CLASSES
+            | ICC::UPDOWN_CLASS
+            | ICC::USEREX_CLASSES;
+        InitCommonControlsEx(&icc)?;
+
+        // Get a handle to the menu resource
+        let mut menu = hinst.LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))?;
+
+        // Get a handle to the accelerators resource
+        let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
+
+        // Read user preferences into the global state
+        preferences_mutex().read_preferences()?;
+
+        let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
+        let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
+
+        // Create the main application window
+        let wnd = gui::WindowMain::new(gui::WindowMainOpts {
+            class_name: GAME_NAME,
+            title: GAME_NAME,
+            class_icon: gui::Icon::Id(IconId::Main as u16),
+            class_cursor: gui::Cursor::Idc(IDC::ARROW),
+            class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
+            size: (dx_window, dy_window),
+            style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
+            menu: menu.leak(),
+            accel_table: Some(h_accel),
+            ..Default::default()
+        });
+
+        // Create the main application state
+        let app = WinMineMainWindow::new(wnd);
+
+        // Run the main application window, blocking until exit
+        match app.wnd.run_main(None) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!("Unhandled error during main window execution: {e}").into()),
+        }
     }
 
     /* Message Helper Functions */
@@ -702,7 +762,7 @@ impl WinMineMainWindow {
                 // TODO: The original code has a bug where the current window position is not saved on exit
                 // unless another preference has changed. Fix this.
                 if UPDATE_INI.load(Ordering::Relaxed) {
-                    write_preferences()?;
+                    preferences_mutex().write_preferences()?;
                 }
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };
@@ -1031,68 +1091,6 @@ impl WinMineMainWindow {
                     Ok(())
                 }
             });
-    }
-}
-
-/// Runs the WinMine application.
-/// # Arguments
-/// * `h_instance`: The application instance handle.
-/// # Returns
-/// Ok(()) on success, or an error on failure.
-pub fn run_winmine(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
-    // Seed the RNG, initialize global values, and ensure the preferences registry key exists
-    init_const();
-
-    // Initialize DPI to 96 (default) before creating the window
-    UI_DPI.store(96, Ordering::Relaxed);
-
-    // Initialize common controls
-    let mut icc = INITCOMMONCONTROLSEX::default();
-    icc.icc = ICC::ANIMATE_CLASS
-        | ICC::BAR_CLASSES
-        | ICC::COOL_CLASSES
-        | ICC::HOTKEY_CLASS
-        | ICC::LISTVIEW_CLASSES
-        | ICC::PAGESCROLLER_CLASS
-        | ICC::PROGRESS_CLASS
-        | ICC::TAB_CLASSES
-        | ICC::UPDOWN_CLASS
-        | ICC::USEREX_CLASSES;
-    InitCommonControlsEx(&icc)?;
-
-    // Get a handle to the menu resource
-    let mut menu = hinst.LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))?;
-
-    // Get a handle to the accelerators resource
-    let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
-
-    // Read user preferences into the global state
-    read_preferences()?;
-
-    let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
-    let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
-
-    // Create the main application window
-    let wnd = gui::WindowMain::new(gui::WindowMainOpts {
-        class_name: GAME_NAME,
-        title: GAME_NAME,
-        class_icon: gui::Icon::Id(IconId::Main as u16),
-        class_cursor: gui::Cursor::Idc(IDC::ARROW),
-        class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
-        size: (dx_window, dy_window),
-        style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
-        menu: menu.leak(),
-        accel_table: Some(h_accel),
-        ..Default::default()
-    });
-
-    // Create the main application state
-    let app = WinMineMainWindow::new(wnd);
-
-    // Run the main application window, blocking until exit
-    match app.wnd.run_main(None) {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Unhandled error during main window execution: {e}").into()),
     }
 }
 
