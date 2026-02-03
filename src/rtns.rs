@@ -3,7 +3,6 @@
 
 use core::cmp::{max, min};
 use core::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Mutex, OnceLock};
 
 use bitflags::bitflags;
 use winsafe::co::WM;
@@ -157,42 +156,12 @@ bitflags! {
     }
 }
 
-/// Current preferences stored in a global Mutex.
-static PREFERENCES: OnceLock<Mutex<Pref>> = OnceLock::new();
-
-/// Retrieve the global preferences mutex.
-/// # Returns
-/// A reference to the global preferences mutex.
-pub fn preferences_mutex() -> std::sync::MutexGuard<'static, Pref> {
-    match PREFERENCES
-        .get_or_init(|| {
-            Mutex::new(Pref {
-                game_type: GameType::Begin,
-                mines: 0,
-                height: 0,
-                width: 0,
-                wnd_x_pos: 0,
-                wnd_y_pos: 0,
-                sound_enabled: false,
-                mark_enabled: false,
-                color: false,
-                best_times: [0; 3],
-                beginner_name: String::with_capacity(CCH_NAME_MAX),
-                inter_name: String::with_capacity(CCH_NAME_MAX),
-                expert_name: String::with_capacity(CCH_NAME_MAX),
-            })
-        })
-        .lock()
-    {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    }
-}
-
 /// Represents the current state of the game.
 pub struct GameState {
     /// Graphics state containing bitmaps and rendering logic.
     pub grafix: GrafixState,
+    /// Current user preferences.
+    pub prefs: Pref,
     /// Aggregated status flags defining the current game state.
     pub game_status: StatusFlag,
     /// Current board width in cells (excluding border)
@@ -244,6 +213,12 @@ impl GameState {
     pub fn new() -> Self {
         Self {
             grafix: GrafixState::default(),
+            prefs: Pref {
+                beginner_name: String::with_capacity(CCH_NAME_MAX),
+                inter_name: String::with_capacity(CCH_NAME_MAX),
+                expert_name: String::with_capacity(CCH_NAME_MAX),
+                ..Default::default()
+            },
             game_status: StatusFlag::Minimized | StatusFlag::GameOver,
             board_width: 0,
             board_height: 0,
@@ -276,7 +251,7 @@ impl GameState {
     /// # Returns
     /// `Ok(())` if successful, or an error if loading resources failed.
     pub fn init_game(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        self.grafix.load_bitmaps(hwnd)?;
+        self.grafix.load_bitmaps(hwnd, self.prefs.color)?;
         self.clear_field();
         Ok(())
     }
@@ -379,13 +354,12 @@ impl GameState {
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     fn record_win_if_needed(&mut self, hwnd: &HWND) {
-        let mut prefs = preferences_mutex();
-        let game = prefs.game_type;
+        let game = self.prefs.game_type;
         if game != GameType::Other {
             let game_idx = game as usize;
-            if game_idx < prefs.best_times.len() && self.secs_elapsed < prefs.best_times[game_idx] {
+            if game_idx < self.prefs.best_times.len() && self.secs_elapsed < self.prefs.best_times[game_idx] {
                 {
-                    prefs.best_times[game_idx] = self.secs_elapsed;
+                    self.prefs.best_times[game_idx] = self.secs_elapsed;
                 }
 
                 if hwnd.as_opt().is_some() {
@@ -504,8 +478,10 @@ impl GameState {
         )?;
         if win {
             self.bombs_left = 0;
-            Sound::WinGame.play(&hwnd.hinstance());
-        } else {
+            if self.prefs.sound_enabled {
+                Sound::WinGame.play(&hwnd.hinstance());
+            }
+        } else if self.prefs.sound_enabled {
             Sound::LoseGame.play(&hwnd.hinstance());
         }
         self.game_status = StatusFlag::GameOver;
@@ -614,7 +590,7 @@ impl GameState {
             return Ok(());
         }
 
-        let allow_marks = { preferences_mutex().mark_enabled };
+        let allow_marks = self.prefs.mark_enabled;
 
         // If currently flagged
         let block = if self.board_cells[x][y].block_type == BlockCell::BombUp {
@@ -729,7 +705,9 @@ impl GameState {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
             self.grafix.draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
-            Sound::Tick.play(&hwnd.hinstance());
+            if self.prefs.sound_enabled {
+                Sound::Tick.play(&hwnd.hinstance());
+            }
         }
         Ok(())
     }
@@ -746,8 +724,8 @@ impl WinMineMainWindow {
         let y_prev = self.state.read().board_height;
 
         let (pref_width, pref_height, total_bombs) = {
-            let prefs = preferences_mutex();
-            (prefs.width, prefs.height, prefs.mines)
+            let state = self.state.read();
+            (state.prefs.width, state.prefs.height, state.prefs.mines)
         };
 
         let f_adjust = if pref_width != x_prev || pref_height != y_prev {
@@ -904,7 +882,10 @@ impl GameState {
             // If the number of visits and elapsed seconds are both zero, the game has not started yet
             if self.boxes_visited == 0 && self.secs_elapsed == 0 {
                 // Play the tick sound, display the initial time, and start the timer
-                Sound::Tick.play(&hwnd.hinstance());
+                // TODO: Could we just call `do_timer` here instead?
+                if self.prefs.sound_enabled {
+                    Sound::Tick.play(&hwnd.hinstance());
+                }
                 self.secs_elapsed = 1;
                 self.grafix.draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
                 self.timer_running = true;

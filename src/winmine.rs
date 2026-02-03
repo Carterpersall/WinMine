@@ -26,7 +26,7 @@ use crate::grafix::{
 };
 use crate::help::Help;
 use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
-use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag, preferences_mutex};
+use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
 use crate::util::{IconId, StateLock, get_dlg_int, init_const};
 
@@ -235,9 +235,6 @@ impl WinMineMainWindow {
         // Get a handle to the accelerators resource
         let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
 
-        // Read user preferences into the global state
-        preferences_mutex().read_preferences()?;
-
         let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
         let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
 
@@ -257,6 +254,9 @@ impl WinMineMainWindow {
 
         // Create the main application state
         let app = WinMineMainWindow::new(wnd);
+
+        // Read user preferences into the global state
+        app.state.write().prefs.read_preferences()?;
 
         // Run the main application window, blocking until exit
         match app.wnd.run_main(None) {
@@ -307,7 +307,7 @@ impl WinMineMainWindow {
     fn handle_keydown(&self, key: VK) -> AnyResult<()> {
         match key {
             code if code == VK::F4 => {
-                let new_sound = match preferences_mutex().sound_enabled {
+                let new_sound = match self.state.read().prefs.sound_enabled {
                     true => {
                         Sound::stop_all();
                         false
@@ -316,8 +316,7 @@ impl WinMineMainWindow {
                 };
 
                 {
-                    let mut prefs = preferences_mutex();
-                    prefs.sound_enabled = new_sound;
+                    self.state.write().prefs.sound_enabled = new_sound;
                 };
 
                 UPDATE_INI.store(true, Ordering::Relaxed);
@@ -421,9 +420,9 @@ impl WinMineMainWindow {
             return;
         }
 
-        let mut prefs = preferences_mutex();
-        prefs.wnd_x_pos = pos.x;
-        prefs.wnd_y_pos = pos.y;
+        let mut state = self.state.write();
+        state.prefs.wnd_x_pos = pos.x;
+        state.prefs.wnd_y_pos = pos.y;
     }
 
     /// Handles clicks on the smiley face button.
@@ -532,8 +531,8 @@ impl WinMineMainWindow {
 
         // Get the current window position from preferences
         let (mut x_window, mut y_window) = {
-            let prefs = preferences_mutex();
-            (prefs.wnd_x_pos, prefs.wnd_y_pos)
+            let state = self.state.read();
+            (state.prefs.wnd_x_pos, state.prefs.wnd_y_pos)
         };
 
         let desired = RECT {
@@ -614,9 +613,9 @@ impl WinMineMainWindow {
         }
 
         // Update preferences with the new window position
-        let mut prefs = preferences_mutex();
-        prefs.wnd_x_pos = x_window;
-        prefs.wnd_y_pos = y_window;
+        let mut state = self.state.write();
+        state.prefs.wnd_x_pos = x_window;
+        state.prefs.wnd_y_pos = y_window;
 
         Ok(())
     }
@@ -682,9 +681,9 @@ impl WinMineMainWindow {
                 if let Some(rc) = suggested {
                     // Persist the suggested top-left so adjust_window keeps us on the same monitor
                     {
-                        let mut prefs = preferences_mutex();
-                        prefs.wnd_x_pos = rc.left;
-                        prefs.wnd_y_pos = rc.top;
+                        let mut state = self2.state.write();
+                        state.prefs.wnd_x_pos = rc.left;
+                        state.prefs.wnd_y_pos = rc.top;
                     }
 
                     let width = max(0, rc.right - rc.left);
@@ -703,7 +702,8 @@ impl WinMineMainWindow {
                 }
 
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
-                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd())?;
+                let color = self2.state.read().prefs.color;
+                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd(), color)?;
 
                 self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
                 Ok(0)
@@ -732,9 +732,9 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
-                    EnterDialog::new().show_modal(&self2.wnd)?;
+                    EnterDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
                     UPDATE_INI.store(true, Ordering::Relaxed);
-                    BestDialog::new().show_modal(&self2.wnd)?;
+                    BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
                     return Ok(0);
                 }
 
@@ -762,7 +762,7 @@ impl WinMineMainWindow {
                 // TODO: The original code has a bug where the current window position is not saved on exit
                 // unless another preference has changed. Fix this.
                 if UPDATE_INI.load(Ordering::Relaxed) {
-                    preferences_mutex().write_preferences()?;
+                    self2.state.write().prefs.write_preferences()?;
                 }
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };
@@ -939,12 +939,12 @@ impl WinMineMainWindow {
                 };
 
                 {
-                    let mut prefs = preferences_mutex();
+                    let mut state = self2.state.write();
                     if let Some(data) = game.preset_data() {
-                        prefs.game_type = game;
-                        prefs.mines = data.0;
-                        prefs.height = data.1 as usize;
-                        prefs.width = data.2 as usize;
+                        state.prefs.game_type = game;
+                        state.prefs.mines = data.0;
+                        state.prefs.height = data.1 as usize;
+                        state.prefs.width = data.2 as usize;
                     }
                 }
                 UPDATE_INI.store(true, Ordering::Relaxed);
@@ -974,11 +974,10 @@ impl WinMineMainWindow {
                 // be started when the dialog is closed, even if the user clicked "Cancel". Fix
 
                 // Show the preferences dialog
-                PrefDialog::new().show_modal(&self2.wnd)?;
+                PrefDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
 
                 {
-                    let mut prefs = preferences_mutex();
-                    prefs.game_type = GameType::Other;
+                    self2.state.write().prefs.game_type = GameType::Other;
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
@@ -990,7 +989,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_command_acc_menu(MenuCommand::Sound, {
             let self2 = self.clone();
             move || {
-                let new_sound = match preferences_mutex().sound_enabled {
+                let new_sound = match self2.state.read().prefs.sound_enabled {
                     true => {
                         Sound::stop_all();
                         false
@@ -998,8 +997,7 @@ impl WinMineMainWindow {
                     false => Sound::init(),
                 };
                 {
-                    let mut prefs = preferences_mutex();
-                    prefs.sound_enabled = new_sound;
+                    self2.state.write().prefs.sound_enabled = new_sound;
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
@@ -1010,12 +1008,10 @@ impl WinMineMainWindow {
         self.wnd.on().wm_command_acc_menu(MenuCommand::Color, {
             let self2 = self.clone();
             move || {
-                {
-                    let mut prefs = preferences_mutex();
-                    prefs.color = !prefs.color;
-                };
+                let color = !self2.state.read().prefs.color;
+                self2.state.write().prefs.color = color;
 
-                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd())?;
+                self2.state.write().grafix.load_bitmaps(self2.wnd.hwnd(), color)?;
 
                 // Repaint immediately so toggling color off updates without restarting.
                 self2
@@ -1033,8 +1029,8 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 {
-                    let mut prefs = preferences_mutex();
-                    prefs.mark_enabled = !prefs.mark_enabled;
+                    let marks_enabled = self2.state.read().prefs.mark_enabled;
+                    self2.state.write().prefs.mark_enabled = !marks_enabled;
                 };
                 UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
@@ -1044,7 +1040,7 @@ impl WinMineMainWindow {
 
         self.wnd.on().wm_command_acc_menu(MenuCommand::Best, {
             let self2 = self.clone();
-            move || BestDialog::new().show_modal(&self2.wnd)
+            move || BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)
         });
 
         self.wnd.on().wm_command_acc_menu(MenuCommand::Help, {
@@ -1099,13 +1095,14 @@ impl WinMineMainWindow {
 struct PrefDialog {
     /// The modal dialog window
     dlg: gui::WindowModal,
+    state: Rc<StateLock<GameState>>,
 }
 
 impl PrefDialog {
     /// Creates a new Preferences dialog instance and sets up event handlers.
-    fn new() -> Self {
+    fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Pref as u16);
-        let new_self = Self { dlg };
+        let new_self = Self { dlg, state };
         new_self.events();
         new_self
     }
@@ -1120,22 +1117,22 @@ impl PrefDialog {
     /// Hooks the dialog window messages to their respective handlers.
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
-            let dlg = self.dlg.clone();
+            let self2 = self.clone();
             move |_| -> AnyResult<bool> {
                 // Get current board settings from preferences
                 let (height, width, mines) = {
-                    let prefs = preferences_mutex();
-                    (prefs.height, prefs.width, prefs.mines)
+                    let state = self2.state.read();
+                    (state.prefs.height, state.prefs.width, state.prefs.mines)
                 };
 
                 // Populate the dialog controls with the current settings
-                dlg.hwnd()
+                self2.dlg.hwnd()
                     .GetDlgItem(ControlId::EditHeight as u16)
                     .and_then(|edit| edit.SetWindowText(&height.to_string()))?;
-                dlg.hwnd()
+                self2.dlg.hwnd()
                     .GetDlgItem(ControlId::EditWidth as u16)
                     .and_then(|edit| edit.SetWindowText(&width.to_string()))?;
-                dlg.hwnd()
+                self2.dlg.hwnd()
                     .GetDlgItem(ControlId::EditMines as u16)
                     .and_then(|edit| edit.SetWindowText(&mines.to_string()))?;
 
@@ -1145,6 +1142,7 @@ impl PrefDialog {
 
         self.dlg.on().wm_command(DLGID::OK.raw(), BN::CLICKED, {
             let dlg = self.dlg.clone();
+            let state = self.state.clone();
             move || -> AnyResult<()> {
                 // Retrieve and validate user input from the dialog controls
                 let height = get_dlg_int(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)?;
@@ -1153,10 +1151,10 @@ impl PrefDialog {
                 let mines = get_dlg_int(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines)?;
 
                 // Update preferences with the new settings
-                let mut prefs = preferences_mutex();
-                prefs.height = height as usize;
-                prefs.width = width as usize;
-                prefs.mines = mines as i16;
+                let mut state = state.write();
+                state.prefs.height = height as usize;
+                state.prefs.width = width as usize;
+                state.prefs.mines = mines as i16;
 
                 // Close the dialog
                 dlg.hwnd().EndDialog(1)?;
@@ -1202,15 +1200,17 @@ impl PrefDialog {
 struct BestDialog {
     /// The modal dialog window
     dlg: gui::WindowModal,
+    /// Shared game state
+    state: Rc<StateLock<GameState>>,
 }
 
 impl BestDialog {
     /// Creates a new BestDialog instance and sets up event handlers.
     /// # Returns
     /// A new BestDialog instance.
-    fn new() -> Self {
+    fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Best as u16);
-        let new_self = Self { dlg };
+        let new_self = Self { dlg, state };
         new_self.events();
         new_self
     }
@@ -1281,14 +1281,14 @@ impl BestDialog {
         self.dlg.on().wm_init_dialog({
             let self2 = self.clone();
             move |_| -> AnyResult<bool> {
-                let prefs = preferences_mutex();
+                let state = self2.state.read();
                 self2.reset_best_dialog(
-                    prefs.best_times[GameType::Begin as usize],
-                    prefs.best_times[GameType::Inter as usize],
-                    prefs.best_times[GameType::Expert as usize],
-                    &prefs.beginner_name,
-                    &prefs.inter_name,
-                    &prefs.expert_name,
+                    state.prefs.best_times[GameType::Begin as usize],
+                    state.prefs.best_times[GameType::Inter as usize],
+                    state.prefs.best_times[GameType::Expert as usize],
+                    &state.prefs.beginner_name,
+                    &state.prefs.inter_name,
+                    &state.prefs.expert_name,
                 )?;
 
                 Ok(true)
@@ -1302,17 +1302,17 @@ impl BestDialog {
                 move || -> AnyResult<()> {
                     // Set best times and names to defaults
                     {
-                        let mut prefs = preferences_mutex();
+                        let mut state = self2.state.write();
 
                         // Set all best times to 999 seconds
-                        prefs.best_times[GameType::Begin as usize] = 999;
-                        prefs.best_times[GameType::Inter as usize] = 999;
-                        prefs.best_times[GameType::Expert as usize] = 999;
+                        state.prefs.best_times[GameType::Begin as usize] = 999;
+                        state.prefs.best_times[GameType::Inter as usize] = 999;
+                        state.prefs.best_times[GameType::Expert as usize] = 999;
 
                         // Set the three best names to the default values
-                        prefs.beginner_name = DEFAULT_PLAYER_NAME.to_string();
-                        prefs.inter_name = DEFAULT_PLAYER_NAME.to_string();
-                        prefs.expert_name = DEFAULT_PLAYER_NAME.to_string();
+                        state.prefs.beginner_name = DEFAULT_PLAYER_NAME.to_string();
+                        state.prefs.inter_name = DEFAULT_PLAYER_NAME.to_string();
+                        state.prefs.expert_name = DEFAULT_PLAYER_NAME.to_string();
                     };
 
                     UPDATE_INI.store(true, Ordering::Relaxed);
@@ -1372,15 +1372,17 @@ impl BestDialog {
 struct EnterDialog {
     /// The modal dialog window
     dlg: gui::WindowModal,
+    /// Shared game state
+    state: Rc<StateLock<GameState>>,
 }
 
 impl EnterDialog {
     /// Creates a new EnterDialog instance and sets up event handlers.
     /// # Returns
     /// A new EnterDialog instance.
-    fn new() -> Self {
+    fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Enter as u16);
-        let new_self = Self { dlg };
+        let new_self = Self { dlg, state };
         new_self.events();
         new_self
     }
@@ -1403,11 +1405,11 @@ impl EnterDialog {
             .GetDlgItem(ControlId::EditName as u16)
             .and_then(|edit_hwnd| edit_hwnd.GetWindowText())?;
 
-        let mut prefs = preferences_mutex();
-        match prefs.game_type {
-            GameType::Begin => prefs.beginner_name = new_name,
-            GameType::Inter => prefs.inter_name = new_name,
-            GameType::Expert => prefs.expert_name = new_name,
+        let mut state = self.state.write();
+        match state.prefs.game_type {
+            GameType::Begin => state.prefs.beginner_name = new_name,
+            GameType::Inter => state.prefs.inter_name = new_name,
+            GameType::Expert => state.prefs.expert_name = new_name,
             // Unreachable
             GameType::Other => {}
         }
@@ -1417,25 +1419,25 @@ impl EnterDialog {
     /// Hooks the dialog window messages to their respective handlers.
     fn events(&self) {
         self.dlg.on().wm_init_dialog({
-            let dlg = self.dlg.clone();
+            let self2 = self.clone();
             move |_| -> AnyResult<bool> {
                 let (game_type, current_name) = {
-                    let prefs = preferences_mutex();
-                    let name = match prefs.game_type {
-                        GameType::Begin => prefs.beginner_name.clone(),
-                        GameType::Inter => prefs.inter_name.clone(),
-                        GameType::Expert => prefs.expert_name.clone(),
+                    let state = self2.state.read();
+                    let name = match state.prefs.game_type {
+                        GameType::Begin => state.prefs.beginner_name.clone(),
+                        GameType::Inter => state.prefs.inter_name.clone(),
+                        GameType::Expert => state.prefs.expert_name.clone(),
                         // Unreachable
                         GameType::Other => "".to_string(),
                     };
-                    (prefs.game_type, name)
+                    (state.prefs.game_type, name)
                 };
 
-                dlg.hwnd()
+                self2.dlg.hwnd()
                     .GetDlgItem(ControlId::TextBest as u16)
                     .and_then(|best_hwnd| best_hwnd.SetWindowText(game_type.fastest_time_msg()))?;
 
-                dlg.hwnd()
+                self2.dlg.hwnd()
                     .GetDlgItem(ControlId::EditName as u16)
                     .and_then(|edit_hwnd| {
                         // TODO: Is there a way to do this without sending a message?

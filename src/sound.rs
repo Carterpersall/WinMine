@@ -5,8 +5,6 @@ use core::ptr::{null, null_mut};
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 use winsafe::HINSTANCE;
 
-use crate::rtns::preferences_mutex;
-
 /// Logical UI tunes that map to embedded wave resources.
 #[repr(u16)]
 pub enum Sound {
@@ -19,16 +17,14 @@ pub enum Sound {
 }
 
 impl Sound {
-    /// Play a specific UI tune using the sounds in the resource file, if sound effects are enabled.
+    /// Play a specific UI tune using the sounds in the resource file
     /// # Arguments
     /// * `tune` - The tune to play
     pub fn play(self, hinst: &HINSTANCE) {
-        if preferences_mutex().sound_enabled {
-            let resource_ptr = self as usize as *const u16;
-            // Playback uses the async flag so the UI thread is never blocked.
-            unsafe {
-                PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
-            }
+        let resource_ptr = self as usize as *const u16;
+        // Playback uses the async flag so the UI thread is never blocked.
+        unsafe {
+            PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
         }
     }
 

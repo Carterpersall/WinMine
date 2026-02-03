@@ -71,9 +71,10 @@ pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 /// Difficulty presets exposed throughout the game.
 #[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub enum GameType {
     /// Beginner level.
+    #[default]
     Begin = 0,
     /// Intermediate level.
     Inter = 1,
@@ -160,6 +161,7 @@ const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
 ];
 
 /// Structure containing all user preferences.
+#[derive(Default)]
 pub struct Pref {
     /// Current game difficulty (Beginner, Intermediate, Expert, Custom).
     pub game_type: GameType,

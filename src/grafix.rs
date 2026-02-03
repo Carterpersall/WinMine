@@ -15,7 +15,7 @@ use winsafe::{
 };
 
 use crate::globals::{BASE_DPI, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
-use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS, preferences_mutex};
+use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -787,23 +787,22 @@ impl GrafixState {
     /// Load the bitmap resources and prepare cached DCs for rendering.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
+    /// * `color` - Whether to load color or monochrome resources.
     /// # Returns
     /// Ok(()) if successful, or an error if loading resources failed.
-    pub fn load_bitmaps(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        let color_on = { preferences_mutex().color };
-
+    pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
         let Some((h_blks, lp_blks)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Blocks, color_on)
+            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Blocks, color)
         else {
             return Err("Failed to load block bitmap resource".into());
         };
         let Some((h_led, lp_led)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Led, color_on)
+            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Led, color)
         else {
             return Err("Failed to load LED bitmap resource".into());
         };
         let Some((h_button, lp_button)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Button, color_on)
+            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Button, color)
         else {
             return Err("Failed to load button bitmap resource".into());
         };
@@ -816,7 +815,7 @@ impl GrafixState {
         self.lp_dib_led = lp_led;
         self.lp_dib_button = lp_button;
 
-        self.h_gray_pen = if color_on {
+        self.h_gray_pen = if color {
             HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128)).ok()
         } else {
             HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(0, 0, 0)).ok()
@@ -832,19 +831,19 @@ impl GrafixState {
             return Err("Failed to get white pen".into());
         }
 
-        let header = self.dib_header_size(color_on);
+        let header = self.dib_header_size(color);
 
-        let cb_blk = self.cb_bitmap(color_on, DX_BLK_96, DY_BLK_96);
+        let cb_blk = self.cb_bitmap(color, DX_BLK_96, DY_BLK_96);
         for (i, off) in self.rg_dib_off.iter_mut().enumerate() {
             *off = header + i * cb_blk;
         }
 
-        let cb_led = self.cb_bitmap(color_on, DX_LED_96, DY_LED_96);
+        let cb_led = self.cb_bitmap(color, DX_LED_96, DY_LED_96);
         for (i, off) in self.rg_dib_led_off.iter_mut().enumerate() {
             *off = header + i * cb_led;
         }
 
-        let cb_button = self.cb_bitmap(color_on, DX_BUTTON_96, DY_BUTTON_96);
+        let cb_button = self.cb_bitmap(color, DX_BUTTON_96, DY_BUTTON_96);
         for (i, off) in self.rg_dib_button_off.iter_mut().enumerate() {
             *off = header + i * cb_button;
         }

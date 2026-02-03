@@ -7,7 +7,6 @@ use winsafe::co::{KEY, REG_OPTION};
 use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
 
 use crate::pref::{GameType, SZ_WINMINE_REG_STR};
-use crate::rtns::preferences_mutex;
 use crate::winmine::{MenuCommand, WinMineMainWindow};
 
 /// A wrapper around `RwLock` that handles poisoning by returning the inner data.
@@ -151,12 +150,12 @@ impl WinMineMainWindow {
     pub fn set_menu_bar(&self) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (game_type, color, mark, sound) = {
-            let prefs = preferences_mutex();
+            let state = self.state.read();
             (
-                prefs.game_type,
-                prefs.color,
-                prefs.mark_enabled,
-                prefs.sound_enabled,
+                state.prefs.game_type,
+                state.prefs.color,
+                state.prefs.mark_enabled,
+                state.prefs.sound_enabled,
             )
         };
 
