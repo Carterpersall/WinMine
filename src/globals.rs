@@ -1,7 +1,5 @@
 //! Global constants and variables used throughout the application.
 
-use core::sync::atomic::AtomicI32;
-
 /* -------------------- */
 /* Constant Definitions */
 /* -------------------- */
@@ -24,13 +22,3 @@ pub const MSG_VERSION_NAME: &str = "Minesweeper";
 
 /// Credit string used in the About box.
 pub const MSG_CREDIT: &str = "by Robert Donner and Curt Johnson";
-
-/* ---------------- */
-/* Global Variables */
-/* ---------------- */
-
-/// Current client width of the main window.
-pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);
-
-/// Current client height of the main window.
-pub static WINDOW_HEIGHT: AtomicI32 = AtomicI32::new(0);

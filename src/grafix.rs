@@ -3,7 +3,6 @@
 
 use core::mem::size_of;
 use core::ptr::null;
-use core::sync::atomic::Ordering::Relaxed;
 
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 use winsafe::{
@@ -14,7 +13,7 @@ use winsafe::{
     prelude::*,
 };
 
-use crate::globals::{BASE_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
+use crate::globals::BASE_DPI;
 use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
 
 /*
@@ -157,6 +156,8 @@ enum BorderStyle {
 pub struct GrafixState {
     /// Current UI DPI
     pub dpi: u32,
+    /// Current window position
+    pub wnd_pos: POINT,
     /// Precalculated byte offsets to each block sprite within the DIB
     rg_dib_off: [usize; I_BLK_MAX],
     /// Precalculated byte offsets to each LED digit within the DIB
@@ -197,6 +198,7 @@ impl Default for GrafixState {
     fn default() -> Self {
         Self {
             dpi: BASE_DPI,
+            wnd_pos: POINT::new(),
             rg_dib_off: [0; I_BLK_MAX],
             rg_dib_led_off: [0; I_LED_MAX],
             rg_dib_button_off: [0; BUTTON_SPRITE_COUNT],
@@ -382,7 +384,7 @@ impl GrafixState {
             }
         }
 
-        let dx_window = WINDOW_WIDTH.load(Relaxed);
+        let dx_window = self.wnd_pos.x;
         let dx_led = self.scale_dpi(DX_LED_96);
         let dx_led_right = self.scale_dpi(DX_RIGHT_TIME_96);
         // Hundreds place
@@ -420,7 +422,7 @@ impl GrafixState {
     /// `Ok(())` if successful, or an error if drawing failed.
     fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
         // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
-        let dx_window = WINDOW_WIDTH.load(Relaxed);
+        let dx_window = self.wnd_pos.x;
         let dst_w = self.scale_dpi(DX_BUTTON_96);
         let dst_h = self.scale_dpi(DY_BUTTON_96);
         let x = (dx_window - dst_w) / 2;
@@ -683,8 +685,8 @@ impl GrafixState {
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     fn draw_background(&self, hdc: &HDC) -> AnyResult<()> {
-        let dx_window = WINDOW_WIDTH.load(Relaxed);
-        let dy_window = WINDOW_HEIGHT.load(Relaxed);
+        let dx_window = self.wnd_pos.x;
+        let dy_window = self.wnd_pos.y;
         // Outer sunken border
         let mut x = dx_window - 1;
         let mut y = dy_window - 1;

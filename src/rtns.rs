@@ -263,6 +263,7 @@ impl GameState {
     /// # Returns
     /// `true` if the coordinates are within range, `false` otherwise.
     const fn in_range(&self, x: usize, y: usize) -> bool {
+        x > 0 && y > 0 &&
         x <= self.board_width && y <= self.board_height
     }
 
@@ -803,18 +804,13 @@ impl GameState {
             let valid_new = self.in_range(x_new, y_new);
             let valid_old = self.in_range(self.cursor_x, self.cursor_y);
 
-            // Determine the affected area (3x3 grid around old and new positions)
-            let y_old_min = max(self.cursor_y - 1, 1);
-            let y_old_max = min(self.cursor_y + 1, y_max);
-            let y_cur_min = max(y_new - 1, 1);
-            let y_cur_max = min(y_new + 1, y_max);
-            let x_old_min = max(self.cursor_x - 1, 1);
-            let x_old_max = min(self.cursor_x + 1, x_max);
-            let x_cur_min = max(x_new - 1, 1);
-            let x_cur_max = min(x_new + 1, x_max);
-
             // If the old position is valid, pop up boxes in the previous area
             if valid_old {
+                // Determine the 3x3 area around the old cursor position
+                let y_old_min = max(self.cursor_y - 1, 1);
+                let y_old_max = min(self.cursor_y + 1, y_max);
+                let x_old_min = max(self.cursor_x - 1, 1);
+                let x_old_max = min(self.cursor_x + 1, x_max);
                 // Iterate over the old 3x3 area from left to right, top to bottom
                 for y in y_old_min..=y_old_max {
                     for x in x_old_min..=x_old_max {
@@ -831,6 +827,11 @@ impl GameState {
 
             // If the new position is valid, push down boxes in the new area
             if valid_new {
+                // Determine the 3x3 area around the new cursor position
+                let y_cur_min = max(y_new - 1, 1);
+                let y_cur_max = min(y_new + 1, y_max);
+                let x_cur_min = max(x_new - 1, 1);
+                let x_cur_max = min(x_new + 1, x_max);
                 // Iterate over the new 3x3 area from left to right, top to bottom
                 for y in y_cur_min..=y_cur_max {
                     for x in x_cur_min..=x_cur_max {

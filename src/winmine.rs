@@ -16,10 +16,7 @@ use winsafe::{
     RECT, SIZE, WINDOWPOS, gui, prelude::*,
 };
 
-use crate::globals::{
-    BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME, WINDOW_HEIGHT,
-    WINDOW_WIDTH,
-};
+use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
     DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96,
@@ -229,9 +226,6 @@ impl WinMineMainWindow {
         // Get a handle to the accelerators resource
         let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
 
-        let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
-        let dy_window = WINDOW_HEIGHT.load(Ordering::Relaxed);
-
         // Create the main application window
         let wnd = gui::WindowMain::new(gui::WindowMainOpts {
             class_name: GAME_NAME,
@@ -239,7 +233,6 @@ impl WinMineMainWindow {
             class_icon: gui::Icon::Id(IconId::Main as u16),
             class_cursor: gui::Cursor::Idc(IDC::ARROW),
             class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
-            size: (dx_window, dy_window),
             style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
             menu: menu.leak(),
             accel_table: Some(h_accel),
@@ -332,10 +325,12 @@ impl WinMineMainWindow {
         if self.drag_active.load(Ordering::Relaxed) {
             // If the user is dragging, track the mouse position
             if self.state.read().game_status.contains(StatusFlag::Play) {
+                let x_new = self.x_box_from_xpos(point.x);
+                let y_new = self.y_box_from_ypos(point.y);
                 self.state.write().track_mouse(
                     self.wnd.hwnd(),
-                    self.x_box_from_xpos(point.x),
-                    self.y_box_from_ypos(point.y),
+                    x_new,
+                    y_new,
                 )?;
             } else {
                 self.finish_primary_button_drag()?;
@@ -373,10 +368,12 @@ impl WinMineMainWindow {
         }
 
         // Regular right-click: make a guess
+        let x = self.x_box_from_xpos(point.x);
+        let y = self.y_box_from_ypos(point.y);
         self.state.write().make_guess(
             self.wnd.hwnd(),
-            self.x_box_from_xpos(point.x),
-            self.y_box_from_ypos(point.y),
+            x,
+            y,
         )?;
         Ok(())
     }
@@ -432,7 +429,7 @@ impl WinMineMainWindow {
         msg.pt.x = point.x;
         msg.pt.y = point.y;
 
-        let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
+        let dx_window = self.state.read().grafix.wnd_pos.x;
         let dx_button = self.state.read().grafix.scale_dpi(DX_BUTTON_96);
         let dy_button = self.state.read().grafix.scale_dpi(DY_BUTTON_96);
         let dy_top_led = self.state.read().grafix.scale_dpi(DY_TOP_LED_96);
@@ -523,8 +520,8 @@ impl WinMineMainWindow {
                 + state.grafix.scale_dpi(DY_BOTTOM_SPACE_96);
             (dx_window, dy_window)
         };
-        WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
-        WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
+        self.state.write().grafix.wnd_pos.x = dx_window;
+        self.state.write().grafix.wnd_pos.y = dy_window;
 
         // Get the current window position from preferences
         let (mut x_window, mut y_window) = {
