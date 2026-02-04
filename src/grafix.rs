@@ -14,7 +14,7 @@ use winsafe::{
     prelude::*,
 };
 
-use crate::globals::{BASE_DPI, UI_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
+use crate::globals::{BASE_DPI, WINDOW_HEIGHT, WINDOW_WIDTH};
 use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
 
 /*
@@ -51,15 +51,6 @@ pub const DY_GRID_OFF_96: i32 = DY_TOP_LED_96 + DY_LED_96 + 16;
 pub const DX_LEFT_BOMB_96: i32 = DX_LEFT_SPACE_96 + 5;
 /// X coordinate offset from the right edge for the timer counter.
 pub const DX_RIGHT_TIME_96: i32 = DX_RIGHT_SPACE_96 + 5;
-
-/// Scale a 96-DPI measurement to the current UI DPI
-/// # Arguments
-/// * `value_96` - The measurement in pixels at 96 DPI.
-/// # Returns
-/// The measurement scaled to the current UI DPI.
-pub fn scale_dpi(value_96: i32) -> i32 {
-    MulDiv(value_96, UI_DPI.load(Relaxed) as i32, BASE_DPI as i32)
-}
 
 /// Number of cell sprites packed into the block bitmap sheet.
 const I_BLK_MAX: usize = 16;
@@ -164,6 +155,8 @@ enum BorderStyle {
 
 /// Internal state tracking loaded graphics resources and cached DCs
 pub struct GrafixState {
+    /// Current UI DPI
+    pub dpi: u32,
     /// Precalculated byte offsets to each block sprite within the DIB
     rg_dib_off: [usize; I_BLK_MAX],
     /// Precalculated byte offsets to each LED digit within the DIB
@@ -203,6 +196,7 @@ pub struct GrafixState {
 impl Default for GrafixState {
     fn default() -> Self {
         Self {
+            dpi: BASE_DPI,
             rg_dib_off: [0; I_BLK_MAX],
             rg_dib_led_off: [0; I_LED_MAX],
             rg_dib_button_off: [0; BUTTON_SPRITE_COUNT],
@@ -225,6 +219,15 @@ impl Default for GrafixState {
 }
 
 impl GrafixState {
+    /// Scale a 96-DPI measurement to the current UI DPI
+    /// # Arguments
+    /// * `value_96` - The measurement in pixels at 96 DPI.
+    /// # Returns
+    /// The measurement scaled to the current UI DPI.
+    pub fn scale_dpi(&self, value_96: i32) -> i32 {
+        MulDiv(value_96, self.dpi as i32, BASE_DPI as i32)
+    }
+
     /// Draw a single block at the specified board coordinates.
     /// # Arguments
     /// * `hdc` - The device context to draw on.
@@ -244,10 +247,10 @@ impl GrafixState {
             return Ok(());
         };
 
-        let dst_w = scale_dpi(DX_BLK_96);
-        let dst_h = scale_dpi(DY_BLK_96);
-        let dst_x = (x as i32 * dst_w) + (scale_dpi(DX_LEFT_SPACE_96) - dst_w);
-        let dst_y = (y as i32 * dst_h) + (scale_dpi(DY_GRID_OFF_96) - dst_h);
+        let dst_w = self.scale_dpi(DX_BLK_96);
+        let dst_h = self.scale_dpi(DY_BLK_96);
+        let dst_x = (x as i32 * dst_w) + (self.scale_dpi(DX_LEFT_SPACE_96) - dst_w);
+        let dst_y = (y as i32 * dst_h) + (self.scale_dpi(DY_GRID_OFF_96) - dst_h);
 
         // Blocks are cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         hdc.BitBlt(
@@ -275,12 +278,12 @@ impl GrafixState {
         height: usize,
         board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
     ) -> AnyResult<()> {
-        let dst_w = scale_dpi(DX_BLK_96);
-        let dst_h = scale_dpi(DY_BLK_96);
+        let dst_w = self.scale_dpi(DX_BLK_96);
+        let dst_h = self.scale_dpi(DY_BLK_96);
 
-        let mut dy = scale_dpi(DY_GRID_OFF_96);
+        let mut dy = self.scale_dpi(DY_GRID_OFF_96);
         for y in 1..=height {
-            let mut dx = scale_dpi(DX_LEFT_SPACE_96);
+            let mut dx = self.scale_dpi(DX_LEFT_SPACE_96);
             for x in 1..=width {
                 if let Some(src) = self.block_dc(x, y, board) {
                     hdc.BitBlt(
@@ -313,8 +316,8 @@ impl GrafixState {
 
         hdc.SetStretchBltMode(STRETCH_MODE::COLORONCOLOR)?;
         hdc.StretchBlt(
-            POINT::with(x, scale_dpi(DY_TOP_LED_96)),
-            SIZE::with(scale_dpi(DX_LED_96), scale_dpi(DY_LED_96)),
+            POINT::with(x, self.scale_dpi(DY_TOP_LED_96)),
+            SIZE::with(self.scale_dpi(DX_LED_96), self.scale_dpi(DY_LED_96)),
             src,
             POINT::new(),
             SIZE::with(DX_LED_96, DY_LED_96),
@@ -341,8 +344,8 @@ impl GrafixState {
         }
 
         // Draw each of the three digits in sequence
-        let x0 = scale_dpi(DX_LEFT_BOMB_96);
-        let dx = scale_dpi(DX_LED_96);
+        let x0 = self.scale_dpi(DX_LEFT_BOMB_96);
+        let dx = self.scale_dpi(DX_LED_96);
         // Hundreds place or negative sign
         self.draw_led(
             hdc,
@@ -380,8 +383,8 @@ impl GrafixState {
         }
 
         let dx_window = WINDOW_WIDTH.load(Relaxed);
-        let dx_led = scale_dpi(DX_LED_96);
-        let dx_led_right = scale_dpi(DX_RIGHT_TIME_96);
+        let dx_led = self.scale_dpi(DX_LED_96);
+        let dx_led_right = self.scale_dpi(DX_RIGHT_TIME_96);
         // Hundreds place
         self.draw_led(
             hdc,
@@ -418,8 +421,8 @@ impl GrafixState {
     fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
         // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         let dx_window = WINDOW_WIDTH.load(Relaxed);
-        let dst_w = scale_dpi(DX_BUTTON_96);
-        let dst_h = scale_dpi(DY_BUTTON_96);
+        let dst_w = self.scale_dpi(DX_BUTTON_96);
+        let dst_h = self.scale_dpi(DY_BUTTON_96);
         let x = (dx_window - dst_w) / 2;
 
         let idx = sprite as usize;
@@ -432,7 +435,7 @@ impl GrafixState {
         };
 
         hdc.BitBlt(
-            POINT::with(x, scale_dpi(DY_TOP_LED_96)),
+            POINT::with(x, self.scale_dpi(DY_TOP_LED_96)),
             SIZE::with(dst_w, dst_h),
             src,
             POINT::new(),
@@ -685,18 +688,18 @@ impl GrafixState {
         // Outer sunken border
         let mut x = dx_window - 1;
         let mut y = dy_window - 1;
-        let b3 = scale_dpi(3);
-        let b2 = scale_dpi(2);
-        let b1 = scale_dpi(1);
+        let b3 = self.scale_dpi(3);
+        let b2 = self.scale_dpi(2);
+        let b1 = self.scale_dpi(1);
         self.draw_border(hdc, 0, 0, x, y, b3, BorderStyle::Sunken)?;
 
         // Inner raised borders
-        x -= scale_dpi(DX_RIGHT_SPACE_96) - b3;
-        y -= scale_dpi(DY_BOTTOM_SPACE_96) - b3;
+        x -= self.scale_dpi(DX_RIGHT_SPACE_96) - b3;
+        y -= self.scale_dpi(DY_BOTTOM_SPACE_96) - b3;
         self.draw_border(
             hdc,
-            scale_dpi(DX_LEFT_SPACE_96) - b3,
-            scale_dpi(DY_GRID_OFF_96) - b3,
+            self.scale_dpi(DX_LEFT_SPACE_96) - b3,
+            self.scale_dpi(DY_GRID_OFF_96) - b3,
             x,
             y,
             b3,
@@ -705,25 +708,25 @@ impl GrafixState {
         // LED area border
         self.draw_border(
             hdc,
-            scale_dpi(DX_LEFT_SPACE_96) - b3,
-            scale_dpi(DY_TOP_SPACE_96) - b3,
+            self.scale_dpi(DX_LEFT_SPACE_96) - b3,
+            self.scale_dpi(DY_TOP_SPACE_96) - b3,
             x,
-            scale_dpi(DY_TOP_LED_96)
-                + scale_dpi(DY_LED_96)
-                + (scale_dpi(DY_BOTTOM_SPACE_96) - scale_dpi(6)),
+            self.scale_dpi(DY_TOP_LED_96)
+                + self.scale_dpi(DY_LED_96)
+                + (self.scale_dpi(DY_BOTTOM_SPACE_96) - self.scale_dpi(6)),
             b2,
             BorderStyle::Raised,
         )?;
 
         // LED borders
-        let x_left_bomb = scale_dpi(DX_LEFT_BOMB_96);
-        let dx_led = scale_dpi(DX_LED_96);
+        let x_left_bomb = self.scale_dpi(DX_LEFT_BOMB_96);
+        let dx_led = self.scale_dpi(DX_LED_96);
         x = x_left_bomb + dx_led * 3;
-        y = scale_dpi(DY_TOP_LED_96) + scale_dpi(DY_LED_96);
+        y = self.scale_dpi(DY_TOP_LED_96) + self.scale_dpi(DY_LED_96);
         self.draw_border(
             hdc,
             x_left_bomb - b1,
-            scale_dpi(DY_TOP_LED_96) - b1,
+            self.scale_dpi(DY_TOP_LED_96) - b1,
             x,
             y,
             b1,
@@ -731,11 +734,11 @@ impl GrafixState {
         )?;
 
         // Timer borders
-        x = dx_window - (scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + b1);
+        x = dx_window - (self.scale_dpi(DX_RIGHT_TIME_96) + 3 * dx_led + b1);
         self.draw_border(
             hdc,
             x,
-            scale_dpi(DY_TOP_LED_96) - b1,
+            self.scale_dpi(DY_TOP_LED_96) - b1,
             x + (dx_led * 3 + b1),
             y,
             b1,
@@ -743,15 +746,15 @@ impl GrafixState {
         )?;
 
         // Button border
-        let dx_button = scale_dpi(DX_BUTTON_96);
-        let dy_button = scale_dpi(DY_BUTTON_96);
+        let dx_button = self.scale_dpi(DX_BUTTON_96);
+        let dy_button = self.scale_dpi(DY_BUTTON_96);
         x = ((dx_window - dx_button) / 2) - b1;
         self.draw_border(
             hdc,
             x,
-            scale_dpi(DY_TOP_LED_96) - b1,
+            self.scale_dpi(DY_TOP_LED_96) - b1,
             x + dx_button + b1,
-            scale_dpi(DY_TOP_LED_96) + dy_button,
+            self.scale_dpi(DY_TOP_LED_96) + dy_button,
             b1,
             BorderStyle::Flat,
         )?;
@@ -858,8 +861,8 @@ impl GrafixState {
         // For fractional DPI scaling, simple StretchBlt produced unpleasant artifacts.
         // We therefore create the classic 96-DPI bitmap first, then resample it using
         // `create_resampled_bitmap` into a cached, DPI-sized bitmap.
-        let dst_blk_w = scale_dpi(DX_BLK_96);
-        let dst_blk_h = scale_dpi(DY_BLK_96);
+        let dst_blk_w = self.scale_dpi(DX_BLK_96);
+        let dst_blk_h = self.scale_dpi(DY_BLK_96);
         for i in 0..I_BLK_MAX {
             let dc_guard = hdc.CreateCompatibleDC()?;
 
@@ -940,8 +943,8 @@ impl GrafixState {
         // Cache face button sprites in compatible bitmaps.
         //
         // Like the blocks, the face button looks best when we resample once and cache.
-        let dst_btn_w = scale_dpi(DX_BUTTON_96);
-        let dst_btn_h = scale_dpi(DY_BUTTON_96);
+        let dst_btn_w = self.scale_dpi(DX_BUTTON_96);
+        let dst_btn_h = self.scale_dpi(DY_BUTTON_96);
         for i in 0..BUTTON_SPRITE_COUNT {
             let dc_guard = hdc.CreateCompatibleDC()?;
 

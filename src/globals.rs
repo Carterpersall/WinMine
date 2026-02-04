@@ -1,6 +1,6 @@
 //! Global constants and variables used throughout the application.
 
-use core::sync::atomic::{AtomicI32, AtomicU32};
+use core::sync::atomic::AtomicI32;
 
 /* -------------------- */
 /* Constant Definitions */
@@ -28,13 +28,6 @@ pub const MSG_CREDIT: &str = "by Robert Donner and Curt Johnson";
 /* ---------------- */
 /* Global Variables */
 /* ---------------- */
-
-/// Current DPI used for UI scaling.
-///
-/// This is kept in sync with the main window DPI (via `HWND::GetDpiForWindow` and
-/// `WM_DPICHANGED`). All UI measurements that represent "logical" sizes from the
-/// classic WinMine assets are scaled from 96 DPI to this value.
-pub static UI_DPI: AtomicU32 = AtomicU32::new(BASE_DPI);
 
 /// Current client width of the main window.
 pub static WINDOW_WIDTH: AtomicI32 = AtomicI32::new(0);

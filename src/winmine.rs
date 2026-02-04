@@ -17,12 +17,12 @@ use winsafe::{
 };
 
 use crate::globals::{
-    BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME, UI_DPI, WINDOW_HEIGHT,
+    BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME, WINDOW_HEIGHT,
     WINDOW_WIDTH,
 };
 use crate::grafix::{
     ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
-    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96, scale_dpi,
+    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96,
 };
 use crate::help::Help;
 use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
@@ -208,9 +208,6 @@ impl WinMineMainWindow {
     pub fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
         // Seed the RNG, initialize global values, and ensure the preferences registry key exists
         init_const();
-
-        // Initialize DPI to 96 (default) before creating the window
-        UI_DPI.store(96, Ordering::Relaxed);
 
         // Initialize common controls
         let mut icc = INITCOMMONCONTROLSEX::default();
@@ -436,9 +433,9 @@ impl WinMineMainWindow {
         msg.pt.y = point.y;
 
         let dx_window = WINDOW_WIDTH.load(Ordering::Relaxed);
-        let dx_button = scale_dpi(DX_BUTTON_96);
-        let dy_button = scale_dpi(DY_BUTTON_96);
-        let dy_top_led = scale_dpi(DY_TOP_LED_96);
+        let dx_button = self.state.read().grafix.scale_dpi(DX_BUTTON_96);
+        let dy_button = self.state.read().grafix.scale_dpi(DY_BUTTON_96);
+        let dy_top_led = self.state.read().grafix.scale_dpi(DY_TOP_LED_96);
         let mut rc = RECT {
             left: (dx_window - dx_button) / 2,
             top: dy_top_led,
@@ -516,12 +513,16 @@ impl WinMineMainWindow {
     /// An `Ok(())` if successful, or an error if adjustment failed.
     pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Calculate desired window size based on board dimensions and DPI scaling
-        let dx_window = scale_dpi(DX_BLK_96) * self.state.read().board_width as i32
-            + scale_dpi(DX_LEFT_SPACE_96)
-            + scale_dpi(DX_RIGHT_SPACE_96);
-        let dy_window = scale_dpi(DY_BLK_96) * self.state.read().board_height as i32
-            + scale_dpi(DY_GRID_OFF_96)
-            + scale_dpi(DY_BOTTOM_SPACE_96);
+        let (dx_window, dy_window) = {
+            let state = self.state.read();
+            let dx_window = state.grafix.scale_dpi(DX_BLK_96) * state.board_width as i32
+                + state.grafix.scale_dpi(DX_LEFT_SPACE_96)
+                + state.grafix.scale_dpi(DX_RIGHT_SPACE_96);
+            let dy_window = state.grafix.scale_dpi(DY_BLK_96) * state.board_height as i32
+                + state.grafix.scale_dpi(DY_GRID_OFF_96)
+                + state.grafix.scale_dpi(DY_BOTTOM_SPACE_96);
+            (dx_window, dy_window)
+        };
         WINDOW_WIDTH.store(dx_window, Ordering::Relaxed);
         WINDOW_HEIGHT.store(dy_window, Ordering::Relaxed);
 
@@ -543,7 +544,7 @@ impl WinMineMainWindow {
             self.wnd.hwnd().style(),
             true,
             self.wnd.hwnd().style_ex(),
-            UI_DPI.load(Ordering::Relaxed),
+            self.state.read().grafix.dpi,
         )?;
 
         // Calculate total window size including non-client areas
@@ -622,11 +623,11 @@ impl WinMineMainWindow {
     /// # Returns
     /// The corresponding box index.
     pub fn x_box_from_xpos(&self, x: i32) -> usize {
-        let cell = scale_dpi(DX_BLK_96);
+        let cell = self.state.read().grafix.scale_dpi(DX_BLK_96);
         if cell <= 0 {
             return 0;
         }
-        ((x - (scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell) as usize
+        ((x - (self.state.read().grafix.scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell) as usize
     }
 
     /// Converts a y-coordinate in pixels to a box index.
@@ -635,11 +636,11 @@ impl WinMineMainWindow {
     /// # Returns
     /// The corresponding box index.
     pub fn y_box_from_ypos(&self, y: i32) -> usize {
-        let cell = scale_dpi(DY_BLK_96);
+        let cell = self.state.read().grafix.scale_dpi(DY_BLK_96);
         if cell <= 0 {
             return 0;
         }
-        ((y - (scale_dpi(DY_GRID_OFF_96) - cell)) / cell) as usize
+        ((y - (self.state.read().grafix.scale_dpi(DY_GRID_OFF_96) - cell)) / cell) as usize
     }
 
     /* Event Handlers */
@@ -651,7 +652,7 @@ impl WinMineMainWindow {
             move |_create| -> winsafe::AnyResult<i32> {
                 // Sync global DPI state to the actual monitor DPI where the window was created.
                 let dpi = self2.wnd.hwnd().GetDpiForWindow();
-                UI_DPI.store(if dpi == 0 { BASE_DPI } else { dpi }, Ordering::Relaxed);
+                self2.state.write().grafix.dpi = if dpi == 0 { BASE_DPI } else { dpi };
 
                 // Initialize local resources.
                 self2.state.write().init_game(self2.wnd.hwnd())?;
@@ -670,7 +671,7 @@ impl WinMineMainWindow {
                 // wParam: new DPI in LOWORD/HIWORD (X/Y). lParam: suggested new window rect.
                 let dpi = (msg.wparam) & 0xFFFF;
                 if dpi > 0 {
-                    UI_DPI.store(dpi as u32, Ordering::Relaxed);
+                    self2.state.write().grafix.dpi = if dpi == 0 { BASE_DPI } else { dpi as u32 };
                 }
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
 
