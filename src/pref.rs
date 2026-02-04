@@ -268,16 +268,9 @@ impl Pref {
             .read_int(&key_guard, PrefKey::Mines)
             .unwrap_or(10)
             .clamp(10, 999) as i16;
-        // TODO: The original bounds for window position were 0-1024, which made sense on 1990s displays, but is too small for modern screens.
-        self.wnd_x_pos = self
-            .read_int(&key_guard, PrefKey::Xpos)
-            .unwrap_or(80)
-            .clamp(0, 1024) as i32;
-        self.wnd_y_pos = self
-            .read_int(&key_guard, PrefKey::Ypos)
-            .unwrap_or(80)
-            .clamp(0, 1024) as i32;
-
+        // TODO: Ensure that the window position is within the screen bounds
+        self.wnd_x_pos = self.read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32;
+        self.wnd_y_pos = self.read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32;
         // Get sound, marking, ticking, and menu preferences
         self.sound_enabled = matches!(self.read_int(&key_guard, PrefKey::Sound), Ok(3));
         self.mark_enabled = self.read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;

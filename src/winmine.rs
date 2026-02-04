@@ -30,9 +30,6 @@ use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
 use crate::util::{IconId, StateLock, get_dlg_int, init_const};
 
-/// Indicates that preferences have changed and should be saved
-static UPDATE_INI: AtomicBool = AtomicBool::new(false);
-
 /// `WM_APP` request code posted to the main window when a new best time is
 /// recorded.
 ///
@@ -319,7 +316,6 @@ impl WinMineMainWindow {
                     self.state.write().prefs.sound_enabled = new_sound;
                 };
 
-                UPDATE_INI.store(true, Ordering::Relaxed);
                 self.set_menu_bar()?;
             }
             code if code == VK::SHIFT => self.handle_xyzzys_shift(),
@@ -737,7 +733,6 @@ impl WinMineMainWindow {
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
                     EnterDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
-                    UPDATE_INI.store(true, Ordering::Relaxed);
                     BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
                     return Ok(0);
                 }
@@ -763,11 +758,7 @@ impl WinMineMainWindow {
                 self2.wnd.hwnd().KillTimer(ID_TIMER)?;
 
                 // Write preferences if they have changed
-                // TODO: The original code has a bug where the current window position is not saved on exit
-                // unless another preference has changed. Fix this.
-                if UPDATE_INI.load(Ordering::Relaxed) {
-                    self2.state.write().prefs.write_preferences()?;
-                }
+                self2.state.write().prefs.write_preferences()?;
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };
                 Ok(())
@@ -951,7 +942,6 @@ impl WinMineMainWindow {
                         state.prefs.width = data.2 as usize;
                     }
                 }
-                UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
                 self2.start_game()?;
                 Ok(())
@@ -980,10 +970,8 @@ impl WinMineMainWindow {
                 // Show the preferences dialog
                 PrefDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
 
-                {
-                    self2.state.write().prefs.game_type = GameType::Other;
-                };
-                UPDATE_INI.store(true, Ordering::Relaxed);
+                self2.state.write().prefs.game_type = GameType::Other;
+
                 self2.set_menu_bar()?;
                 self2.start_game()?;
                 Ok(())
@@ -1003,7 +991,6 @@ impl WinMineMainWindow {
                 {
                     self2.state.write().prefs.sound_enabled = new_sound;
                 };
-                UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
                 Ok(())
             }
@@ -1027,7 +1014,6 @@ impl WinMineMainWindow {
                     .read()
                     .grafix
                     .draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
-                UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
                 Ok(())
             }
@@ -1040,7 +1026,6 @@ impl WinMineMainWindow {
                     let marks_enabled = self2.state.read().prefs.mark_enabled;
                     self2.state.write().prefs.mark_enabled = !marks_enabled;
                 };
-                UPDATE_INI.store(true, Ordering::Relaxed);
                 self2.set_menu_bar()?;
                 Ok(())
             }
@@ -1329,7 +1314,6 @@ impl BestDialog {
                         state.prefs.expert_name = DEFAULT_PLAYER_NAME.to_string();
                     };
 
-                    UPDATE_INI.store(true, Ordering::Relaxed);
                     self2.reset_best_dialog(
                         999,
                         999,
