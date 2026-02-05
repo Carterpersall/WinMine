@@ -327,11 +327,9 @@ impl WinMineMainWindow {
             if self.state.read().game_status.contains(StatusFlag::Play) {
                 let x_new = self.x_box_from_xpos(point.x);
                 let y_new = self.y_box_from_ypos(point.y);
-                self.state.write().track_mouse(
-                    self.wnd.hwnd(),
-                    x_new,
-                    y_new,
-                )?;
+                self.state
+                    .write()
+                    .track_mouse(self.wnd.hwnd(), x_new, y_new)?;
             } else {
                 self.finish_primary_button_drag()?;
             }
@@ -370,11 +368,7 @@ impl WinMineMainWindow {
         // Regular right-click: make a guess
         let x = self.x_box_from_xpos(point.x);
         let y = self.y_box_from_ypos(point.y);
-        self.state.write().make_guess(
-            self.wnd.hwnd(),
-            x,
-            y,
-        )?;
+        self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
         Ok(())
     }
 

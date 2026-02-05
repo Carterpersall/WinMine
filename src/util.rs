@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use winsafe::co::{KEY, REG_OPTION};
-use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, prelude::*};
+use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, LOWORD, prelude::*};
 
 use crate::pref::{GameType, SZ_WINMINE_REG_STR};
 use crate::winmine::{MenuCommand, WinMineMainWindow};
@@ -37,14 +37,8 @@ impl<T> StateLock<T> {
     }
 }
 
-/// Multiplier used by the linear congruential generator that produces the app's RNG values.
-const RNG_MULTIPLIER: u32 = 1_103_515_245;
-/// Increment used by the linear congruential generator.
-const RNG_INCREMENT: u32 = 12_345;
-/// Default seed applied when the RNG would otherwise start at zero.
-const RNG_DEFAULT_SEED: u32 = 0xACE1_1234;
 /// Shared state of the linear congruential generator.
-static RNG_STATE: AtomicU32 = AtomicU32::new(RNG_DEFAULT_SEED);
+static RNG_STATE: AtomicU32 = AtomicU32::new(0);
 
 /// Icon resources embedded in the executable.
 ///
@@ -58,12 +52,12 @@ pub enum IconId {
 
 /// Seed the RNG with the specified seed value.
 /// # Arguments
-/// * `seed` - The seed value to initialize the RNG with. If zero, a default seed is used.
-fn seed_rng(seed: u32) {
-    // Ensure the RNG seed is never zero
-    let value = if seed == 0 { RNG_DEFAULT_SEED } else { seed };
+/// * `seed` - The seed value to initialize the RNG with.
+/// # Notes
+/// This function replicates the functionality of the C standard library's `srand()` function.
+fn seed_rng(seed: u16) {
     // Initialize the shared RNG state to the given seed value
-    RNG_STATE.store(value, Ordering::Relaxed);
+    RNG_STATE.store(seed as u32, Ordering::Relaxed);
 }
 
 /// Generate the next pseudo-random number using a linear congruential generator.
@@ -85,7 +79,12 @@ fn seed_rng(seed: u32) {
 /// This formula is the same used in Windows' `rand()` function.
 ///
 /// TODO: Consider using using Rust's built-in RNG facilities
-fn next_rand() -> u32 {
+fn rand() -> u32 {
+    /// Multiplier used by the linear congruential generator that produces the app's RNG values.
+    const RNG_MULTIPLIER: u32 = 214_013;
+    /// Increment used by the linear congruential generator.
+    const RNG_INCREMENT: u32 = 2_531_011;
+
     let mut current = RNG_STATE.load(Ordering::Relaxed);
     loop {
         // Compute the next RNG state using LCG formula
@@ -105,7 +104,7 @@ fn next_rand() -> u32 {
 /// # Returns
 /// A pseudo-random number in the [0, `rnd_max`) range
 pub fn rnd(rnd_max: u32) -> u32 {
-    next_rand() % rnd_max
+    rand() % rnd_max
 }
 
 /// Initialize UI globals and seed the RNG state.
@@ -113,8 +112,8 @@ pub fn rnd(rnd_max: u32) -> u32 {
 /// TODO: Does this function need to exist? It is only called once during startup.
 pub fn init_const() {
     // Seed the RNG using the low 16 bits of the current tick count
-    let ticks = (GetTickCount64() as u32) & 0xFFFF;
-    seed_rng(ticks as u32);
+    let ticks = LOWORD(GetTickCount64() as u32);
+    seed_rng(ticks);
 
     // Create or open the registry key for storing preferences
     // TODO: Handle errors
