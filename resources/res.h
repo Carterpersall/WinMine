@@ -18,7 +18,7 @@
 
 #define ID_DLG_PREF     80
 
-#define ID_BTN_OK       100
+#define ID_BTN_OK       101
 #define ID_BTN_CANCEL   109
 
 #define ID_TXT_MINES    111

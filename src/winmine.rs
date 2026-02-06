@@ -25,7 +25,7 @@ use crate::help::Help;
 use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
-use crate::util::{IconId, StateLock, get_dlg_int, init_const};
+use crate::util::{ResourceId, StateLock, get_dlg_int, init_const};
 
 /// `WM_APP` request code posted to the main window when a new best time is
 /// recorded.
@@ -33,137 +33,6 @@ use crate::util::{IconId, StateLock, get_dlg_int, init_const};
 /// The main UI thread handles this by showing the name-entry dialog, then the
 /// best-times dialog.
 pub const NEW_RECORD_DLG: usize = 1;
-
-/// Menu and accelerator resource identifiers.
-#[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum MenuResourceId {
-    /// Main menu resource.
-    Menu = 500,
-    /// Accelerator table resource.
-    Accelerators = 501,
-}
-// TODO: Change these to be offsets of WM_APP, as they may conflict with system commands in their current form
-/// Menu and accelerator command identifiers.
-#[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum MenuCommand {
-    /// Start a new game.
-    New = 510,
-    /// Exit the application.
-    Exit = 512,
-    /// Select the Beginner difficulty.
-    Begin = 521,
-    /// Select the Intermediate difficulty.
-    Inter = 522,
-    /// Select the Expert difficulty.
-    Expert = 523,
-    /// Open the Custom board dialog.
-    Custom = 524,
-    /// Toggle sound effects.
-    Sound = 526,
-    /// Toggle question-mark marks.
-    Mark = 527,
-    /// Show the best times dialog.
-    Best = 528,
-    /// Toggle color bitmaps.
-    Color = 529,
-    /// Open help.
-    Help = 590,
-    /// Show "search for help topics" entry.
-    SearchHelp = 591,
-    /// Open the help-about-help entry.
-    UsingHelp = 592,
-    /// Show the About dialog.
-    AboutMinesweeper = 593,
-}
-
-impl TryFrom<usize> for MenuCommand {
-    type Error = Box<dyn core::error::Error>;
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match (value & 0xFFFF) as u16 {
-            510 => Ok(MenuCommand::New),
-            512 => Ok(MenuCommand::Exit),
-            521 => Ok(MenuCommand::Begin),
-            522 => Ok(MenuCommand::Inter),
-            523 => Ok(MenuCommand::Expert),
-            524 => Ok(MenuCommand::Custom),
-            526 => Ok(MenuCommand::Sound),
-            527 => Ok(MenuCommand::Mark),
-            528 => Ok(MenuCommand::Best),
-            529 => Ok(MenuCommand::Color),
-            590 => Ok(MenuCommand::Help),
-            591 => Ok(MenuCommand::SearchHelp),
-            592 => Ok(MenuCommand::UsingHelp),
-            593 => Ok(MenuCommand::AboutMinesweeper),
-            val => Err(format!("Invalid MenuCommand value: {}", val).into()),
-        }
-    }
-}
-
-impl From<MenuCommand> for u16 {
-    fn from(val: MenuCommand) -> Self {
-        val as u16
-    }
-}
-
-/// Dialog template identifiers.
-#[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum DialogTemplateId {
-    /// Custom game preferences dialog
-    Pref = 80,
-    /// Best times display dialog
-    Enter = 600,
-    /// Confirm reset best times dialog
-    Best = 700,
-}
-
-/// Control identifiers shared across dialogs.
-#[repr(i32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum ControlId {
-    /// Edit control for board height
-    EditHeight = 141,
-    /// Edit control for board width
-    EditWidth = 142,
-    /// Edit control for number of mines
-    EditMines = 143,
-    /// OK button
-    BtnOk = 100,
-    /// Cancel button
-    _BtnCancel = 109,
-    /// Reset best times button
-    BtnReset = 707,
-    /// Static text for best times
-    TextBest = 601,
-    /// Edit control for player name
-    EditName = 602,
-    /// Beginner best time
-    TimeBegin = 701,
-    /// Beginner player name
-    NameBegin = 702,
-    /// Intermediate best time
-    TimeInter = 703,
-    /// Intermediate player name
-    NameInter = 704,
-    /// Expert best time
-    TimeExpert = 705,
-    /// Expert player name
-    NameExpert = 706,
-    /// Static text 1 for best times
-    SText1 = 708,
-    /// Static text 2 for best times
-    SText2 = 709,
-    /// Static text 3 for best times
-    SText3 = 710,
-    /// Static text for number of mines
-    TxtMines = 111,
-    /// Static text for board height
-    TxtHeight = 112,
-    /// Static text for board width
-    TxtWidth = 113,
-}
 
 /// Struct containing the main window with its event handlers and the shared state.
 #[derive(Clone)]
@@ -221,16 +90,16 @@ impl WinMineMainWindow {
         InitCommonControlsEx(&icc)?;
 
         // Get a handle to the menu resource
-        let mut menu = hinst.LoadMenu(IdStr::Id(MenuResourceId::Menu as u16))?;
+        let mut menu = hinst.LoadMenu(IdStr::Id(ResourceId::Menu as u16))?;
 
         // Get a handle to the accelerators resource
-        let h_accel = hinst.LoadAccelerators(IdStr::Id(MenuResourceId::Accelerators as u16))?;
+        let h_accel = hinst.LoadAccelerators(IdStr::Id(ResourceId::MenuAccel as u16))?;
 
         // Create the main application window
         let wnd = gui::WindowMain::new(gui::WindowMainOpts {
             class_name: GAME_NAME,
             title: GAME_NAME,
-            class_icon: gui::Icon::Id(IconId::Main as u16),
+            class_icon: gui::Icon::Id(ResourceId::Icon as u16),
             class_cursor: gui::Cursor::Idc(IDC::ARROW),
             class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
             style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
@@ -895,7 +764,7 @@ impl WinMineMainWindow {
 
         /* Menu Commands */
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::New as u16, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::NewGame, {
             let self2 = self.clone();
             move || {
                 self2.start_game()?;
@@ -903,25 +772,23 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd
-            .on()
-            .wm_command_acc_menu(MenuCommand::Exit as u16, {
-                let self2 = self.clone();
-                move || {
-                    self2.wnd.hwnd().ShowWindow(SW::HIDE);
-                    self2.wnd.close();
-                    Ok(())
-                }
-            });
+        self.wnd.on().wm_command_acc_menu(ResourceId::Exit, {
+            let self2 = self.clone();
+            move || {
+                self2.wnd.hwnd().ShowWindow(SW::HIDE);
+                self2.wnd.close();
+                Ok(())
+            }
+        });
 
         // Function to be shared between difficulty menu commands
         let difficulty_command = {
             let self2 = self.clone();
-            move |command: MenuCommand| {
+            move |command: ResourceId| {
                 let game = match command {
-                    MenuCommand::Begin => GameType::Begin,
-                    MenuCommand::Inter => GameType::Inter,
-                    MenuCommand::Expert => GameType::Expert,
+                    ResourceId::Begin => GameType::Begin,
+                    ResourceId::Inter => GameType::Inter,
+                    ResourceId::Expert => GameType::Expert,
                     _ => GameType::Other,
                 };
 
@@ -940,20 +807,20 @@ impl WinMineMainWindow {
             }
         };
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Begin, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Begin, {
             let difficulty_command = difficulty_command.clone();
-            move || difficulty_command.clone()(MenuCommand::Begin)
+            move || difficulty_command.clone()(ResourceId::Begin)
         });
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Inter, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Inter, {
             let difficulty_command = difficulty_command.clone();
-            move || difficulty_command.clone()(MenuCommand::Inter)
+            move || difficulty_command.clone()(ResourceId::Inter)
         });
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Expert, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Expert, {
             let difficulty_command = difficulty_command.clone();
-            move || difficulty_command.clone()(MenuCommand::Expert)
+            move || difficulty_command.clone()(ResourceId::Expert)
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Custom, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Custom, {
             let self2 = self.clone();
             move || {
                 // TODO: The way that the preferences dialog is handled causes a custom game to always
@@ -970,7 +837,7 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Sound, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Sound, {
             let self2 = self.clone();
             move || {
                 let new_sound = match self2.state.read().prefs.sound_enabled {
@@ -988,7 +855,7 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Color, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Color, {
             let self2 = self.clone();
             move || {
                 let color = !self2.state.read().prefs.color;
@@ -1011,7 +878,7 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Mark, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Mark, {
             let self2 = self.clone();
             move || {
                 {
@@ -1023,12 +890,12 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Best, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Best, {
             let self2 = self.clone();
             move || BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::Help, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::HelpSubmenu, {
             let self2 = self.clone();
             move || {
                 Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOC);
@@ -1036,7 +903,7 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::SearchHelp, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::HowToPlay, {
             let self2 = self.clone();
             move || {
                 Help::do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX);
@@ -1044,7 +911,7 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(MenuCommand::UsingHelp, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::HelpOnHelp, {
             let self2 = self.clone();
             move || {
                 Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOC);
@@ -1052,26 +919,24 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd
-            .on()
-            .wm_command_acc_menu(MenuCommand::AboutMinesweeper, {
-                let self2 = self.clone();
-                move || {
-                    let icon = self2
-                        .wnd
-                        .hwnd()
-                        .hinstance()
-                        .LoadIcon(IdIdiStr::Id(IconId::Main as u16))?;
+        self.wnd.on().wm_command_acc_menu(ResourceId::About, {
+            let self2 = self.clone();
+            move || {
+                let icon = self2
+                    .wnd
+                    .hwnd()
+                    .hinstance()
+                    .LoadIcon(IdIdiStr::Id(ResourceId::Icon as u16))?;
 
-                    self2.wnd.hwnd().ShellAbout(
-                        MSG_VERSION_NAME,
-                        None,
-                        Some(MSG_CREDIT),
-                        icon.as_opt(),
-                    )?;
-                    Ok(())
-                }
-            });
+                self2.wnd.hwnd().ShellAbout(
+                    MSG_VERSION_NAME,
+                    None,
+                    Some(MSG_CREDIT),
+                    icon.as_opt(),
+                )?;
+                Ok(())
+            }
+        });
     }
 }
 
@@ -1086,7 +951,7 @@ struct PrefDialog {
 impl PrefDialog {
     /// Creates a new Preferences dialog instance and sets up event handlers.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
-        let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Pref as u16);
+        let dlg = gui::WindowModal::new_dlg(ResourceId::PrefDlg as u16);
         let new_self = Self { dlg, state };
         new_self.events();
         new_self
@@ -1114,32 +979,32 @@ impl PrefDialog {
                 self2
                     .dlg
                     .hwnd()
-                    .GetDlgItem(ControlId::EditHeight as u16)
+                    .GetDlgItem(ResourceId::HeightEdit as u16)
                     .and_then(|edit| edit.SetWindowText(&height.to_string()))?;
                 self2
                     .dlg
                     .hwnd()
-                    .GetDlgItem(ControlId::EditWidth as u16)
+                    .GetDlgItem(ResourceId::WidthEdit as u16)
                     .and_then(|edit| edit.SetWindowText(&width.to_string()))?;
                 self2
                     .dlg
                     .hwnd()
-                    .GetDlgItem(ControlId::EditMines as u16)
+                    .GetDlgItem(ResourceId::MinesEdit as u16)
                     .and_then(|edit| edit.SetWindowText(&mines.to_string()))?;
 
                 Ok(true)
             }
         });
 
-        self.dlg.on().wm_command(DLGID::OK.raw(), BN::CLICKED, {
+        self.dlg.on().wm_command(DLGID::OK, BN::CLICKED, {
             let dlg = self.dlg.clone();
             let state = self.state.clone();
             move || -> AnyResult<()> {
                 // Retrieve and validate user input from the dialog controls
-                let height = get_dlg_int(dlg.hwnd(), ControlId::EditHeight as i32, MINHEIGHT, 24)?;
-                let width = get_dlg_int(dlg.hwnd(), ControlId::EditWidth as i32, MINWIDTH, 30)?;
+                let height = get_dlg_int(dlg.hwnd(), ResourceId::HeightEdit, MINHEIGHT, 24)?;
+                let width = get_dlg_int(dlg.hwnd(), ResourceId::WidthEdit, MINWIDTH, 30)?;
                 let max_mines = min(999, (height - 1) * (width - 1));
-                let mines = get_dlg_int(dlg.hwnd(), ControlId::EditMines as i32, 10, max_mines)?;
+                let mines = get_dlg_int(dlg.hwnd(), ResourceId::MinesEdit, 10, max_mines)?;
 
                 // Update preferences with the new settings
                 let mut state = state.write();
@@ -1153,7 +1018,7 @@ impl PrefDialog {
             }
         });
 
-        self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
+        self.dlg.on().wm_command(DLGID::CANCEL, BN::CLICKED, {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
                 // Close the dialog without saving changes
@@ -1200,7 +1065,7 @@ impl BestDialog {
     /// # Returns
     /// A new BestDialog instance.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
-        let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Best as u16);
+        let dlg = gui::WindowModal::new_dlg(ResourceId::BestDlg as u16);
         let new_self = Self { dlg, state };
         new_self.events();
         new_self
@@ -1237,31 +1102,31 @@ impl BestDialog {
         // Set the beginner time and name
         self.dlg
             .hwnd()
-            .GetDlgItem(ControlId::TimeBegin as u16)
+            .GetDlgItem(ResourceId::BeginTime as u16)
             .and_then(|hwnd| hwnd.SetWindowText(&format!("{time_begin} seconds")))?;
         self.dlg
             .hwnd()
-            .GetDlgItem(ControlId::TimeBegin as u16 + 1)
+            .GetDlgItem(ResourceId::BeginName as u16)
             .and_then(|hwnd| hwnd.SetWindowText(name_begin))?;
 
         // Set the intermediate time and name
         self.dlg
             .hwnd()
-            .GetDlgItem(ControlId::TimeInter as u16)
+            .GetDlgItem(ResourceId::InterTime as u16)
             .and_then(|hwnd| hwnd.SetWindowText(&format!("{time_inter} seconds")))?;
         self.dlg
             .hwnd()
-            .GetDlgItem(ControlId::TimeInter as u16 + 1)
+            .GetDlgItem(ResourceId::InterName as u16)
             .and_then(|hwnd| hwnd.SetWindowText(name_inter))?;
 
         // Set the expert time and name
         self.dlg
             .hwnd()
-            .GetDlgItem(ControlId::TimeExpert as u16)
+            .GetDlgItem(ResourceId::ExpertTime as u16)
             .and_then(|hwnd| hwnd.SetWindowText(&format!("{time_expert} seconds")))?;
         self.dlg
             .hwnd()
-            .GetDlgItem(ControlId::TimeExpert as u16 + 1)
+            .GetDlgItem(ResourceId::ExpertName as u16)
             .and_then(|hwnd| hwnd.SetWindowText(name_expert))?;
 
         Ok(())
@@ -1288,7 +1153,7 @@ impl BestDialog {
 
         self.dlg
             .on()
-            .wm_command(ControlId::BtnReset as u16, BN::CLICKED, {
+            .wm_command(ResourceId::ResetBtn, BN::CLICKED, {
                 let self2 = self.clone();
                 move || -> AnyResult<()> {
                     // Set best times and names to defaults
@@ -1318,7 +1183,7 @@ impl BestDialog {
                 }
             });
 
-        self.dlg.on().wm_command(DLGID::OK.raw(), BN::CLICKED, {
+        self.dlg.on().wm_command(ResourceId::OkBtn, BN::CLICKED, {
             let dlg = self.dlg.clone();
             move || -> AnyResult<()> {
                 dlg.hwnd().EndDialog(1)?;
@@ -1326,13 +1191,15 @@ impl BestDialog {
             }
         });
 
-        self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
-            let dlg = self.dlg.clone();
-            move || -> AnyResult<()> {
-                dlg.hwnd().EndDialog(1)?;
-                Ok(())
-            }
-        });
+        self.dlg
+            .on()
+            .wm_command(ResourceId::CancelBtn, BN::CLICKED, {
+                let dlg = self.dlg.clone();
+                move || -> AnyResult<()> {
+                    dlg.hwnd().EndDialog(1)?;
+                    Ok(())
+                }
+            });
 
         self.dlg.on().wm_help({
             move |help| {
@@ -1371,7 +1238,7 @@ impl EnterDialog {
     /// # Returns
     /// A new EnterDialog instance.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
-        let dlg = gui::WindowModal::new_dlg(DialogTemplateId::Enter as u16);
+        let dlg = gui::WindowModal::new_dlg(ResourceId::EnterDlg as u16);
         let new_self = Self { dlg, state };
         new_self.events();
         new_self
@@ -1392,7 +1259,7 @@ impl EnterDialog {
         let new_name = self
             .dlg
             .hwnd()
-            .GetDlgItem(ControlId::EditName as u16)
+            .GetDlgItem(ResourceId::NameEdit as u16)
             .and_then(|edit_hwnd| edit_hwnd.GetWindowText())?;
 
         let mut state = self.state.write();
@@ -1426,13 +1293,13 @@ impl EnterDialog {
                 self2
                     .dlg
                     .hwnd()
-                    .GetDlgItem(ControlId::TextBest as u16)
+                    .GetDlgItem(ResourceId::BestText as u16)
                     .and_then(|best_hwnd| best_hwnd.SetWindowText(game_type.fastest_time_msg()))?;
 
                 self2
                     .dlg
                     .hwnd()
-                    .GetDlgItem(ControlId::EditName as u16)
+                    .GetDlgItem(ResourceId::NameEdit as u16)
                     .and_then(|edit_hwnd| {
                         // TODO: Is there a way to do this without sending a message?
                         unsafe {
@@ -1448,18 +1315,16 @@ impl EnterDialog {
             }
         });
 
-        self.dlg
-            .on()
-            .wm_command(ControlId::BtnOk as u16, BN::CLICKED, {
-                let self2 = self.clone();
-                move || -> AnyResult<()> {
-                    self2.save_high_score_name()?;
-                    self2.dlg.hwnd().EndDialog(1)?;
-                    Ok(())
-                }
-            });
+        self.dlg.on().wm_command(ResourceId::OkBtn, BN::CLICKED, {
+            let self2 = self.clone();
+            move || -> AnyResult<()> {
+                self2.save_high_score_name()?;
+                self2.dlg.hwnd().EndDialog(1)?;
+                Ok(())
+            }
+        });
 
-        self.dlg.on().wm_command(DLGID::CANCEL.raw(), BN::CLICKED, {
+        self.dlg.on().wm_command(DLGID::CANCEL, BN::CLICKED, {
             let self2 = self.clone();
             move || -> AnyResult<()> {
                 self2.save_high_score_name()?;

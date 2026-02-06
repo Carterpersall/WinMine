@@ -14,23 +14,7 @@ use windows_sys::Win32::Data::HtmlHelp::{
 
 use winsafe::{HELPINFO, HWND, co::HELPW};
 
-use crate::winmine::ControlId;
-
-/// Help context identifiers.
-#[repr(u32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum HelpContextId {
-    /// Edit control for board height
-    PrefEditHeight = 1000,
-    /// Edit control for board width
-    PrefEditWidth = 1001,
-    /// Edit control for number of mines
-    PrefEditMines = 1002,
-    /// Reset best times button
-    BestBtnReset = 1003,
-    /// Static text for best times
-    SText = 1004,
-}
+use crate::util::ResourceId;
 
 pub struct Help {}
 
@@ -42,18 +26,18 @@ impl Help {
     /// - The arrays are in pairs of (control ID, help context ID).
     /// - The arrays end with two zeros to signal the end of the mapping.
     pub const PREF_HELP_IDS: [u32; 14] = [
-        ControlId::EditHeight as u32,
-        HelpContextId::PrefEditHeight as u32,
-        ControlId::EditWidth as u32,
-        HelpContextId::PrefEditWidth as u32,
-        ControlId::EditMines as u32,
-        HelpContextId::PrefEditMines as u32,
-        ControlId::TxtHeight as u32,
-        HelpContextId::PrefEditHeight as u32,
-        ControlId::TxtWidth as u32,
-        HelpContextId::PrefEditWidth as u32,
-        ControlId::TxtMines as u32,
-        HelpContextId::PrefEditMines as u32,
+        ResourceId::HeightEdit as u32,
+        ResourceId::PrefEditHeight as u32,
+        ResourceId::WidthEdit as u32,
+        ResourceId::PrefEditWidth as u32,
+        ResourceId::MinesEdit as u32,
+        ResourceId::PrefEditMines as u32,
+        ResourceId::HeightText as u32,
+        ResourceId::PrefEditHeight as u32,
+        ResourceId::WidthText as u32,
+        ResourceId::PrefEditWidth as u32,
+        ResourceId::MinesText as u32,
+        ResourceId::PrefEditMines as u32,
         0,
         0,
     ];
@@ -65,26 +49,26 @@ impl Help {
     /// - The arrays are in pairs of (control ID, help context ID).
     /// - The arrays end with two zeros to signal the end of the mapping.
     pub const BEST_HELP_IDS: [u32; 22] = [
-        ControlId::BtnReset as u32,
-        HelpContextId::BestBtnReset as u32,
-        ControlId::SText1 as u32,
-        HelpContextId::SText as u32,
-        ControlId::SText2 as u32,
-        HelpContextId::SText as u32,
-        ControlId::SText3 as u32,
-        HelpContextId::SText as u32,
-        ControlId::TimeBegin as u32,
-        HelpContextId::SText as u32,
-        ControlId::TimeInter as u32,
-        HelpContextId::SText as u32,
-        ControlId::TimeExpert as u32,
-        HelpContextId::SText as u32,
-        ControlId::NameBegin as u32,
-        HelpContextId::SText as u32,
-        ControlId::NameInter as u32,
-        HelpContextId::SText as u32,
-        ControlId::NameExpert as u32,
-        HelpContextId::SText as u32,
+        ResourceId::ResetBtn as u32,
+        ResourceId::BestBtnReset as u32,
+        ResourceId::SText1 as u32,
+        ResourceId::SText as u32,
+        ResourceId::SText2 as u32,
+        ResourceId::SText as u32,
+        ResourceId::SText3 as u32,
+        ResourceId::SText as u32,
+        ResourceId::BeginTime as u32,
+        ResourceId::SText as u32,
+        ResourceId::InterTime as u32,
+        ResourceId::SText as u32,
+        ResourceId::ExpertTime as u32,
+        ResourceId::SText as u32,
+        ResourceId::BeginName as u32,
+        ResourceId::SText as u32,
+        ResourceId::InterName as u32,
+        ResourceId::SText as u32,
+        ResourceId::ExpertName as u32,
+        ResourceId::SText as u32,
         0,
         0,
     ];

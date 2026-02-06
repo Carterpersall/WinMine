@@ -7,7 +7,141 @@ use winsafe::co::{KEY, REG_OPTION};
 use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, LOWORD, prelude::*};
 
 use crate::pref::{GameType, SZ_WINMINE_REG_STR};
-use crate::winmine::{MenuCommand, WinMineMainWindow};
+use crate::winmine::WinMineMainWindow;
+
+#[derive(Copy, Clone)]
+pub enum ResourceId {
+    /* MINE Resources */
+    /// Main application icon.
+    Icon = 100,
+    /// Bitmap resource for colored blocks.
+    BlocksBmp = 410,
+    /// Bitmap resource for black-and-white blocks.
+    BWBlocksBmp = 411,
+    /// Bitmap resource for colored LED display.
+    LedBmp = 420,
+    /// Bitmap resource for black-and-white LED display.
+    BWLedBmp = 421,
+    /// Bitmap resource for colored buttons.
+    ButtonBmp = 430,
+    /// Bitmap resource for black-and-white buttons.
+    BWButtonBmp = 431,
+    /// Sound resource for tick sound.
+    TuneTick = 432,
+    /// Sound resource for winning sound.
+    TuneWon = 433,
+    /// Sound resource for losing sound.
+    TuneLost = 434,
+
+    /* Preferences Dialog */
+    /// Preferences dialog identifier.
+    PrefDlg = 80,
+    /// OK button in preferences dialog.
+    OkBtn = 101,
+    /// Cancel button in preferences dialog.
+    CancelBtn = 109,
+    /// Text label for mines in preferences dialog.
+    MinesText = 111,
+    /// Text label for height in preferences dialog.
+    HeightText = 112,
+    /// Text label for width in preferences dialog.
+    WidthText = 113,
+    /// Edit control for board height.
+    HeightEdit = 141,
+    /// Edit control for board width.
+    WidthEdit = 142,
+    /// Edit control for number of mines.
+    MinesEdit = 143,
+    /// Text label for custom settings.
+    CustomText = 151,
+
+    /// Enter name dialog.
+    EnterDlg = 600,
+    /// Best times text label.
+    BestText = 601,
+    /// Edit control for player name.
+    NameEdit = 602,
+
+    /// Best times dialog.
+    BestDlg = 700,
+    /// Time display for beginner level.
+    BeginTime = 701,
+    /// Name display for beginner level.
+    BeginName = 702,
+    /// Time display for intermediate level.
+    InterTime = 703,
+    /// Name display for intermediate level.
+    InterName = 704,
+    /// Time display for expert level.
+    ExpertTime = 705,
+    /// Name display for expert level.
+    ExpertName = 706,
+    /// Reset best times button.
+    ResetBtn = 707,
+    /// Static text control 1.
+    SText1 = 708,
+    /// Static text control 2.
+    SText2 = 709,
+    /// Static text control 3.
+    SText3 = 710,
+
+    /* Menus */
+    /// Main menu identifier.
+    Menu = 500,
+    /// Menu accelerator table.
+    MenuAccel = 501,
+
+    /// New game menu item.
+    NewGame = 510,
+    /// Exit menu item.
+    Exit = 512,
+
+    /// Skill level submenu.
+    SkillSubmenu = 520,
+    /// Beginner level menu item.
+    Begin = 521,
+    /// Intermediate level menu item.
+    Inter = 522,
+    /// Expert level menu item.
+    Expert = 523,
+    /// Custom level menu item.
+    Custom = 524,
+    /// Sound toggle menu item.
+    Sound = 526,
+    /// Marking toggle menu item.
+    Mark = 527,
+    /// Best times menu item.
+    Best = 528,
+    /// Color toggle menu item.
+    Color = 529,
+
+    /// Help submenu.
+    HelpSubmenu = 590,
+    /// "How to play" menu item.
+    HowToPlay = 591,
+    /// "Help on Help" menu item.
+    HelpOnHelp = 592,
+    /// About dialog menu item.
+    About = 593,
+
+    /* Context Sensitive Help */
+    /// Help context ID for height edit control in preferences dialog.
+    PrefEditHeight = 1000,
+    /// Help context ID for width edit control in preferences dialog.
+    PrefEditWidth = 1001,
+    /// Help context ID for mines edit control in preferences dialog.
+    PrefEditMines = 1002,
+    /// Help context ID for reset button in best times dialog.
+    BestBtnReset = 1003,
+    /// Help context ID for static text controls.
+    SText = 1004,
+}
+
+impl From<ResourceId> for u16 {
+    fn from(res_id: ResourceId) -> Self {
+        res_id as u16
+    }
+}
 
 /// A wrapper around `RwLock` that handles poisoning by returning the inner data.
 pub struct StateLock<T>(RwLock<T>);
@@ -39,16 +173,6 @@ impl<T> StateLock<T> {
 
 /// Shared state of the linear congruential generator.
 static RNG_STATE: AtomicU32 = AtomicU32::new(0);
-
-/// Icon resources embedded in the executable.
-///
-/// TODO: Should all resource IDs be merged into a single enum?
-#[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum IconId {
-    /// Main application icon.
-    Main = 100,
-}
 
 /// Seed the RNG with the specified seed value.
 /// # Arguments
@@ -135,7 +259,7 @@ pub fn init_const() {
 /// * `f_check` - `true` to check the item, `false` to uncheck it.
 /// # Returns
 /// An `Ok(())` if successful, or an error if checking/unchecking failed.
-pub fn menu_check(hmenu: &HMENU, idm: MenuCommand, f_check: bool) -> AnyResult<()> {
+pub fn menu_check(hmenu: &HMENU, idm: ResourceId, f_check: bool) -> AnyResult<()> {
     if let Some(menu) = hmenu.as_opt() {
         menu.CheckMenuItem(IdPos::Id(idm as u16), f_check)?;
     }
@@ -160,14 +284,14 @@ impl WinMineMainWindow {
 
         // Update the menu checkmarks to reflect the current preferences
         let hmenu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
-        menu_check(&hmenu, MenuCommand::Begin, game_type == GameType::Begin)?;
-        menu_check(&hmenu, MenuCommand::Inter, game_type == GameType::Inter)?;
-        menu_check(&hmenu, MenuCommand::Expert, game_type == GameType::Expert)?;
-        menu_check(&hmenu, MenuCommand::Custom, game_type == GameType::Other)?;
+        menu_check(&hmenu, ResourceId::Begin, game_type == GameType::Begin)?;
+        menu_check(&hmenu, ResourceId::Inter, game_type == GameType::Inter)?;
+        menu_check(&hmenu, ResourceId::Expert, game_type == GameType::Expert)?;
+        menu_check(&hmenu, ResourceId::Custom, game_type == GameType::Other)?;
 
-        menu_check(&hmenu, MenuCommand::Color, color)?;
-        menu_check(&hmenu, MenuCommand::Mark, mark)?;
-        menu_check(&hmenu, MenuCommand::Sound, sound)?;
+        menu_check(&hmenu, ResourceId::Color, color)?;
+        menu_check(&hmenu, ResourceId::Mark, mark)?;
+        menu_check(&hmenu, ResourceId::Sound, sound)?;
 
         Ok(())
     }
@@ -176,14 +300,14 @@ impl WinMineMainWindow {
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
 /// # Arguments
 /// * `h_dlg` - Handle to the dialog window.
-/// * `dlg_id` - The dialog item ID.
+/// * `dlg_id` - Resource ID of the dialog item.
 /// * `num_lo` - Minimum allowed value.
 /// * `num_hi` - Maximum allowed value.
 /// # Returns
 /// The clamped integer value from the dialog item, or an error if retrieval or parsing fails.
 pub fn get_dlg_int(
     h_dlg: &HWND,
-    dlg_id: i32,
+    dlg_id: ResourceId,
     num_lo: u32,
     num_hi: u32,
 ) -> Result<u32, Box<dyn core::error::Error + Send + Sync>> {
