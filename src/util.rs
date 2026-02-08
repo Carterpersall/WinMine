@@ -55,14 +55,16 @@ pub enum ResourceId {
     /// Text label for custom settings.
     CustomText = 151,
 
-    /// Enter name dialog.
+    /* Enter Name Dialog */
+    /// Enter name dialog identifier.
     EnterDlg = 600,
     /// Best times text label.
     BestText = 601,
     /// Edit control for player name.
     NameEdit = 602,
 
-    /// Best times dialog.
+    /* Best Times Dialog */
+    /// Best times dialog identifier.
     BestDlg = 700,
     /// Time display for beginner level.
     BeginTime = 701,

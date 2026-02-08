@@ -21,7 +21,7 @@ bitflags = "2.10.0"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "b00d4f5bf5568a07d440690f67ac7c9cfdd74e22"
+rev = "7c5efe842218168cfff60433bf1672527f070670"
 features = [
 	"advapi",
 	"comctl",
