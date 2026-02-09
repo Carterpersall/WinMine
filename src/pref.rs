@@ -9,8 +9,6 @@ use crate::sound::Sound;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
-/// Total count of preference keys mirrored from the WinMine registry hive.
-pub const PREF_KEY_COUNT: usize = 18;
 
 /// Preference keys used to read and write settings from the registry.
 #[repr(u8)]
@@ -59,12 +57,8 @@ pub enum PrefKey {
 
 /// Minimum board height allowed by the game.
 pub const MINHEIGHT: u32 = 9;
-/// Default board height used on first run.
-pub const DEFHEIGHT: u32 = 9;
 /// Minimum board width allowed by the game.
 pub const MINWIDTH: u32 = 9;
-/// Default board width used on first run.
-pub const DEFWIDTH: u32 = 9;
 
 /// Registry key path used to persist preferences.
 pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
@@ -139,7 +133,7 @@ impl GameType {
 /// Strings corresponding to each preference key for registry access.
 ///
 /// The order matches the `PrefKey` enum.
-const PREF_STRINGS: [&str; PREF_KEY_COUNT] = [
+const PREF_STRINGS: [&str; 18] = [
     "Difficulty",
     "mines",
     "Height",
@@ -239,6 +233,11 @@ impl Pref {
     /// TODO: Should this return a Result to indicate failure? It currently just uses defaults on failure,
     /// which would cause the current settings to be overwritten on the next save.
     pub fn read_preferences(&mut self) -> SysResult<()> {
+        /// Default board height used if not set in the registry.
+        const DEFHEIGHT: u32 = 9;
+        /// Default board width used if not set in the registry.
+        const DEFWIDTH: u32 = 9;
+
         // Create or open the preferences registry key with read access
         let (key_guard, _) = HKEY::CURRENT_USER.RegCreateKeyEx(
             SZ_WINMINE_REG_STR,

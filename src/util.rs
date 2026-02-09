@@ -11,6 +11,9 @@ use crate::winmine::WinMineMainWindow;
 
 #[derive(Copy, Clone)]
 pub enum ResourceId {
+    /// Value representing no resource, used as a sentinel in arrays of resource IDs.
+    None = 0,
+
     /* MINE Resources */
     /// Main application icon.
     Icon = 100,
