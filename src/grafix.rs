@@ -15,6 +15,7 @@ use winsafe::{
 
 use crate::globals::BASE_DPI;
 use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
+use crate::util::ResourceId;
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -67,19 +68,6 @@ pub enum ButtonSprite {
 }
 /// Number of face button sprites.
 const BUTTON_SPRITE_COUNT: usize = 5;
-/// Bitmap resources embedded in the executable.
-///
-/// TODO: Move all resource IDs into a single enum.
-#[repr(u16)]
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum BitmapId {
-    /// Packed block spritesheet (color + monochrome variants).
-    Blocks = 410,
-    /// LED digit spritesheet (color + monochrome variants).
-    Led = 420,
-    /// Face button spritesheet (color + monochrome variants).
-    Button = 430,
-}
 
 /// LED digit sprites used in the bomb counter and timer.
 #[repr(u8)]
@@ -837,17 +825,17 @@ impl GrafixState {
     /// Ok(()) if successful, or an error if loading resources failed.
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
         let Some((h_blks, lp_blks)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Blocks, color)
+            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::BlocksBmp, color)
         else {
             return Err("Failed to load block bitmap resource".into());
         };
         let Some((h_led, lp_led)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Led, color)
+            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::LedBmp, color)
         else {
             return Err("Failed to load LED bitmap resource".into());
         };
         let Some((h_button, lp_button)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), BitmapId::Button, color)
+            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::ButtonBmp, color)
         else {
             return Err("Failed to load button bitmap resource".into());
         };
@@ -1035,7 +1023,7 @@ impl GrafixState {
     fn load_bitmap_resource(
         &self,
         hinst: &HINSTANCE,
-        id: BitmapId,
+        id: ResourceId,
         color_on: bool,
     ) -> Option<(HRSRCMEM, *const BITMAPINFO)> {
         let offset = if color_on { 0 } else { 1 };

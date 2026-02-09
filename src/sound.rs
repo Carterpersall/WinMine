@@ -5,15 +5,18 @@ use core::ptr::{null, null_mut};
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
 use winsafe::HINSTANCE;
 
+use crate::util::ResourceId;
+
 /// Logical UI tunes that map to embedded wave resources.
-#[repr(u16)]
+///
+/// TODO: Should the Sound enum exist?
 pub enum Sound {
     /// Short tick used for timer and click feedback.
-    Tick = 432,
+    Tick = ResourceId::TuneTick as isize,
     /// Win jingle played after successfully clearing the board.
-    WinGame = 433,
+    WinGame = ResourceId::TuneWon as isize,
     /// Loss sound played after detonating a mine.
-    LoseGame = 434,
+    LoseGame = ResourceId::TuneLost as isize,
 }
 
 impl Sound {
