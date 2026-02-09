@@ -447,7 +447,7 @@ impl GrafixState {
     /// * `sprite` - The button sprite to draw.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
-    fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
+    pub fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
         // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         let dx_window = self.wnd_pos.x;
         let dst_w = self.scale_dpi(DX_BUTTON_96);
@@ -477,8 +477,6 @@ impl GrafixState {
 
 /// Create a resampled bitmap using area averaging to avoid aliasing artifacts when using fractional scaling.
 /// This function reads the source bitmap bits, performs area averaging, and creates a new bitmap with the resampled data.
-///
-/// TODO: Why are the width and height parameters i32 instead of u32?
 /// # Arguments
 /// * `hdc` - The device context used for bitmap operations.
 /// * `src_bmp` - The source bitmap to be resampled.
@@ -609,18 +607,6 @@ fn create_resampled_bitmap(
 }
 
 impl GrafixState {
-    /// Display the face button with the specified sprite.
-    ///
-    /// TODO: Remove this function.
-    /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `sprite` - The button sprite to display.
-    /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
-    pub fn display_button(&self, hdc: &ReleaseDCGuard, sprite: ButtonSprite) -> AnyResult<()> {
-        self.draw_button(hdc, sprite)
-    }
-
     /// Set the pen for drawing based on the normal flag.
     /// # Arguments
     /// * `hdc` - The device context to set the pen on.

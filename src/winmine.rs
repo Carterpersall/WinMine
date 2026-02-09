@@ -1,6 +1,7 @@
 //! Main window and event handling for the Minesweeper game.
 
 use core::cmp::{max, min};
+use core::ops::Deref as _;
 use core::sync::atomic::{AtomicBool, Ordering};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -132,7 +133,7 @@ impl WinMineMainWindow {
         self.state
             .read()
             .grafix
-            .display_button(&self.wnd.hwnd().GetDC()?, ButtonSprite::Caution)
+            .draw_button(self.wnd.hwnd().GetDC()?.deref(), ButtonSprite::Caution)
     }
 
     /// Finishes a primary button drag operation.
@@ -316,7 +317,7 @@ impl WinMineMainWindow {
         self.state
             .read()
             .grafix
-            .display_button(&hdc, ButtonSprite::Down)?;
+            .draw_button(&hdc, ButtonSprite::Down)?;
         self.wnd
             .hwnd()
             .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
@@ -337,7 +338,7 @@ impl WinMineMainWindow {
                             self.state
                                 .read()
                                 .grafix
-                                .display_button(&hdc, ButtonSprite::Happy)?;
+                                .draw_button(&hdc, ButtonSprite::Happy)?;
                             self.start_game()?;
                         }
                         return Ok(true);
@@ -349,14 +350,14 @@ impl WinMineMainWindow {
                                 self.state
                                     .read()
                                     .grafix
-                                    .display_button(&hdc, ButtonSprite::Down)?;
+                                    .draw_button(&hdc, ButtonSprite::Down)?;
                             }
                         } else if pressed {
                             pressed = false;
                             self.state
                                 .read()
                                 .grafix
-                                .display_button(&hdc, self.state.read().btn_face_state)?;
+                                .draw_button(&hdc, self.state.read().btn_face_state)?;
                         }
                     }
                     _ => {}

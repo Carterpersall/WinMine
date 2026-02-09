@@ -344,7 +344,7 @@ impl GameState {
             ButtonSprite::Lose
         };
         self.btn_face_state = state;
-        self.grafix.display_button(hdc, state)?;
+        self.grafix.draw_button(hdc, state)?;
         Ok(())
     }
 
@@ -912,7 +912,7 @@ impl GameState {
         }
 
         self.grafix
-            .display_button(&hwnd.GetDC()?, self.btn_face_state)?;
+            .draw_button(hwnd.GetDC()?.deref(), self.btn_face_state)?;
 
         Ok(())
     }
