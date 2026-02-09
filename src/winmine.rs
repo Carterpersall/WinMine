@@ -132,7 +132,7 @@ impl WinMineMainWindow {
         self.state
             .read()
             .grafix
-            .display_button(self.wnd.hwnd(), ButtonSprite::Caution)
+            .display_button(&self.wnd.hwnd().GetDC()?, ButtonSprite::Caution)
     }
 
     /// Finishes a primary button drag operation.
@@ -143,9 +143,11 @@ impl WinMineMainWindow {
         if self.state.read().game_status.contains(StatusFlag::Play) {
             self.state.write().do_button_1_up(self.wnd.hwnd())?;
         } else {
-            self.state
-                .write()
-                .track_mouse(self.wnd.hwnd(), usize::MAX - 2, usize::MAX - 2)?;
+            self.state.write().track_mouse(
+                &self.wnd.hwnd().GetDC()?,
+                usize::MAX - 2,
+                usize::MAX - 2,
+            )?;
         }
         // If a chord operation was active, end it now
         self.state.write().chord_active = false;
@@ -197,7 +199,7 @@ impl WinMineMainWindow {
                 let y_new = self.y_box_from_ypos(point.y);
                 self.state
                     .write()
-                    .track_mouse(self.wnd.hwnd(), x_new, y_new)?;
+                    .track_mouse(&self.wnd.hwnd().GetDC()?, x_new, y_new)?;
             } else {
                 self.finish_primary_button_drag()?;
             }
@@ -225,9 +227,11 @@ impl WinMineMainWindow {
         // If the left and right buttons are both down, and the middle button is not down, start a chord operation
         if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
             self.state.write().chord_active = true;
-            self.state
-                .write()
-                .track_mouse(self.wnd.hwnd(), usize::MAX - 3, usize::MAX - 3)?;
+            self.state.write().track_mouse(
+                &self.wnd.hwnd().GetDC()?,
+                usize::MAX - 3,
+                usize::MAX - 3,
+            )?;
             self.begin_primary_button_drag()?;
             self.handle_mouse_move(btn, point)?;
             return Ok(());
@@ -308,10 +312,11 @@ impl WinMineMainWindow {
             return Ok(false);
         }
 
+        let hdc = self.wnd.hwnd().GetDC()?;
         self.state
             .read()
             .grafix
-            .display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
+            .display_button(&hdc, ButtonSprite::Down)?;
         self.wnd
             .hwnd()
             .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
@@ -332,7 +337,7 @@ impl WinMineMainWindow {
                             self.state
                                 .read()
                                 .grafix
-                                .display_button(self.wnd.hwnd(), ButtonSprite::Happy)?;
+                                .display_button(&hdc, ButtonSprite::Happy)?;
                             self.start_game()?;
                         }
                         return Ok(true);
@@ -344,14 +349,14 @@ impl WinMineMainWindow {
                                 self.state
                                     .read()
                                     .grafix
-                                    .display_button(self.wnd.hwnd(), ButtonSprite::Down)?;
+                                    .display_button(&hdc, ButtonSprite::Down)?;
                             }
                         } else if pressed {
                             pressed = false;
-                            self.state.read().grafix.display_button(
-                                self.wnd.hwnd(),
-                                self.state.read().btn_face_state,
-                            )?;
+                            self.state
+                                .read()
+                                .grafix
+                                .display_button(&hdc, self.state.read().btn_face_state)?;
                         }
                     }
                     _ => {}

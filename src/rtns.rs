@@ -2,12 +2,14 @@
 //! This includes board representation, game status tracking, and related utilities.
 
 use core::cmp::{max, min};
+use core::ops::Deref as _;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use bitflags::bitflags;
 use winsafe::co::WM;
+use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HWND, prelude::*};
+use winsafe::{AnyResult, HDC, HWND, prelude::*};
 
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
@@ -279,7 +281,7 @@ impl GameState {
     ///
     /// This is called when the game ends to show the final board state.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// * `hdc` - Handle to the device context to draw on.
     /// * `cell` - The `BlockCell` type to use for revealed bombs:
     ///     - `BlockCell::BombDown` for a loss
     ///     - `BlockCell::BombUp` for a win
@@ -287,7 +289,7 @@ impl GameState {
     /// TODO: Should the caller just pass in whether the game was won or lost instead of a `BlockCell`?
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
-    fn show_bombs(&mut self, hwnd: &HWND, cell: BlockCell) -> AnyResult<()> {
+    fn show_bombs(&mut self, hdc: &HDC, cell: BlockCell) -> AnyResult<()> {
         for y in 1..=self.board_height {
             for x in 1..=self.board_width {
                 // If the cell is not visited is not the exploded bomb cell
@@ -306,12 +308,8 @@ impl GameState {
                 }
             }
         }
-        self.grafix.draw_grid(
-            &*hwnd.GetDC()?,
-            self.board_width,
-            self.board_height,
-            &self.board_cells,
-        )?;
+        self.grafix
+            .draw_grid(hdc, self.board_width, self.board_height, &self.board_cells)?;
         Ok(())
     }
 
@@ -335,18 +333,18 @@ impl GameState {
 
     /// Update the button face based on the game result.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// * `hdc` - Handle to the device context.
     /// * `win` - `true` if the player has won, `false` otherwise.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
-    fn update_button_for_result(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
+    fn update_button_for_result(&mut self, hdc: &ReleaseDCGuard, win: bool) -> AnyResult<()> {
         let state = if win {
             ButtonSprite::Win
         } else {
             ButtonSprite::Lose
         };
         self.btn_face_state = state;
-        self.grafix.display_button(hwnd, state)?;
+        self.grafix.display_button(hdc, state)?;
         Ok(())
     }
 
@@ -365,6 +363,7 @@ impl GameState {
                 }
 
                 if hwnd.as_opt().is_some() {
+                    // TODO: Don't use PostMessage to do what could just be a function call
                     unsafe {
                         let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
                     }
@@ -377,7 +376,7 @@ impl GameState {
     ///
     /// TODO: Don't take a mutable reference as an argument
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// * `hdc` - The device context to draw on.
     /// * `queue` - The flood-fill work queue.
     /// * `tail` - The current tail index of the queue.
     /// * `x` - The X coordinate of the square.
@@ -386,7 +385,7 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_xy(
         &mut self,
-        hwnd: &HWND,
+        hdc: &ReleaseDCGuard,
         queue: &mut [(usize, usize); I_STEP_MAX],
         tail: &mut usize,
         x: usize,
@@ -416,8 +415,7 @@ impl GameState {
             visited: true,
             block_type: BlockCell::from(bombs),
         };
-        self.grafix
-            .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+        self.grafix.draw_block(hdc, x, y, &self.board_cells)?;
 
         // If no adjacent bombs, enqueue for further flood-fill processing
         if bombs == 0 && *tail < I_STEP_MAX {
@@ -429,34 +427,34 @@ impl GameState {
 
     /// Flood-fill contiguous empty squares starting from (x, y).
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// * `hdc` - The device context to draw on.
     /// * `x` - X coordinate of the starting square
     /// * `y` - Y coordinate of the starting square
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
-    fn step_box(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
+    fn step_box(&mut self, hdc: &ReleaseDCGuard, x: usize, y: usize) -> AnyResult<()> {
         let mut queue = [(0, 0); I_STEP_MAX];
         let mut head = 0usize;
         let mut tail = 0usize;
 
-        self.step_xy(hwnd, &mut queue, &mut tail, x, y)?;
+        self.step_xy(hdc, &mut queue, &mut tail, x, y)?;
 
         while head < tail {
             let (sx, sy) = queue[head];
             head += 1;
 
             let mut ty = sy - 1;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty)?;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx, ty)?;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
             ty += 1;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty)?;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
 
             ty += 1;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx - 1, ty)?;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx, ty)?;
-            self.step_xy(hwnd, &mut queue, &mut tail, sx + 1, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx, ty)?;
+            self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
         }
         Ok(())
     }
@@ -469,9 +467,10 @@ impl GameState {
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
         self.timer_running = false;
-        self.update_button_for_result(hwnd, win)?;
+        let hdc = hwnd.GetDC()?;
+        self.update_button_for_result(&hdc, win)?;
         self.show_bombs(
-            hwnd,
+            &hdc,
             if win {
                 BlockCell::BombUp
             } else {
@@ -503,6 +502,7 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_square(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
+        let hdc = hwnd.GetDC()?;
         if self.board_cells[x][y].bomb {
             let visits = self.boxes_visited;
             if visits == 0 {
@@ -512,7 +512,7 @@ impl GameState {
                         if !self.board_cells[x_t][y_t].bomb {
                             self.board_cells[x][y].bomb = false;
                             self.board_cells[x_t][y_t].bomb = true;
-                            self.step_box(hwnd, x, y)?;
+                            self.step_box(&hdc, x, y)?;
                             return Ok(());
                         }
                     }
@@ -524,7 +524,7 @@ impl GameState {
             }
         } else {
             // If a non-bomb square was clicked, reveal it and check for a win
-            self.step_box(hwnd, x, y)?;
+            self.step_box(&hdc, x, y)?;
             if self.check_win() {
                 self.game_over(hwnd, true)?;
             }
@@ -541,11 +541,13 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_block(&mut self, hwnd: &HWND, x_center: usize, y_center: usize) -> AnyResult<()> {
+        let hdc = hwnd.GetDC()?;
+
         if !self.board_cells[x_center][y_center].visited
             || self.board_cells[x_center][y_center].block_type as u8
                 != self.count_marks(x_center, y_center)
         {
-            self.track_mouse(hwnd, usize::MAX - 2, usize::MAX - 2)?;
+            self.track_mouse(&hdc, usize::MAX - 2, usize::MAX - 2)?;
             return Ok(());
         }
 
@@ -563,7 +565,7 @@ impl GameState {
                     lose = true;
                     self.board_cells[x][y].block_type = BlockCell::Explode;
                 } else {
-                    self.step_box(hwnd, x, y)?;
+                    self.step_box(&hdc, x, y)?;
                 }
             }
         }
@@ -704,7 +706,8 @@ impl GameState {
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
-            self.grafix.draw_timer(&*hwnd.GetDC()?, self.secs_elapsed)?;
+            self.grafix
+                .draw_timer(hwnd.GetDC()?.deref(), self.secs_elapsed)?;
             if self.prefs.sound_enabled {
                 Sound::Tick.play(&hwnd.hinstance());
             }
@@ -770,7 +773,7 @@ impl WinMineMainWindow {
         self.state
             .write()
             .grafix
-            .draw_bomb_count(&*self.wnd.hwnd().GetDC()?, total_bombs)?;
+            .draw_bomb_count(self.wnd.hwnd().GetDC()?.deref(), total_bombs)?;
 
         self.adjust_window(f_adjust)?;
 
@@ -781,18 +784,21 @@ impl WinMineMainWindow {
 impl GameState {
     /// Track mouse movement over the board and provide visual feedback.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// * `hdc` - Handle to the device context to draw on.
     /// * `x_new` - The new X coordinate of the mouse.
     /// * `y_new` - The new Y coordinate of the mouse.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
-    pub fn track_mouse(&mut self, hwnd: &HWND, x_new: usize, y_new: usize) -> AnyResult<()> {
+    pub fn track_mouse(
+        &mut self,
+        hdc: &ReleaseDCGuard,
+        x_new: usize,
+        y_new: usize,
+    ) -> AnyResult<()> {
         // No change in position; nothing to do
         if x_new == self.cursor_x && y_new == self.cursor_y {
             return Ok(());
         }
-
-        let hdc = hwnd.GetDC()?;
 
         let y_max = self.board_height;
         let x_max = self.board_width;
@@ -817,7 +823,7 @@ impl GameState {
                         if !self.board_cells[x][y].visited {
                             // Restore the box to its raised state
                             self.pop_box_up(x, y);
-                            self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
+                            self.grafix.draw_block(hdc, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -837,7 +843,7 @@ impl GameState {
                         if !self.board_cells[x][y].visited {
                             // Depress the box visually
                             self.push_box_down(x, y);
-                            self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
+                            self.grafix.draw_block(hdc, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -851,14 +857,14 @@ impl GameState {
                 // Restore the old box to its raised state
                 self.pop_box_up(self.cursor_x, self.cursor_y);
                 self.grafix
-                    .draw_block(&hdc, self.cursor_x, self.cursor_y, &self.board_cells)?;
+                    .draw_block(hdc, self.cursor_x, self.cursor_y, &self.board_cells)?;
             }
             // Check if the new cursor position is in range and not yet visited
             if self.in_range(x_new, y_new) && self.in_range_step(x_new, y_new) {
                 // Depress the new box visually
                 self.push_box_down(x_new, y_new);
                 self.grafix
-                    .draw_block(&hdc, x_new, y_new, &self.board_cells)?;
+                    .draw_block(hdc, x_new, y_new, &self.board_cells)?;
             }
         }
         // Store the new cursor position
@@ -883,7 +889,8 @@ impl GameState {
                     Sound::Tick.play(&hwnd.hinstance());
                 }
                 self.secs_elapsed = 1;
-                self.grafix.draw_timer(&*hwnd.GetDC()?, self.secs_elapsed)?;
+                self.grafix
+                    .draw_timer(hwnd.GetDC()?.deref(), self.secs_elapsed)?;
                 self.timer_running = true;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
@@ -904,7 +911,8 @@ impl GameState {
             }
         }
 
-        self.grafix.display_button(hwnd, self.btn_face_state)?;
+        self.grafix
+            .display_button(&hwnd.GetDC()?, self.btn_face_state)?;
 
         Ok(())
     }

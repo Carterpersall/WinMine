@@ -622,14 +622,15 @@ fn create_resampled_bitmap(
 
 impl GrafixState {
     /// Display the face button with the specified sprite.
+    ///
+    /// TODO: Remove this function.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// * `hdc` - The device context to draw on.
     /// * `sprite` - The button sprite to display.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
-    pub fn display_button(&self, hwnd: &HWND, sprite: ButtonSprite) -> AnyResult<()> {
-        hwnd.GetDC()
-            .map_or_else(|e| Err(e.into()), |hdc| self.draw_button(&hdc, sprite))
+    pub fn display_button(&self, hdc: &ReleaseDCGuard, sprite: ButtonSprite) -> AnyResult<()> {
+        self.draw_button(hdc, sprite)
     }
 
     /// Set the pen for drawing based on the normal flag.
@@ -892,10 +893,7 @@ impl GrafixState {
             *off = header + i * cb_button;
         }
 
-        let hdc = match hwnd.GetDC() {
-            Ok(dc) => dc,
-            Err(e) => return Err(format!("Failed to get device context: {e}").into()),
-        };
+        let hdc = hwnd.GetDC()?;
 
         // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
         //
