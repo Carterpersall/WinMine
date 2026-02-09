@@ -751,12 +751,12 @@ impl WinMineMainWindow {
         self.wnd.on().wm_paint({
             let self2 = self.clone();
             move || {
-                let _paint_guard = self2.wnd.hwnd().BeginPaint()?;
+                let paint_guard = self2.wnd.hwnd().BeginPaint()?;
                 self2
                     .state
                     .read()
                     .grafix
-                    .draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
+                    .draw_screen(&paint_guard, &self2.state.read())?;
                 Ok(())
             }
         });
@@ -871,7 +871,7 @@ impl WinMineMainWindow {
                     .state
                     .read()
                     .grafix
-                    .draw_screen(&self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
+                    .draw_screen(&*self2.wnd.hwnd().GetDC()?, &self2.state.read())?;
                 self2.set_menu_bar()?;
                 Ok(())
             }

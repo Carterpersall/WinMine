@@ -100,12 +100,11 @@ impl WinMineMainWindow {
                 };
 
                 // Set the pixel at (0,0) to indicate bomb status.
-                HPEN::CreatePen(PS::SOLID, 0, color).and_then(|mut pen| {
-                    let mut old_pen = hdc.SelectObject(&pen.leak())?;
+                HPEN::CreatePen(PS::SOLID, 0, color).and_then(|pen| {
+                    let _pen_guard = hdc.SelectObject(&*pen)?;
                     hdc.MoveToEx(0, 0, None)?;
                     // LineTo excludes the endpoint, so drawing to (1,0) sets pixel (0,0)
                     hdc.LineTo(1, 0)?;
-                    hdc.SelectObject(&old_pen.leak())?;
                     Ok(())
                 })?;
             }

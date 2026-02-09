@@ -152,6 +152,50 @@ enum BorderStyle {
     Flat,
 }
 
+/// Guard for a cached bitmap resource.
+///
+/// When an instance of this struct is dropped, it automatically restores the previous bitmap into the DC
+/// using `SelectObject`, and then deletes the cached bitmap resource. This ensures that GDI resources are
+/// managed correctly and prevents leaks.
+struct CachedBitmapGuard {
+    /// Guard for the compatible DC with the bitmap selected into it
+    dc: DeleteDCGuard,
+    /// Guard for the cached bitmap resource
+    bitmap: DeleteObjectGuard<HBITMAP>,
+    /// The previous bitmap that was selected into the DC before the cached bitmap, which will be restored on drop
+    prev_bitmap: HBITMAP,
+}
+
+impl CachedBitmapGuard {
+    fn new(dc: DeleteDCGuard, bitmap: DeleteObjectGuard<HBITMAP>) -> AnyResult<Self> {
+        let prev_bitmap = {
+            // Select the cached bitmap into the DC
+            let mut guard = dc.SelectObject(&*bitmap)?;
+            // Leak the guard to keep the bitmap selected until this struct is dropped
+            guard.leak()
+        };
+        Ok(Self {
+            dc,
+            bitmap,
+            prev_bitmap,
+        })
+    }
+
+    fn hdc(&self) -> &HDC {
+        &self.dc
+    }
+}
+
+impl Drop for CachedBitmapGuard {
+    fn drop(&mut self) {
+        // Bring the bitmap into scope, which ensures it will be dropped at the end of this function
+        let _ = self.bitmap.as_opt();
+        if let Ok(mut guard) = self.dc.SelectObject(&self.prev_bitmap) {
+            let _ = guard.leak();
+        }
+    }
+}
+
 /// Internal state tracking loaded graphics resources and cached DCs
 pub struct GrafixState {
     /// Current UI DPI
@@ -180,18 +224,12 @@ pub struct GrafixState {
     h_gray_pen: Option<DeleteObjectGuard<HPEN>>,
     /// Cached white pen used for drawing borders
     h_white_pen: Option<DeleteObjectGuard<HPEN>>,
-    /// Cached compatible DCs for each block sprite
-    mem_blk_dc: [Option<DeleteDCGuard>; I_BLK_MAX],
-    /// Cached compatible bitmaps for each block sprite
-    mem_blk_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; I_BLK_MAX],
-    /// Cached compatible DCs for each LED digit
-    mem_led_dc: [Option<DeleteDCGuard>; I_LED_MAX],
-    /// Cached compatible bitmaps for each LED digit
-    mem_led_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; I_LED_MAX],
-    /// Cached compatible DCs for each face button sprite
-    mem_button_dc: [Option<DeleteDCGuard>; BUTTON_SPRITE_COUNT],
-    /// Cached compatible bitmaps for each face button sprite
-    mem_button_bitmap: [Option<DeleteObjectGuard<HBITMAP>>; BUTTON_SPRITE_COUNT],
+    /// Cached compatible DCs/bitmaps for each block sprite
+    mem_blk_cache: [Option<CachedBitmapGuard>; I_BLK_MAX],
+    /// Cached compatible DCs/bitmaps for each LED digit
+    mem_led_cache: [Option<CachedBitmapGuard>; I_LED_MAX],
+    /// Cached compatible DCs/bitmaps for each face button sprite
+    mem_button_cache: [Option<CachedBitmapGuard>; BUTTON_SPRITE_COUNT],
 }
 
 impl Default for GrafixState {
@@ -210,12 +248,9 @@ impl Default for GrafixState {
             lp_dib_button: null(),
             h_gray_pen: None,
             h_white_pen: None,
-            mem_blk_dc: [const { None }; I_BLK_MAX],
-            mem_blk_bitmap: [const { None }; I_BLK_MAX],
-            mem_led_dc: [const { None }; I_LED_MAX],
-            mem_led_bitmap: [const { None }; I_LED_MAX],
-            mem_button_dc: [const { None }; BUTTON_SPRITE_COUNT],
-            mem_button_bitmap: [const { None }; BUTTON_SPRITE_COUNT],
+            mem_blk_cache: [const { None }; I_BLK_MAX],
+            mem_led_cache: [const { None }; I_LED_MAX],
+            mem_button_cache: [const { None }; BUTTON_SPRITE_COUNT],
         }
     }
 }
@@ -275,7 +310,7 @@ impl GrafixState {
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_grid(
         &self,
-        hdc: &ReleaseDCGuard,
+        hdc: &HDC,
         width: usize,
         height: usize,
         board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
@@ -312,7 +347,11 @@ impl GrafixState {
     /// `Ok(())` if successful, or an error if drawing failed.
     fn draw_led(&self, hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
         // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
-        let Some(src) = self.mem_led_dc[led_index as usize].as_ref() else {
+        let Some(src) = self
+            .mem_led_cache
+            .get(led_index as usize)
+            .and_then(|cache| cache.as_ref())
+        else {
             return Ok(());
         };
 
@@ -320,7 +359,7 @@ impl GrafixState {
         hdc.StretchBlt(
             POINT::with(x, self.scale_dpi(DY_TOP_LED_96)),
             SIZE::with(self.scale_dpi(DX_LED_96), self.scale_dpi(DY_LED_96)),
-            src,
+            src.hdc(),
             POINT::new(),
             SIZE::with(DX_LED_96, DY_LED_96),
             ROP::SRCCOPY,
@@ -334,7 +373,7 @@ impl GrafixState {
     /// * `bombs` - The number of bombs left to display.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
-    pub fn draw_bomb_count(&self, hdc: &ReleaseDCGuard, bombs: i16) -> AnyResult<()> {
+    pub fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
         // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
         let layout = unsafe { GetLayout(hdc.ptr()) };
         // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
@@ -374,7 +413,7 @@ impl GrafixState {
     /// * `time` - The time in seconds to display.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
-    pub fn draw_timer(&self, hdc: &ReleaseDCGuard, time: u16) -> AnyResult<()> {
+    pub fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
         // The timer uses the same mirroring trick as the bomb counter.
         let layout = unsafe { GetLayout(hdc.ptr()) };
         let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -432,14 +471,14 @@ impl GrafixState {
             return Ok(());
         }
 
-        let Some(src) = self.mem_button_dc[idx].as_ref() else {
+        let Some(src) = self.mem_button_cache[idx].as_ref() else {
             return Ok(());
         };
 
         hdc.BitBlt(
             POINT::with(x, self.scale_dpi(DY_TOP_LED_96)),
             SIZE::with(dst_w, dst_h),
-            src,
+            src.hdc(),
             POINT::new(),
             ROP::SRCCOPY,
         )?;
@@ -599,23 +638,23 @@ impl GrafixState {
     /// * `border_style` - The border style determining the pen to use.
     /// # Returns
     /// `Ok(())` if successful, or an error if setting the pen failed.
-    fn set_border_pen(&self, hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
+    fn select_border_pen(&self, hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
         // Select the appropriate pen based on the border style
-        if border_style == BorderStyle::Sunken {
+        let pen = if border_style == BorderStyle::Sunken {
             // Use cached white pen for sunken borders
-            if let Some(ref white_pen) = self.h_white_pen {
-                // Note: This somehow does not cause a resource leak
-                hdc.SelectObject(&**white_pen)
-                    .map(|mut guard| guard.leak())?;
-            }
+            self.h_white_pen
+                .as_ref()
+                .ok_or("White pen is not initialized")?
         } else {
             // Use cached gray pen for raised and flat borders
-            if let Some(ref gray_pen) = self.h_gray_pen {
-                // Note: This somehow does not cause a resource leak
-                hdc.SelectObject(&**gray_pen)
-                    .map(|mut guard| guard.leak())?;
-            }
-        }
+            self.h_gray_pen
+                .as_ref()
+                .ok_or("Gray pen is not initialized")?
+        };
+
+        // Note: This does not leak since both pens are stored in `GrafixState`
+        // TODO: Could the `leak()` be avoided?
+        hdc.SelectObject(&**pen).map(|mut guard| guard.leak())?;
         Ok(())
     }
 
@@ -641,8 +680,8 @@ impl GrafixState {
         border_style: BorderStyle,
     ) -> AnyResult<()> {
         let mut i = 0;
-        // Set the initial pen style based on given border style
-        self.set_border_pen(hdc, border_style)?;
+        // Set the initial pen based on the border style
+        self.select_border_pen(hdc, border_style)?;
 
         // Draw the top and left edges
         while i < width {
@@ -659,10 +698,10 @@ impl GrafixState {
         // Switch pen style for bottom and right edges if not flat
         if border_style != BorderStyle::Flat {
             if border_style == BorderStyle::Sunken {
-                self.set_border_pen(hdc, BorderStyle::Raised)?;
+                self.select_border_pen(hdc, BorderStyle::Raised)?;
             } else {
-                self.set_border_pen(hdc, BorderStyle::Sunken)?;
-            }
+                self.select_border_pen(hdc, BorderStyle::Sunken)?;
+            };
         }
 
         // Draw the bottom and right edges
@@ -769,7 +808,7 @@ impl GrafixState {
     /// * `state` - The current game state containing board and UI information.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
-    pub fn draw_screen(&self, hdc: &ReleaseDCGuard, state: &GameState) -> AnyResult<()> {
+    pub fn draw_screen(&self, hdc: &HDC, state: &GameState) -> AnyResult<()> {
         // 1. Draw background and borders
         self.draw_background(hdc)?;
         // 2. Draw bomb counter
@@ -872,10 +911,8 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap.
             {
-                dc_guard.SelectObject(&*base_bmp).map(|mut sel_guard| {
-                    let _ = sel_guard.leak();
-                })?;
-                unsafe {
+                let _sel_guard = dc_guard.SelectObject(&*base_bmp)?;
+                let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
                         0,
@@ -889,7 +926,10 @@ impl GrafixState {
                         self.lp_dib_blks.byte_add(self.rg_dib_off[i]).cast(),
                         self.lp_dib_blks as *const _,
                         DIB::RGB_COLORS.raw(),
-                    );
+                    )
+                };
+                if scan_lines == 0 {
+                    return Err("Failed to paint block bitmap".into());
                 }
             }
 
@@ -900,30 +940,16 @@ impl GrafixState {
                 base_bmp
             };
 
-            // Ensure the DC holds the final bitmap.
-            dc_guard.SelectObject(&*final_bmp).map(|mut sel_guard| {
-                let _ = sel_guard.leak();
-            })?;
-
-            self.mem_blk_dc[i] = Some(dc_guard);
-            self.mem_blk_bitmap[i] = Some(final_bmp);
+            self.mem_blk_cache[i] = Some(CachedBitmapGuard::new(dc_guard, final_bmp)?);
         }
 
         // Cache LED digits in compatible bitmaps.
         for i in 0..I_LED_MAX {
-            self.mem_led_dc[i] = Some(hdc.CreateCompatibleDC()?);
-
-            self.mem_led_bitmap[i] = Some(hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?);
-
-            if self.mem_led_dc[i].is_some()
-                && self.mem_led_bitmap[i].is_some()
-                && let Some(dc_guard) = self.mem_led_dc[i].as_ref()
-                && let Some(bmp_guard) = self.mem_led_bitmap[i].as_ref()
+            let dc_guard = hdc.CreateCompatibleDC()?;
+            let bmp_guard = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?;
             {
-                dc_guard.SelectObject(&**bmp_guard).map(|mut sel_guard| {
-                    let _ = sel_guard.leak();
-                })?;
-                unsafe {
+                let _sel_guard = dc_guard.SelectObject(&*bmp_guard)?;
+                let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
                         0,
@@ -937,9 +963,13 @@ impl GrafixState {
                         self.lp_dib_led.byte_add(self.rg_dib_led_off[i]).cast(),
                         self.lp_dib_led as *const _,
                         DIB::RGB_COLORS.raw(),
-                    );
+                    )
+                };
+                if scan_lines == 0 {
+                    return Err("Failed to paint LED bitmap".into());
                 }
             }
+            self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, bmp_guard)?);
         }
 
         // Cache face button sprites in compatible bitmaps.
@@ -954,10 +984,8 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap.
             {
-                dc_guard.SelectObject(&*base_bmp).map(|mut sel_guard| {
-                    let _ = sel_guard.leak();
-                })?;
-                unsafe {
+                let _sel_guard = dc_guard.SelectObject(&*base_bmp)?;
+                let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
                         0,
@@ -973,7 +1001,10 @@ impl GrafixState {
                             .cast(),
                         self.lp_dib_button as *const _,
                         DIB::RGB_COLORS.raw(),
-                    );
+                    )
+                };
+                if scan_lines == 0 {
+                    return Err("Failed to paint button bitmap".into());
                 }
             }
 
@@ -991,13 +1022,7 @@ impl GrafixState {
                 base_bmp
             };
 
-            // Ensure the DC holds the final bitmap.
-            dc_guard.SelectObject(&*final_bmp).map(|mut sel_guard| {
-                let _ = sel_guard.leak();
-            })?;
-
-            self.mem_button_dc[i] = Some(dc_guard);
-            self.mem_button_bitmap[i] = Some(final_bmp);
+            self.mem_button_cache[i] = Some(CachedBitmapGuard::new(dc_guard, final_bmp)?);
         }
 
         Ok(())
@@ -1062,18 +1087,18 @@ impl GrafixState {
     /// * `board` - Slice representing the board state
     /// # Returns
     /// Optionally, a reference to the compatible DC for the block sprite
-    const fn block_dc(
+    fn block_dc(
         &self,
         x: usize,
         y: usize,
         board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
-    ) -> Option<&DeleteDCGuard> {
+    ) -> Option<&HDC> {
         let idx = self.block_sprite_index(x, y, board);
         if idx >= I_BLK_MAX {
             return None;
         }
 
-        self.mem_blk_dc[idx].as_ref()
+        self.mem_blk_cache[idx].as_ref().map(CachedBitmapGuard::hdc)
     }
 
     /// Determine the sprite index for the block at the given board coordinates.

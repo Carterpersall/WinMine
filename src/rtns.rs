@@ -307,7 +307,7 @@ impl GameState {
             }
         }
         self.grafix.draw_grid(
-            &hwnd.GetDC()?,
+            &*hwnd.GetDC()?,
             self.board_width,
             self.board_height,
             &self.board_cells,
@@ -595,11 +595,11 @@ impl GameState {
         let allow_marks = self.prefs.mark_enabled;
 
         // If currently flagged
+        let hdc = hwnd.GetDC()?;
         let block = if self.board_cells[x][y].block_type == BlockCell::BombUp {
             // Increment the bomb count
             self.bombs_left += 1;
-            self.grafix
-                .draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+            self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
 
             // If marks are allowed, change to question mark; otherwise, change to blank
             if allow_marks {
@@ -614,15 +614,13 @@ impl GameState {
         } else {
             // Currently blank; change to flagged and decrement bomb count
             self.bombs_left -= 1;
-            self.grafix
-                .draw_bomb_count(&hwnd.GetDC()?, self.bombs_left)?;
+            self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
             BlockCell::BombUp
         };
 
         // Update the block type and redraw the square
         self.board_cells[x][y].block_type = block;
-        self.grafix
-            .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+        self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
 
         // If the user has flagged the last bomb, they have won
         if self.board_cells[x][y].block_type == BlockCell::BombUp && self.check_win() {
@@ -706,7 +704,7 @@ impl GameState {
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
-            self.grafix.draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
+            self.grafix.draw_timer(&*hwnd.GetDC()?, self.secs_elapsed)?;
             if self.prefs.sound_enabled {
                 Sound::Tick.play(&hwnd.hinstance());
             }
@@ -772,7 +770,7 @@ impl WinMineMainWindow {
         self.state
             .write()
             .grafix
-            .draw_bomb_count(&self.wnd.hwnd().GetDC()?, total_bombs)?;
+            .draw_bomb_count(&*self.wnd.hwnd().GetDC()?, total_bombs)?;
 
         self.adjust_window(f_adjust)?;
 
@@ -793,6 +791,8 @@ impl GameState {
         if x_new == self.cursor_x && y_new == self.cursor_y {
             return Ok(());
         }
+
+        let hdc = hwnd.GetDC()?;
 
         let y_max = self.board_height;
         let x_max = self.board_width;
@@ -817,8 +817,7 @@ impl GameState {
                         if !self.board_cells[x][y].visited {
                             // Restore the box to its raised state
                             self.pop_box_up(x, y);
-                            self.grafix
-                                .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+                            self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -838,8 +837,7 @@ impl GameState {
                         if !self.board_cells[x][y].visited {
                             // Depress the box visually
                             self.push_box_down(x, y);
-                            self.grafix
-                                .draw_block(&hwnd.GetDC()?, x, y, &self.board_cells)?;
+                            self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
                         }
                     }
                 }
@@ -852,19 +850,15 @@ impl GameState {
             {
                 // Restore the old box to its raised state
                 self.pop_box_up(self.cursor_x, self.cursor_y);
-                self.grafix.draw_block(
-                    &hwnd.GetDC()?,
-                    self.cursor_x,
-                    self.cursor_y,
-                    &self.board_cells,
-                )?;
+                self.grafix
+                    .draw_block(&hdc, self.cursor_x, self.cursor_y, &self.board_cells)?;
             }
             // Check if the new cursor position is in range and not yet visited
             if self.in_range(x_new, y_new) && self.in_range_step(x_new, y_new) {
                 // Depress the new box visually
                 self.push_box_down(x_new, y_new);
                 self.grafix
-                    .draw_block(&hwnd.GetDC()?, x_new, y_new, &self.board_cells)?;
+                    .draw_block(&hdc, x_new, y_new, &self.board_cells)?;
             }
         }
         // Store the new cursor position
@@ -889,7 +883,7 @@ impl GameState {
                     Sound::Tick.play(&hwnd.hinstance());
                 }
                 self.secs_elapsed = 1;
-                self.grafix.draw_timer(&hwnd.GetDC()?, self.secs_elapsed)?;
+                self.grafix.draw_timer(&*hwnd.GetDC()?, self.secs_elapsed)?;
                 self.timer_running = true;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
