@@ -296,17 +296,19 @@ impl WinMineMainWindow {
         };
 
         let dx_window = self.state.read().grafix.wnd_pos.x;
+        // TODO: Should this stuff be cached?
         let dx_button = self.state.read().grafix.scale_dpi(DX_BUTTON_96);
         let dy_button = self.state.read().grafix.scale_dpi(DY_BUTTON_96);
         let dy_top_led = self.state.read().grafix.scale_dpi(DY_TOP_LED_96);
+        // Compute the button rectangle
         let mut rc = RECT {
+            // The button is centered horizontally within the window
             left: (dx_window - dx_button) / 2,
+            right: (dx_window + dx_button) / 2,
+            // The button is vertically aligned with the top of the LEDs
             top: dy_top_led,
-            right: 0,
-            bottom: 0,
+            bottom: dy_top_led + dy_button,
         };
-        rc.right = rc.left + dx_button;
-        rc.bottom = rc.top + dy_button;
 
         if !winsafe::PtInRect(rc, msg.pt) {
             return Ok(false);
