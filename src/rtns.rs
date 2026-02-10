@@ -264,7 +264,7 @@ impl GameState {
     /// * `y` - The Y coordinate.
     /// # Returns
     /// `true` if the coordinates are within range, `false` otherwise.
-    const fn in_range(&self, x: usize, y: usize) -> bool {
+    pub const fn in_range(&self, x: usize, y: usize) -> bool {
         x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
     }
 

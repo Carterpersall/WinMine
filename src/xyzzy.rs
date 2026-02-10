@@ -23,6 +23,7 @@ static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 /// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
+// TODO: Should this be a separate impl? Or should it be under GameState?
 impl WinMineMainWindow {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles
@@ -79,11 +80,7 @@ impl WinMineMainWindow {
             self.state.write().cursor_x = x_pos;
             self.state.write().cursor_y = y_pos;
             // Check if the cursor is within the board's range
-            let in_range = x_pos > 0
-                && y_pos > 0
-                && x_pos <= self.state.read().board_width
-                && y_pos <= self.state.read().board_height;
-            if in_range {
+            if self.state.read().in_range(x_pos, y_pos) {
                 let hdc = HWND::DESKTOP.GetDC()?;
                 let is_bomb = {
                     // Check if the block at the calculated index is a bomb

@@ -278,8 +278,7 @@ impl WinMineMainWindow {
         }
 
         let mut state = self.state.write();
-        state.prefs.wnd_x_pos = pos.x;
-        state.prefs.wnd_y_pos = pos.y;
+        state.prefs.wnd_pos = POINT { x: pos.x, y: pos.y };
     }
 
     /// Handles clicks on the smiley face button.
@@ -291,10 +290,10 @@ impl WinMineMainWindow {
     /// TODO: Does it need to return a bool and a result?
     fn btn_click_handler(&self, point: POINT) -> AnyResult<bool> {
         // Handle clicks on the smiley face button while providing the pressed animation.
-        let mut msg = MSG::default();
-
-        msg.pt.x = point.x;
-        msg.pt.y = point.y;
+        let mut msg = MSG {
+            pt: point,
+            ..Default::default()
+        };
 
         let dx_window = self.state.read().grafix.wnd_pos.x;
         let dx_button = self.state.read().grafix.scale_dpi(DX_BUTTON_96);
@@ -392,10 +391,7 @@ impl WinMineMainWindow {
         self.state.write().grafix.wnd_pos.y = dy_window;
 
         // Get the current window position from preferences
-        let (mut x_window, mut y_window) = {
-            let state = self.state.read();
-            (state.prefs.wnd_x_pos, state.prefs.wnd_y_pos)
-        };
+        let mut pos = self.state.read().prefs.wnd_pos;
 
         let desired = RECT {
             left: 0,
@@ -428,10 +424,10 @@ impl WinMineMainWindow {
             result
         };
         // If the window exceeds the screen width, adjust its x position to be within bounds
-        let mut excess = x_window + dx_window + frame_extra - cx_screen;
+        let mut excess = pos.x + dx_window + frame_extra - cx_screen;
         if excess > 0 {
             f_adjust |= AdjustFlag::Resize;
-            x_window -= excess;
+            pos.x -= excess;
         }
         // Get the screen height
         let cy_screen = {
@@ -442,19 +438,16 @@ impl WinMineMainWindow {
             result
         };
         // If the window exceeds the screen height, adjust its y position to be within bounds
-        excess = y_window + dy_window + dyp_adjust - cy_screen;
+        excess = pos.y + dy_window + dyp_adjust - cy_screen;
         if excess > 0 {
             f_adjust |= AdjustFlag::Resize;
-            y_window -= excess;
+            pos.y -= excess;
         }
 
         // If a window resize has been requested, move and resize the window accordingly
         if f_adjust.contains(AdjustFlag::Resize) {
             self.wnd.hwnd().MoveWindow(
-                POINT {
-                    x: x_window,
-                    y: y_window,
-                },
+                pos,
                 SIZE {
                     cx: dx_window + frame_extra,
                     cy: dy_window + dyp_adjust,
@@ -476,8 +469,7 @@ impl WinMineMainWindow {
 
         // Update preferences with the new window position
         let mut state = self.state.write();
-        state.prefs.wnd_x_pos = x_window;
-        state.prefs.wnd_y_pos = y_window;
+        state.prefs.wnd_pos = pos;
 
         Ok(())
     }
@@ -544,8 +536,8 @@ impl WinMineMainWindow {
                     // Persist the suggested top-left so adjust_window keeps us on the same monitor
                     {
                         let mut state = self2.state.write();
-                        state.prefs.wnd_x_pos = rc.left;
-                        state.prefs.wnd_y_pos = rc.top;
+                        state.prefs.wnd_pos.x = rc.left;
+                        state.prefs.wnd_pos.y = rc.top;
                     }
 
                     let width = max(0, rc.right - rc.left);

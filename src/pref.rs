@@ -2,7 +2,7 @@
 //! settings to the Windows registry.
 
 use winsafe::co::{GDC, KEY, REG_OPTION};
-use winsafe::{AnyResult, HKEY, HWND, RegistryValue, SysResult};
+use winsafe::{AnyResult, HKEY, HWND, POINT, RegistryValue, SysResult};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::sound::Sound;
@@ -169,10 +169,8 @@ pub struct Pref {
     pub height: usize,
     /// Board width in cells.
     pub width: usize,
-    /// X position of the main window.
-    pub wnd_x_pos: i32,
-    /// Y position of the main window.
-    pub wnd_y_pos: i32,
+    /// Position of the main window.
+    pub wnd_pos: POINT,
     /// Whether sound effects are enabled.
     pub sound_enabled: bool,
     /// Whether right-click marking is enabled.
@@ -268,8 +266,10 @@ impl Pref {
             .unwrap_or(10)
             .clamp(10, 999) as i16;
         // TODO: Ensure that the window position is within the screen bounds
-        self.wnd_x_pos = self.read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32;
-        self.wnd_y_pos = self.read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32;
+        self.wnd_pos = POINT {
+            x: self.read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32,
+            y: self.read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32,
+        };
         // Get sound, marking, ticking, and menu preferences
         self.sound_enabled = matches!(self.read_int(&key_guard, PrefKey::Sound), Ok(3));
         self.mark_enabled = self.read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
@@ -338,8 +338,8 @@ impl Pref {
             PrefKey::Sound,
             if self.sound_enabled { 3 } else { 2 },
         )?;
-        self.write_int(&key_guard, PrefKey::Xpos, self.wnd_x_pos as u32)?;
-        self.write_int(&key_guard, PrefKey::Ypos, self.wnd_y_pos as u32)?;
+        self.write_int(&key_guard, PrefKey::Xpos, self.wnd_pos.x as u32)?;
+        self.write_int(&key_guard, PrefKey::Ypos, self.wnd_pos.y as u32)?;
         self.write_int(
             &key_guard,
             PrefKey::Time1,
