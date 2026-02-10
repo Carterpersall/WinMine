@@ -115,11 +115,11 @@ impl GameType {
         }
     }
 
-    /// Create a GameType from a u32 value, defaulting to Other for invalid values.
+    /// Create a `GameType` from a `u32` value, defaulting to `Other` for invalid values.
     /// # Arguments
-    /// * `val` - The u32 value to convert.
+    /// * `val` - The `u32` value to convert.
     /// # Returns
-    /// A GameType corresponding to the given value, or Other if the value is invalid.
+    /// A `GameType` corresponding to the given value, or `Other` if the value is invalid.
     pub const fn from(val: u32) -> GameType {
         match val {
             0 => GameType::Begin,

@@ -689,10 +689,8 @@ impl GrafixState {
     fn draw_border(
         &self,
         hdc: &HDC,
-        mut x1: i32,
-        mut y1: i32,
-        mut x2: i32,
-        mut y2: i32,
+        mut point1: POINT,
+        mut point2: POINT,
         width: i32,
         border_style: BorderStyle,
     ) -> AnyResult<()> {
@@ -702,13 +700,13 @@ impl GrafixState {
 
         // Draw the top and left edges
         while i < width {
-            y2 -= 1;
-            hdc.MoveToEx(x1, y2, None)?;
-            hdc.LineTo(x1, y1)?;
-            x1 += 1;
-            hdc.LineTo(x2, y1)?;
-            x2 -= 1;
-            y1 += 1;
+            point2.y -= 1;
+            hdc.MoveToEx(point1.x, point2.y, None)?;
+            hdc.LineTo(point1.x, point1.y)?;
+            point1.x += 1;
+            hdc.LineTo(point2.x, point1.y)?;
+            point2.x -= 1;
+            point1.y += 1;
             i += 1;
         }
 
@@ -723,13 +721,13 @@ impl GrafixState {
 
         // Draw the bottom and right edges
         while i > 0 {
-            y2 += 1;
-            hdc.MoveToEx(x1, y2, None)?;
-            x1 -= 1;
-            x2 += 1;
-            hdc.LineTo(x2, y2)?;
-            y1 -= 1;
-            hdc.LineTo(x2, y1)?;
+            point2.y += 1;
+            hdc.MoveToEx(point1.x, point2.y, None)?;
+            point1.x -= 1;
+            point2.x += 1;
+            hdc.LineTo(point2.x, point2.y)?;
+            point1.y -= 1;
+            hdc.LineTo(point2.x, point1.y)?;
             i -= 1;
         }
         Ok(())
@@ -743,35 +741,44 @@ impl GrafixState {
     fn draw_background(&self, hdc: &HDC) -> AnyResult<()> {
         let dx_window = self.wnd_pos.x;
         let dy_window = self.wnd_pos.y;
-        // Outer sunken border
-        let mut x = dx_window - 1;
-        let mut y = dy_window - 1;
+
+        // Scale the border widths based on the current DPI
         let b3 = scale_dpi(3, self.dpi);
         let b2 = scale_dpi(2, self.dpi);
         let b1 = scale_dpi(1, self.dpi);
-        self.draw_border(hdc, 0, 0, x, y, b3, BorderStyle::Sunken)?;
+
+        // Outer sunken border
+        let mut x = dx_window - 1;
+        let mut y = dy_window - 1;
+        self.draw_border(
+            hdc,
+            POINT::with(0, 0),
+            POINT::with(x, y),
+            b3,
+            BorderStyle::Sunken,
+        )?;
 
         // Inner raised borders
         x -= self.dims.right_space - b3;
         y -= self.dims.bottom_space - b3;
         self.draw_border(
             hdc,
-            self.dims.left_space - b3,
-            self.dims.grid_offset - b3,
-            x,
-            y,
+            POINT::with(self.dims.left_space - b3, self.dims.grid_offset - b3),
+            POINT::with(x, y),
             b3,
             BorderStyle::Raised,
         )?;
+
         // LED area border
         self.draw_border(
             hdc,
-            self.dims.left_space - b3,
-            self.dims.top_space - b3,
-            x,
-            self.dims.top_led
-                + self.dims.led.cy
-                + (self.dims.bottom_space - scale_dpi(6, self.dpi)),
+            POINT::with(self.dims.left_space - b3, self.dims.top_space - b3),
+            POINT::with(
+                x,
+                self.dims.top_led
+                    + self.dims.led.cy
+                    + (self.dims.bottom_space - scale_dpi(6, self.dpi)),
+            ),
             b2,
             BorderStyle::Raised,
         )?;
@@ -783,10 +790,8 @@ impl GrafixState {
         y = self.dims.top_led + self.dims.led.cy;
         self.draw_border(
             hdc,
-            x_left_bomb - b1,
-            self.dims.top_led - b1,
-            x,
-            y,
+            POINT::with(x_left_bomb - b1, self.dims.top_led - b1),
+            POINT::with(x, y),
             b1,
             BorderStyle::Raised,
         )?;
@@ -795,10 +800,8 @@ impl GrafixState {
         x = dx_window - (self.dims.right_timer + 3 * dx_led + b1);
         self.draw_border(
             hdc,
-            x,
-            self.dims.top_led - b1,
-            x + (dx_led * 3 + b1),
-            y,
+            POINT::with(x, self.dims.top_led - b1),
+            POINT::with(x + (dx_led * 3 + b1), y),
             b1,
             BorderStyle::Raised,
         )?;
@@ -809,10 +812,8 @@ impl GrafixState {
         x = ((dx_window - dx_button) / 2) - b1;
         self.draw_border(
             hdc,
-            x,
-            self.dims.top_led - b1,
-            x + dx_button + b1,
-            self.dims.top_led + dy_button,
+            POINT::with(x, self.dims.top_led - b1),
+            POINT::with(x + dx_button + b1, self.dims.top_led + dy_button),
             b1,
             BorderStyle::Flat,
         )?;

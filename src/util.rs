@@ -311,12 +311,7 @@ impl WinMineMainWindow {
 /// * `num_hi` - Maximum allowed value.
 /// # Returns
 /// The clamped integer value from the dialog item, or an error if retrieval or parsing fails.
-pub fn get_dlg_int(
-    h_dlg: &HWND,
-    dlg_id: ResourceId,
-    num_lo: u32,
-    num_hi: u32,
-) -> Result<u32, Box<dyn core::error::Error + Send + Sync>> {
+pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -> AnyResult<u32> {
     h_dlg
         // Get a handle to the dialog item
         .GetDlgItem(dlg_id as u16)

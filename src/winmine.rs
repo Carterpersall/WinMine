@@ -244,7 +244,7 @@ impl WinMineMainWindow {
 
     /// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
     ///
-    /// TODO: Use the normal WM commands rather than the basic WM_SYSCOMMAND message
+    /// TODO: Use the normal WM commands rather than the basic `WM_SYSCOMMAND` message
     /// # Arguments
     /// * `command` - The system command identifier.
     fn handle_syscommand(&self, command: SC) {
@@ -468,8 +468,7 @@ impl WinMineMainWindow {
         }
 
         // Update preferences with the new window position
-        let mut state = self.state.write();
-        state.prefs.wnd_pos = pos;
+        self.state.write().prefs.wnd_pos = pos;
 
         Ok(())
     }
@@ -1012,10 +1011,12 @@ impl PrefDialog {
                 let mines = get_dlg_int(dlg.hwnd(), ResourceId::MinesEdit, 10, max_mines)?;
 
                 // Update preferences with the new settings
-                let mut state = state.write();
-                state.prefs.height = height as usize;
-                state.prefs.width = width as usize;
-                state.prefs.mines = mines as i16;
+                {
+                    let mut state = state.write();
+                    state.prefs.height = height as usize;
+                    state.prefs.width = width as usize;
+                    state.prefs.mines = mines as i16;
+                }
 
                 // Close the dialog
                 dlg.hwnd().EndDialog(1)?;
@@ -1064,9 +1065,9 @@ struct BestDialog {
 }
 
 impl BestDialog {
-    /// Creates a new BestDialog instance and sets up event handlers.
+    /// Creates a new `BestDialog` instance and sets up event handlers.
     /// # Returns
-    /// A new BestDialog instance.
+    /// A new `BestDialog` instance.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(ResourceId::BestDlg as u16);
         let new_self = Self { dlg, state };
@@ -1226,9 +1227,9 @@ struct EnterDialog {
 }
 
 impl EnterDialog {
-    /// Creates a new EnterDialog instance and sets up event handlers.
+    /// Creates a new `EnterDialog` instance and sets up event handlers.
     /// # Returns
-    /// A new EnterDialog instance.
+    /// A new `EnterDialog` instance.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(ResourceId::EnterDlg as u16);
         let new_self = Self { dlg, state };

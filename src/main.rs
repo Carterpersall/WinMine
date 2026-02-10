@@ -7,12 +7,12 @@
 #![warn(clippy::collection_is_never_read)]
 //#![warn(clippy::doc_markdown)]
 //#![warn(clippy::indexing_slicing)]
-//#![warn(clippy::map_err_ignore)]
+#![warn(clippy::map_err_ignore)]
 //#![warn(clippy::multiple_unsafe_ops_per_block)]
 #![warn(clippy::missing_const_for_fn)]
 //#![warn(clippy::missing_docs_in_private_items)]
 #![warn(clippy::needless_pass_by_value)]
-//#![warn(clippy::option_if_let_else)]
+#![warn(clippy::option_if_let_else)]
 #![warn(clippy::redundant_pub_crate)]
 #![warn(clippy::semicolon_if_nothing_returned)]
 #![warn(clippy::shadow_unrelated)]
@@ -21,8 +21,6 @@
 #![warn(clippy::std_instead_of_core)]
 #![warn(clippy::unused_trait_names)]
 #![warn(clippy::useless_let_if_seq)]
-// TODO: Address this lint
-#![allow(clippy::too_many_arguments)]
 
 mod globals;
 mod grafix;

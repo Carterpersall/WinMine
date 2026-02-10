@@ -211,7 +211,7 @@ pub struct GameState {
 }
 
 impl GameState {
-    /// Creates a new default GameState
+    /// Creates a new default `GameState`
     pub fn new() -> Self {
         Self {
             grafix: GrafixState::default(),
