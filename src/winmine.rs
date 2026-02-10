@@ -17,10 +17,7 @@ use winsafe::{
 };
 
 use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
-use crate::grafix::{
-    ButtonSprite, DX_BLK_96, DX_BUTTON_96, DX_LEFT_SPACE_96, DX_RIGHT_SPACE_96, DY_BLK_96,
-    DY_BOTTOM_SPACE_96, DY_BUTTON_96, DY_GRID_OFF_96, DY_TOP_LED_96,
-};
+use crate::grafix::ButtonSprite;
 use crate::help::Help;
 use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
@@ -295,11 +292,11 @@ impl WinMineMainWindow {
             ..Default::default()
         };
 
+        // TODO: Should `self.state.read()` be cached here?
         let dx_window = self.state.read().grafix.wnd_pos.x;
-        // TODO: Should this stuff be cached?
-        let dx_button = self.state.read().grafix.scale_dpi(DX_BUTTON_96);
-        let dy_button = self.state.read().grafix.scale_dpi(DY_BUTTON_96);
-        let dy_top_led = self.state.read().grafix.scale_dpi(DY_TOP_LED_96);
+        let dx_button = self.state.read().grafix.dims.button.cx;
+        let dy_button = self.state.read().grafix.dims.button.cy;
+        let dy_top_led = self.state.read().grafix.dims.top_led;
         // Compute the button rectangle
         let mut rc = RECT {
             // The button is centered horizontally within the window
@@ -324,6 +321,7 @@ impl WinMineMainWindow {
             .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
 
         let mut pressed = true;
+        // TODO: Surely there is a better way to do this?
         loop {
             if PeekMessage(
                 &mut msg,
@@ -381,12 +379,12 @@ impl WinMineMainWindow {
         // Calculate desired window size based on board dimensions and DPI scaling
         let (dx_window, dy_window) = {
             let state = self.state.read();
-            let dx_window = state.grafix.scale_dpi(DX_BLK_96) * state.board_width as i32
-                + state.grafix.scale_dpi(DX_LEFT_SPACE_96)
-                + state.grafix.scale_dpi(DX_RIGHT_SPACE_96);
-            let dy_window = state.grafix.scale_dpi(DY_BLK_96) * state.board_height as i32
-                + state.grafix.scale_dpi(DY_GRID_OFF_96)
-                + state.grafix.scale_dpi(DY_BOTTOM_SPACE_96);
+            let dx_window = state.grafix.dims.block.cx * state.board_width as i32
+                + state.grafix.dims.left_space
+                + state.grafix.dims.right_space;
+            let dy_window = state.grafix.dims.block.cy * state.board_height as i32
+                + state.grafix.dims.grid_offset
+                + state.grafix.dims.bottom_space;
             (dx_window, dy_window)
         };
         self.state.write().grafix.wnd_pos.x = dx_window;
@@ -482,11 +480,11 @@ impl WinMineMainWindow {
     /// # Returns
     /// The corresponding box index.
     pub fn x_box_from_xpos(&self, x: i32) -> usize {
-        let cell = self.state.read().grafix.scale_dpi(DX_BLK_96);
+        let cell = self.state.read().grafix.dims.block.cx;
         if cell <= 0 {
             return 0;
         }
-        ((x - (self.state.read().grafix.scale_dpi(DX_LEFT_SPACE_96) - cell)) / cell) as usize
+        ((x - (self.state.read().grafix.dims.left_space - cell)) / cell) as usize
     }
 
     /// Converts a y-coordinate in pixels to a box index.
@@ -495,11 +493,11 @@ impl WinMineMainWindow {
     /// # Returns
     /// The corresponding box index.
     pub fn y_box_from_ypos(&self, y: i32) -> usize {
-        let cell = self.state.read().grafix.scale_dpi(DY_BLK_96);
+        let cell = self.state.read().grafix.dims.block.cy;
         if cell <= 0 {
             return 0;
         }
-        ((y - (self.state.read().grafix.scale_dpi(DY_GRID_OFF_96) - cell)) / cell) as usize
+        ((y - (self.state.read().grafix.dims.grid_offset - cell)) / cell) as usize
     }
 
     /* Event Handlers */
@@ -510,8 +508,12 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |_create| -> winsafe::AnyResult<i32> {
                 // Sync global DPI state to the actual monitor DPI where the window was created.
-                let dpi = self2.wnd.hwnd().GetDpiForWindow();
-                self2.state.write().grafix.dpi = if dpi == 0 { BASE_DPI } else { dpi };
+                let mut dpi = self2.wnd.hwnd().GetDpiForWindow();
+                if dpi == 0 {
+                    dpi = BASE_DPI;
+                }
+                self2.state.write().grafix.dpi = dpi;
+                self2.state.write().grafix.dims.update_dpi(dpi);
 
                 // Initialize local resources.
                 self2.state.write().init_game(self2.wnd.hwnd())?;
@@ -528,10 +530,13 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 // wParam: new DPI in LOWORD/HIWORD (X/Y). lParam: suggested new window rect.
-                let dpi = (msg.wparam) & 0xFFFF;
-                if dpi > 0 {
-                    self2.state.write().grafix.dpi = if dpi == 0 { BASE_DPI } else { dpi as u32 };
+                let mut dpi = ((msg.wparam) & 0xFFFF) as u32;
+                if dpi == 0 {
+                    dpi = BASE_DPI;
                 }
+                self2.state.write().grafix.dpi = dpi;
+                self2.state.write().grafix.dims.update_dpi(dpi);
+
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
 
                 if let Some(rc) = suggested {
@@ -698,6 +703,7 @@ impl WinMineMainWindow {
         });
 
         // TODO: Handle double clicks
+        // TODO: Double clicking the button somehow clicks a tile on the board instead.
         self.wnd.on().wm_l_button_down({
             let self2 = self.clone();
             move |l_btn| {
