@@ -21,7 +21,6 @@ use crate::util::{ResourceId, scale_dpi};
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
     These are scaled at runtime to match the current UI DPI.
 */
-// TODO: Could these be changed to u32?
 /// Width of a single board cell sprite in pixels.
 const DX_BLK_96: i32 = 16;
 /// Height of a single board cell sprite in pixels.
@@ -82,20 +81,20 @@ pub struct WindowDimensions {
 
 impl WindowDimensions {
     pub const fn update_dpi(&mut self, dpi: u32) {
-        self.block.cx = scale_dpi(DX_BLK_96 as u32, dpi) as i32;
-        self.block.cy = scale_dpi(DY_BLK_96 as u32, dpi) as i32;
-        self.led.cx = scale_dpi(DX_LED_96 as u32, dpi) as i32;
-        self.led.cy = scale_dpi(DY_LED_96 as u32, dpi) as i32;
-        self.button.cx = scale_dpi(DX_BUTTON_96 as u32, dpi) as i32;
-        self.button.cy = scale_dpi(DY_BUTTON_96 as u32, dpi) as i32;
-        self.left_space = scale_dpi(DX_LEFT_SPACE_96 as u32, dpi) as i32;
-        self.right_space = scale_dpi(DX_RIGHT_SPACE_96 as u32, dpi) as i32;
-        self.top_space = scale_dpi(DY_TOP_SPACE_96 as u32, dpi) as i32;
-        self.bottom_space = scale_dpi(DY_BOTTOM_SPACE_96 as u32, dpi) as i32;
-        self.top_led = scale_dpi(DY_TOP_LED_96 as u32, dpi) as i32;
-        self.grid_offset = scale_dpi(DY_GRID_OFF_96 as u32, dpi) as i32;
-        self.left_bomb = scale_dpi(DX_LEFT_BOMB_96 as u32, dpi) as i32;
-        self.right_timer = scale_dpi(DX_RIGHT_TIME_96 as u32, dpi) as i32;
+        self.block.cx = scale_dpi(DX_BLK_96, dpi);
+        self.block.cy = scale_dpi(DY_BLK_96, dpi);
+        self.led.cx = scale_dpi(DX_LED_96, dpi);
+        self.led.cy = scale_dpi(DY_LED_96, dpi);
+        self.button.cx = scale_dpi(DX_BUTTON_96, dpi);
+        self.button.cy = scale_dpi(DY_BUTTON_96, dpi);
+        self.left_space = scale_dpi(DX_LEFT_SPACE_96, dpi);
+        self.right_space = scale_dpi(DX_RIGHT_SPACE_96, dpi);
+        self.top_space = scale_dpi(DY_TOP_SPACE_96, dpi);
+        self.bottom_space = scale_dpi(DY_BOTTOM_SPACE_96, dpi);
+        self.top_led = scale_dpi(DY_TOP_LED_96, dpi);
+        self.grid_offset = scale_dpi(DY_GRID_OFF_96, dpi);
+        self.left_bomb = scale_dpi(DX_LEFT_BOMB_96, dpi);
+        self.right_timer = scale_dpi(DX_RIGHT_TIME_96, dpi);
     }
 }
 
@@ -747,9 +746,9 @@ impl GrafixState {
         // Outer sunken border
         let mut x = dx_window - 1;
         let mut y = dy_window - 1;
-        let b3 = scale_dpi(3, self.dpi) as i32;
-        let b2 = scale_dpi(2, self.dpi) as i32;
-        let b1 = scale_dpi(1, self.dpi) as i32;
+        let b3 = scale_dpi(3, self.dpi);
+        let b2 = scale_dpi(2, self.dpi);
+        let b1 = scale_dpi(1, self.dpi);
         self.draw_border(hdc, 0, 0, x, y, b3, BorderStyle::Sunken)?;
 
         // Inner raised borders
@@ -772,7 +771,7 @@ impl GrafixState {
             x,
             self.dims.top_led
                 + self.dims.led.cy
-                + (self.dims.bottom_space - scale_dpi(6, self.dpi) as i32),
+                + (self.dims.bottom_space - scale_dpi(6, self.dpi)),
             b2,
             BorderStyle::Raised,
         )?;

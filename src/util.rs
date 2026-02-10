@@ -338,12 +338,12 @@ pub fn get_dlg_int(
 /// The measurement scaled to the given DPI.
 /// # Notes
 /// This function replicates the functionality of the `MulDiv` Win32 API function, with a few differences:
-/// - It takes an unsigned integer value and returns an unsigned integer, while `MulDiv` operates on signed integers.
+/// - It takes a signed and an unsigned integer and returns a signed integer, while `MulDiv` operates on only signed integers.
 /// - It assumes that the denominator is always non-zero, which can be safely assumed in this context since `BASE_DPI` is a constant
 ///   and should never be zero.
-pub const fn scale_dpi(val: u32, dpi: u32) -> u32 {
+pub const fn scale_dpi(val: i32, dpi: u32) -> i32 {
     // Perform multiplication in u64 to prevent overflow
     let product = val as u64 * dpi as u64;
     // Perform division with rounding
-    ((product + (BASE_DPI as u64 / 2)) / BASE_DPI as u64) as u32
+    ((product + (BASE_DPI as u64 / 2)) / BASE_DPI as u64) as i32
 }
