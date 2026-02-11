@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
 
-use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SC, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
+use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, HWND,
@@ -240,25 +240,6 @@ impl WinMineMainWindow {
         let y = self.y_box_from_ypos(point.y);
         self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
         Ok(())
-    }
-
-    /// Handles the `WM_SYSCOMMAND` message for minimize and restore events.
-    ///
-    /// TODO: Use the normal WM commands rather than the basic `WM_SYSCOMMAND` message
-    /// # Arguments
-    /// * `command` - The system command identifier.
-    fn handle_syscommand(&self, command: SC) {
-        let state = &mut self.state.write();
-        if command == SC::MINIMIZE {
-            state.pause_game();
-            state.game_status.insert(StatusFlag::Pause);
-            state.game_status.insert(StatusFlag::Minimized);
-        } else if command == SC::RESTORE {
-            state.game_status.remove(StatusFlag::Pause);
-            state.game_status.remove(StatusFlag::Minimized);
-            state.resume_game();
-            self.ignore_next_click.store(false, Ordering::Relaxed);
-        }
     }
 
     /// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
@@ -577,16 +558,34 @@ impl WinMineMainWindow {
         self.wnd.on().wm_window_pos_changed({
             let self2 = self.clone();
             move |wnd_pos| {
-                self2.handle_window_pos_changed(wnd_pos.windowpos);
-                Ok(())
-            }
-        });
-
-        self.wnd.on().wm_sys_command({
-            let self2 = self.clone();
-            move |msg| {
-                self2.handle_syscommand(msg.request);
-                unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
+                if self2
+                    .state
+                    .read()
+                    .game_status
+                    .contains(StatusFlag::Minimized)
+                    && !self2.wnd.hwnd().IsIconic()
+                {
+                    // If the window was previously minimized but is no longer, it is being restored from a minimized state
+                    let state = &mut self2.state.write();
+                    state.game_status.remove(StatusFlag::Pause);
+                    state.game_status.remove(StatusFlag::Minimized);
+                    state.resume_game();
+                } else if !self2
+                    .state
+                    .read()
+                    .game_status
+                    .contains(StatusFlag::Minimized)
+                    && self2.wnd.hwnd().IsIconic()
+                {
+                    // If the window was not previously minimized but now is, it is being minimized
+                    let state = &mut self2.state.write();
+                    state.pause_game();
+                    state.game_status.insert(StatusFlag::Pause);
+                    state.game_status.insert(StatusFlag::Minimized);
+                } else {
+                    // Otherwise, the window is just being moved or resized
+                    self2.handle_window_pos_changed(wnd_pos.windowpos);
+                }
                 Ok(())
             }
         });
@@ -1294,7 +1293,8 @@ impl EnterDialog {
                     .hwnd()
                     .GetDlgItem(ResourceId::NameEdit as u16)
                     .and_then(|edit_hwnd| {
-                        // TODO: Is there a way to do this without sending a message?
+                        // TODO: The only way to do this without unsafe is for this to be a `WinSafe` `Edit` control,
+                        //       which has the `limit_text` function.
                         unsafe {
                             edit_hwnd.SendMessage(SetLimitText {
                                 max_chars: Some(CCH_NAME_MAX as u32),
