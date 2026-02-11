@@ -2,7 +2,9 @@
 //! settings to the Windows registry.
 
 use winsafe::co::{GDC, KEY, REG_OPTION};
-use winsafe::{AnyResult, HKEY, HWND, POINT, RegistryValue, SysResult};
+use winsafe::{
+    AnyResult, HKEY, HWND, POINT, RegistryValue, RegistryValue::Dword, RegistryValue::Sz, SysResult,
+};
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::sound::Sound;
@@ -227,9 +229,8 @@ impl Pref {
     }
 
     /// Read all user preferences from the registry into the shared PREF struct.
-    ///
-    /// TODO: Should this return a Result to indicate failure? It currently just uses defaults on failure,
-    /// which would cause the current settings to be overwritten on the next save.
+    /// # Returns
+    /// An `Ok(())` if successful, or an error if accessing the registry failed.
     pub fn read_preferences(&mut self) -> SysResult<()> {
         /// Default board height used if not set in the registry.
         const DEFHEIGHT: u32 = 9;
@@ -265,7 +266,6 @@ impl Pref {
             .read_int(&key_guard, PrefKey::Mines)
             .unwrap_or(10)
             .clamp(10, 999) as i16;
-        // TODO: Ensure that the window position is within the screen bounds
         self.wnd_pos = POINT {
             x: self.read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32,
             y: self.read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32,
@@ -292,8 +292,7 @@ impl Pref {
         self.expert_name = self.read_sz(&key_guard, PrefKey::Name3);
 
         // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
-        let desktop = HWND::GetDesktopWindow();
-        let default_color = match desktop.GetDC() {
+        let default_color = match HWND::GetDesktopWindow().GetDC() {
             Ok(hdc) if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 => 1,
             _ => 0,
         };
@@ -325,78 +324,72 @@ impl Pref {
         };
 
         // Save all preferences to the registry
-        self.write_int(&key_guard, PrefKey::Difficulty, self.game_type as u32)?;
-        self.write_int(&key_guard, PrefKey::Height, self.height as u32)?;
-        self.write_int(&key_guard, PrefKey::Width, self.width as u32)?;
-        self.write_int(&key_guard, PrefKey::Mines, self.mines as u32)?;
-        self.write_int(&key_guard, PrefKey::Mark, u32::from(self.mark_enabled))?;
-        self.write_int(&key_guard, PrefKey::AlreadyPlayed, 1)?;
+        self.write(
+            &key_guard,
+            PrefKey::Difficulty,
+            Dword(self.game_type as u32),
+        )?;
+        self.write(&key_guard, PrefKey::Height, Dword(self.height as u32))?;
+        self.write(&key_guard, PrefKey::Width, Dword(self.width as u32))?;
+        self.write(&key_guard, PrefKey::Mines, Dword(self.mines as u32))?;
+        self.write(
+            &key_guard,
+            PrefKey::Mark,
+            Dword(u32::from(self.mark_enabled)),
+        )?;
+        self.write(&key_guard, PrefKey::AlreadyPlayed, Dword(1))?;
 
-        self.write_int(&key_guard, PrefKey::Color, u32::from(self.color))?;
-        self.write_int(
+        self.write(&key_guard, PrefKey::Color, Dword(u32::from(self.color)))?;
+        self.write(
             &key_guard,
             PrefKey::Sound,
-            if self.sound_enabled { 3 } else { 2 },
+            if self.sound_enabled {
+                Dword(3)
+            } else {
+                Dword(2)
+            },
         )?;
-        self.write_int(&key_guard, PrefKey::Xpos, self.wnd_pos.x as u32)?;
-        self.write_int(&key_guard, PrefKey::Ypos, self.wnd_pos.y as u32)?;
-        self.write_int(
+        self.write(&key_guard, PrefKey::Xpos, Dword(self.wnd_pos.x as u32))?;
+        self.write(&key_guard, PrefKey::Ypos, Dword(self.wnd_pos.y as u32))?;
+        self.write(
             &key_guard,
             PrefKey::Time1,
-            self.best_times[GameType::Begin as usize] as u32,
+            Dword(self.best_times[GameType::Begin as usize] as u32),
         )?;
-        self.write_int(
+        self.write(
             &key_guard,
             PrefKey::Time2,
-            self.best_times[GameType::Inter as usize] as u32,
+            Dword(self.best_times[GameType::Inter as usize] as u32),
         )?;
-        self.write_int(
+        self.write(
             &key_guard,
             PrefKey::Time3,
-            self.best_times[GameType::Expert as usize] as u32,
+            Dword(self.best_times[GameType::Expert as usize] as u32),
         )?;
 
-        self.write_sz(&key_guard, PrefKey::Name1, &self.beginner_name)?;
-        self.write_sz(&key_guard, PrefKey::Name2, &self.inter_name)?;
-        self.write_sz(&key_guard, PrefKey::Name3, &self.expert_name)?;
+        self.write(&key_guard, PrefKey::Name1, Sz(self.beginner_name.clone()))?;
+        self.write(&key_guard, PrefKey::Name2, Sz(self.inter_name.clone()))?;
+        self.write(&key_guard, PrefKey::Name3, Sz(self.expert_name.clone()))?;
         Ok(())
     }
 
-    /// Write an integer preference to the registry.
+    /// Write a preference to the registry.
     ///
     /// TODO: Take `RegistryValue` directly, allowing write functions to be merged.
     /// # Arguments
     /// * `handle` - Open registry key handle
     /// * `key` - Preference key to write
-    /// * `val` - Integer value to store
+    /// * `val` - Registry value to store
     /// # Returns
     /// An `Ok(())` if successful, or an error if writing failed.
-    fn write_int(&self, handle: &HKEY, key: PrefKey, val: u32) -> AnyResult<()> {
+    fn write(&self, handle: &HKEY, key: PrefKey, val: RegistryValue) -> AnyResult<()> {
         // Get the name of the preference key
         let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
             return Err("Invalid preference key".into());
         };
 
-        // Store the DWORD value in the registry
-        handle.RegSetValueEx(Some(key_name), RegistryValue::Dword(val))?;
-        Ok(())
-    }
-
-    /// Write a string preference to the registry.
-    /// # Arguments
-    /// * `handle` - Open registry key handle
-    /// * `key` - Preference key to write
-    /// * `sz` - String to store
-    /// # Returns
-    /// An `Ok(())` if successful, or an error if writing failed.
-    fn write_sz(&self, handle: &HKEY, key: PrefKey, sz: &String) -> AnyResult<()> {
-        // Get the name of the preference key
-        let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
-            return Err("Invalid preference key".into());
-        };
-
-        // Store the string value in the registry
-        handle.RegSetValueEx(Some(key_name), RegistryValue::Sz(sz.to_string()))?;
+        // Store the value in the registry
+        handle.RegSetValueEx(Some(key_name), val)?;
         Ok(())
     }
 }
