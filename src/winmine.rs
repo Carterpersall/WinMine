@@ -201,8 +201,8 @@ impl WinMineMainWindow {
             } else {
                 self.finish_primary_button_drag()?;
             }
-        } else {
-            // Regular mouse move
+        } else if self.state.read().secs_elapsed > 0 {
+            // If the user is not dragging but the game is active, track the mouse position for the XYZZY cheat code
             self.handle_xyzzys_mouse(key, point)?;
         }
         Ok(())

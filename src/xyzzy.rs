@@ -58,7 +58,6 @@ impl WinMineMainWindow {
     /// it reveals whether the cell under the cursor is a bomb or not by
     /// setting the pixel at (0,0) of the device context to black (bomb) or white (no bomb).
     ///
-    /// TODO: Don't do anything if the game is not active, it currently reveals incorrect info
     /// until the first block is revealed.
     /// # Arguments
     /// * `key` - The WPARAM from the mouse move message, containing key states.
