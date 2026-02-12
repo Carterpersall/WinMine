@@ -23,7 +23,6 @@ static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 /// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
-// TODO: Should this be a separate impl? Or should it be under GameState?
 impl WinMineMainWindow {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles
@@ -65,14 +64,11 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) -> AnyResult<()> {
-        // Check if the XYZZY cheat code is active
-        let state = I_XYZZY.load(Ordering::Relaxed);
-        if state == 0 {
-            return Ok(());
-        }
-
         // Check if the Control key is held down.
         let control_down = key == MK::CONTROL;
+
+        // Check if the XYZZY cheat code is active
+        let state = I_XYZZY.load(Ordering::Relaxed);
         if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
             let x_pos = self.x_box_from_xpos(point.x);
             let y_pos = self.y_box_from_ypos(point.y);

@@ -264,21 +264,19 @@ impl WinMineMainWindow {
     /// # Arguments
     /// * `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// An `AnyResult<bool>` indicating whether the click was handled.
-    ///
-    /// TODO: Does it need to return a bool and a result?
+    /// - `Ok(true)` if the click was on the button and handled.
+    /// - `Ok(false)` if the click was not on the button.
+    /// - `Err` if an error occurred while handling the click.
     fn btn_click_handler(&self, point: POINT) -> AnyResult<bool> {
-        // Handle clicks on the smiley face button while providing the pressed animation.
-        let mut msg = MSG {
-            pt: point,
-            ..Default::default()
+        let (dx_window, dy_top_led, dx_button, dy_button) = {
+            let state = self.state.read();
+            (
+                state.grafix.wnd_pos.x,
+                state.grafix.dims.button.cx,
+                state.grafix.dims.button.cy,
+                state.grafix.dims.top_led,
+            )
         };
-
-        // TODO: Should `self.state.read()` be cached here?
-        let dx_window = self.state.read().grafix.wnd_pos.x;
-        let dx_button = self.state.read().grafix.dims.button.cx;
-        let dy_button = self.state.read().grafix.dims.button.cy;
-        let dy_top_led = self.state.read().grafix.dims.top_led;
         // Compute the button rectangle
         let mut rc = RECT {
             // The button is centered horizontally within the window
@@ -289,7 +287,7 @@ impl WinMineMainWindow {
             bottom: dy_top_led + dy_button,
         };
 
-        if !winsafe::PtInRect(rc, msg.pt) {
+        if !winsafe::PtInRect(rc, point) {
             return Ok(false);
         }
 
@@ -303,6 +301,11 @@ impl WinMineMainWindow {
             .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
 
         let mut pressed = true;
+        let mut msg = MSG {
+            pt: point,
+            ..Default::default()
+        };
+        // Wait for the user to release the mouse button
         // TODO: Surely there is a better way to do this?
         loop {
             if PeekMessage(
@@ -710,6 +713,7 @@ impl WinMineMainWindow {
                     return Ok(());
                 }
                 // TODO: This logic can be simplified
+                // Check if the click was on the button
                 if self2.btn_click_handler(l_btn.coords)? {
                     return Ok(());
                 }
