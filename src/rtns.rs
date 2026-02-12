@@ -149,9 +149,6 @@ bitflags! {
         /// Game is currently paused.
         const Pause = 0b0010;
         /// Game is currently minimized.
-        ///
-        /// TODO: Is this flag needed? The Pause flag may be sufficient.
-        /// It is only read when the window is being moved, which we may not want to do anyways.
         const Minimized = 0b0100;
         /// Game is over (win or loss).
         const GameOver = 0b1000;
@@ -374,7 +371,7 @@ impl GameState {
 
     /// Enqueue a square for flood-fill processing if it is empty.
     ///
-    /// TODO: Don't take a mutable reference as an argument
+    /// TODO: Could this function be merged with `step_box` to avoid passing the queue around?
     /// # Arguments
     /// * `hdc` - The device context to draw on.
     /// * `queue` - The flood-fill work queue.
@@ -409,6 +406,7 @@ impl GameState {
                 }
             }
         }
+
         // Update the revealed block to show the adjacent bomb count and draw it
         self.board_cells[x][y] = BlockInfo {
             bomb: false,
@@ -418,9 +416,13 @@ impl GameState {
         self.grafix.draw_block(hdc, x, y, &self.board_cells)?;
 
         // If no adjacent bombs, enqueue for further flood-fill processing
-        if bombs == 0 && *tail < I_STEP_MAX {
+        if bombs == 0 {
             queue[*tail] = (x, y);
             *tail += 1;
+            if *tail == I_STEP_MAX {
+                // Queue overflow, loop back to the start and overwrite old entries
+                *tail = 0;
+            }
         }
         Ok(())
     }
@@ -433,28 +435,44 @@ impl GameState {
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_box(&mut self, hdc: &ReleaseDCGuard, x: usize, y: usize) -> AnyResult<()> {
+        // Use a queue to perform a breadth-first flood-fill of empty squares.
+        // The queue has a fixed maximum size, and if it overflows we loop back to the start and overwrite old entries.
         let mut queue = [(0, 0); I_STEP_MAX];
+        // `head` tracks the current index being processed
         let mut head = 0usize;
+        // `tail` tracks the next open index for adding new squares to process
         let mut tail = 0usize;
 
+        // Enqueue the initial square; if it is empty, this will kick off the flood-fill process
         self.step_xy(hdc, &mut queue, &mut tail, x, y)?;
 
-        while head < tail {
+        // Process squares in the queue until there are no more to process
+        while head != tail {
+            // For each square in queue, check the 8 surrounding squares, and enqueue any that have no adjacent bombs
             let (sx, sy) = queue[head];
-            head += 1;
 
+            // Top row
             let mut ty = sy - 1;
             self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
             self.step_xy(hdc, &mut queue, &mut tail, sx, ty)?;
             self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
+
+            // Middle row
             ty += 1;
             self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
             self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
 
+            // Bottom row
             ty += 1;
             self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
             self.step_xy(hdc, &mut queue, &mut tail, sx, ty)?;
             self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
+
+            head += 1;
+            if head == I_STEP_MAX {
+                // Queue overflow, loop back to the start
+                head = 0;
+            }
         }
         Ok(())
     }

@@ -374,8 +374,6 @@ impl Pref {
     }
 
     /// Write a preference to the registry.
-    ///
-    /// TODO: Take `RegistryValue` directly, allowing write functions to be merged.
     /// # Arguments
     /// * `handle` - Open registry key handle
     /// * `key` - Preference key to write
