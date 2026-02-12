@@ -722,6 +722,8 @@ impl GameState {
 
 impl WinMineMainWindow {
     /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
+    ///
+    /// TODO: Move this into `GameState`.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     /// # Returns

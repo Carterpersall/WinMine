@@ -827,16 +827,14 @@ impl WinMineMainWindow {
         self.wnd.on().wm_command_acc_menu(ResourceId::Custom, {
             let self2 = self.clone();
             move || {
-                // TODO: The way that the preferences dialog is handled causes a custom game to always
-                // be started when the dialog is closed, even if the user clicked "Cancel". Fix
-
                 // Show the preferences dialog
                 PrefDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
 
-                self2.state.write().prefs.game_type = GameType::Other;
-
-                self2.set_menu_bar()?;
-                self2.start_game()?;
+                if self2.state.read().prefs.game_type == GameType::Other {
+                    // If a custom game was configured, start it
+                    self2.set_menu_bar()?;
+                    self2.start_game()?;
+                }
                 Ok(())
             }
         });
@@ -1016,6 +1014,7 @@ impl PrefDialog {
                     state.prefs.height = height as usize;
                     state.prefs.width = width as usize;
                     state.prefs.mines = mines as i16;
+                    state.prefs.game_type = GameType::Other;
                 }
 
                 // Close the dialog
