@@ -3,11 +3,10 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use winsafe::co::{KEY, REG_OPTION};
-use winsafe::{AnyResult, GetTickCount64, HKEY, HMENU, HWND, IdPos, LOWORD, prelude::*};
+use winsafe::{AnyResult, HMENU, HWND, IdPos, prelude::*};
 
 use crate::globals::BASE_DPI;
-use crate::pref::{GameType, SZ_WINMINE_REG_STR};
+use crate::pref::GameType;
 use crate::winmine::WinMineMainWindow;
 
 #[derive(Copy, Clone)]
@@ -185,7 +184,7 @@ static RNG_STATE: AtomicU32 = AtomicU32::new(0);
 /// * `seed` - The seed value to initialize the RNG with.
 /// # Notes
 /// This function replicates the functionality of the C standard library's `srand()` function.
-fn seed_rng(seed: u16) {
+pub fn seed_rng(seed: u16) {
     // Initialize the shared RNG state to the given seed value
     RNG_STATE.store(seed as u32, Ordering::Relaxed);
 }
@@ -235,26 +234,6 @@ fn rand() -> u32 {
 /// A pseudo-random number in the [0, `rnd_max`) range
 pub fn rnd(rnd_max: u32) -> u32 {
     rand() % rnd_max
-}
-
-/// Initialize UI globals and seed the RNG state.
-///
-/// TODO: Does this function need to exist? It is only called once during startup.
-pub fn init_const() {
-    // Seed the RNG using the low 16 bits of the current tick count
-    let ticks = LOWORD(GetTickCount64() as u32);
-    seed_rng(ticks);
-
-    // Create or open the registry key for storing preferences
-    // TODO: Handle errors
-    // TODO: Now that the ini migration code is gone, what happens when there are no existing preferences? Does the AlreadyPlayed flag need to exist anymore?
-    let _ = HKEY::CURRENT_USER.RegCreateKeyEx(
-        SZ_WINMINE_REG_STR,
-        None,
-        REG_OPTION::default(),
-        KEY::READ,
-        None,
-    );
 }
 
 /// Check or uncheck a menu item based on the specified command ID.

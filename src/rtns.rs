@@ -650,33 +650,19 @@ impl GameState {
         Ok(())
     }
 
-    /// Depress a box visually.
-    ///
-    /// Boxes are pushed down while the left mouse button is pressed over them.
-    ///
-    /// TODO: Can `push_box_down` and `pop_box_up` be merged?
+    /// Invert the visual state of a box to show it as pressed or released.
+    /// - Boxes are pushed down while the left mouse button is pressed over them.
+    /// - Boxes are restored to their raised state when the left mouse button is released or the cursor is no longer over them.
     /// # Arguments
     /// * `x` - The X coordinate of the box.
     /// * `y` - The Y coordinate of the box.
-    const fn push_box_down(&mut self, x: usize, y: usize) {
+    const fn invert_box(&mut self, x: usize, y: usize) {
         let mut blk = self.board_cells[x][y].block_type;
         blk = match blk {
+            // Push the box down by changing the block type to the corresponding "down" version
             BlockCell::GuessUp => BlockCell::GuessDown,
             BlockCell::BlankUp => BlockCell::Blank,
-            _ => blk,
-        };
-        self.board_cells[x][y].block_type = blk;
-    }
-
-    /// Restore a depressed box visually.
-    ///
-    /// Boxes are restored to their raised state when the left mouse button is released or the cursor is no longer over them.
-    /// # Arguments
-    /// * `x` - The X coordinate of the box.
-    /// * `y` - The Y coordinate of the box.
-    const fn pop_box_up(&mut self, x: usize, y: usize) {
-        let mut blk = self.board_cells[x][y].block_type;
-        blk = match blk {
+            // Restore the block back to its raised state
             BlockCell::GuessDown => BlockCell::GuessUp,
             BlockCell::Blank => BlockCell::BlankUp,
             _ => blk,
@@ -840,7 +826,7 @@ impl GameState {
                         // Only pop up boxes that are not visited
                         if !self.board_cells[x][y].visited {
                             // Restore the box to its raised state
-                            self.pop_box_up(x, y);
+                            self.invert_box(x, y);
                             self.grafix.draw_block(hdc, x, y, &self.board_cells)?;
                         }
                     }
@@ -860,7 +846,7 @@ impl GameState {
                         // Only push down boxes that are not visited
                         if !self.board_cells[x][y].visited {
                             // Depress the box visually
-                            self.push_box_down(x, y);
+                            self.invert_box(x, y);
                             self.grafix.draw_block(hdc, x, y, &self.board_cells)?;
                         }
                     }
@@ -873,14 +859,14 @@ impl GameState {
                 && !self.board_cells[self.cursor_x][self.cursor_y].visited
             {
                 // Restore the old box to its raised state
-                self.pop_box_up(self.cursor_x, self.cursor_y);
+                self.invert_box(self.cursor_x, self.cursor_y);
                 self.grafix
                     .draw_block(hdc, self.cursor_x, self.cursor_y, &self.board_cells)?;
             }
             // Check if the new cursor position is in range and not yet visited
             if self.in_range(x_new, y_new) && self.in_range_step(x_new, y_new) {
                 // Depress the new box visually
-                self.push_box_down(x_new, y_new);
+                self.invert_box(x_new, y_new);
                 self.grafix
                     .draw_block(hdc, x_new, y_new, &self.board_cells)?;
             }
