@@ -249,6 +249,8 @@ impl WinMineMainWindow {
     }
 
     /// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
+    ///
+    /// TODO: Move this function into the closure.
     /// # Arguments
     /// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
     fn handle_window_pos_changed(&self, pos: &WINDOWPOS) {
@@ -265,41 +267,10 @@ impl WinMineMainWindow {
         state.prefs.wnd_pos = POINT { x: pos.x, y: pos.y };
     }
 
-    /// Handles clicks on the smiley face button.
-    ///
-    /// TODO: Move button handlers into `GameState`.
-    /// # Arguments
-    /// * `point`: The coordinates of the mouse cursor.
-    /// # Returns
-    /// - `Ok(true)` if the click was on the button and handled.
-    /// - `Ok(false)` if the click was not on the button.
-    /// - `Err` if an error occurred while handling the click.
-    fn btn_click_handler(&self, point: POINT) -> AnyResult<bool> {
-        let rc = {
-            let grafix = &self.state.read().grafix;
-            RECT {
-                left: (grafix.wnd_pos.x - grafix.dims.button.cx) / 2,
-                right: (grafix.wnd_pos.x + grafix.dims.button.cx) / 2,
-                top: grafix.dims.top_led,
-                bottom: grafix.dims.top_led + grafix.dims.button.cy,
-            }
-        };
-        if !PtInRect(rc, point) {
-            return Ok(false);
-        }
-
-        self.state.write().btn_face_pressed = true;
-        self.state
-            .read()
-            .grafix
-            .draw_button(self.wnd.hwnd().GetDC()?.deref(), ButtonSprite::Down)?;
-
-        Ok(true)
-    }
-
     /// Handles smiley-face click completion when the left button is released.
     ///
     /// TODO: Move function into `GameState`.
+    ///       Moving this function is blocked by the function `start_game`
     /// # Arguments
     /// * `point`: The coordinates of the mouse cursor.
     /// # Returns
@@ -336,6 +307,10 @@ impl WinMineMainWindow {
 
     /// Adjusts the main window size and position based on the current board and menu state.
     ///
+    /// TODO: Move this function into `GameState`.
+    ///       Moving this function is complicated by the fact that it needs to call `MoveWindow`,
+    ///       which sends a `WM_WINDOWPOSCHANGED` message to the main window,
+    ///       which needs to obtain a lock on the game state, always causing a deadlock.
     /// This function is called whenever the board or menu state changes to ensure
     /// that the main window is appropriately sized and positioned on the screen.
     /// # Arguments
@@ -696,7 +671,11 @@ impl WinMineMainWindow {
                 }
                 // TODO: This logic can be simplified
                 // Check if the click was on the button
-                if self2.btn_click_handler(l_btn.coords)? {
+                if self2
+                    .state
+                    .write()
+                    .btn_click_handler(&self2.wnd.hwnd().GetDC()?, l_btn.coords)?
+                {
                     return Ok(());
                 }
                 // If the right button or the shift key is also down, start a chord operation

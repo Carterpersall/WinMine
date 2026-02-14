@@ -331,8 +331,36 @@ impl GameState {
         count
     }
 
+    /// Handles clicks on the smiley face button.
+    /// # Arguments
+    /// - `hdc`: Handle to the device context to draw on.
+    /// - `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// - `Ok(true)` if the click was on the button and handled.
+    /// - `Ok(false)` if the click was not on the button.
+    /// - `Err` if an error occurred while handling the click.
+    pub fn btn_click_handler(&mut self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<bool> {
+        let rc = {
+            RECT {
+                left: (self.grafix.wnd_pos.x - self.grafix.dims.button.cx) / 2,
+                right: (self.grafix.wnd_pos.x + self.grafix.dims.button.cx) / 2,
+                top: self.grafix.dims.top_led,
+                bottom: self.grafix.dims.top_led + self.grafix.dims.button.cy,
+            }
+        };
+        if !PtInRect(rc, point) {
+            return Ok(false);
+        }
+
+        self.btn_face_pressed = true;
+        self.grafix.draw_button(hdc, ButtonSprite::Down)?;
+
+        Ok(true)
+    }
+
     /// Handles smiley-face interaction while the left button is pressed.
     /// # Arguments
+    /// * `hdc`: Handle to the device context to draw on.
     /// * `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// - `Ok(())` if the mouse move was handled.
@@ -757,6 +785,7 @@ impl WinMineMainWindow {
     /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
     ///
     /// TODO: Move this into `GameState`.
+    ///       Moving this into `GameState` is currently blocked by the function `adjust_window`.
     /// # Arguments
     /// * `hwnd` - Handle to the main window.
     /// # Returns
