@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use winsafe::co::WM;
 use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HDC, HWND, prelude::*};
+use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT, prelude::*};
 
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
@@ -169,6 +169,8 @@ pub struct GameState {
     pub board_height: usize,
     /// Current button face sprite
     pub btn_face_state: ButtonSprite,
+    /// Indicates whether the face button is currently being pressed.
+    pub btn_face_pressed: bool,
     /// Current number of bombs left to mark
     ///
     /// Note: The bomb count can go negative if the user marks more squares than there are bombs.
@@ -222,6 +224,7 @@ impl GameState {
             board_width: 0,
             board_height: 0,
             btn_face_state: ButtonSprite::Happy,
+            btn_face_pressed: false,
             bombs_left: 0,
             secs_elapsed: 0,
             boxes_visited: 0,
@@ -326,6 +329,36 @@ impl GameState {
             }
         }
         count
+    }
+
+    /// Handles smiley-face interaction while the left button is pressed.
+    /// # Arguments
+    /// * `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// - `Ok(())` if the mouse move was handled.
+    /// - `Err` if an error occurred while handling the mouse move.
+    pub fn handle_face_button_mouse_move(
+        &self,
+        hdc: &ReleaseDCGuard,
+        point: POINT,
+    ) -> AnyResult<()> {
+        let rc = {
+            RECT {
+                left: (self.grafix.wnd_pos.x - self.grafix.dims.button.cx) / 2,
+                right: (self.grafix.wnd_pos.x + self.grafix.dims.button.cx) / 2,
+                top: self.grafix.dims.top_led,
+                bottom: self.grafix.dims.top_led + self.grafix.dims.button.cy,
+            }
+        };
+        if PtInRect(rc, point) {
+            // If the cursor is over the button, draw the "pressed" state
+            self.grafix.draw_button(hdc, ButtonSprite::Down)?;
+        } else {
+            // If the cursor is not over the button, draw the "not pressed" state
+            self.grafix.draw_button(hdc, self.btn_face_state)?;
+        }
+
+        Ok(())
     }
 
     /// Update the button face based on the game result.

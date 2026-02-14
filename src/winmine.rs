@@ -8,12 +8,12 @@ use std::sync::Arc;
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
 
-use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, PM, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
+use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
-    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, GetTickCount64, HBRUSH, HINSTANCE, HWND,
-    INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, LOWORD, MSG, POINT, PeekMessage,
-    PtsRc, RECT, SIZE, WINDOWPOS, gui, prelude::*,
+    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, GetTickCount64, HBRUSH, HINSTANCE,
+    INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, LOWORD, POINT, PtInRect, RECT,
+    SIZE, WINDOWPOS, gui, prelude::*,
 };
 
 use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
@@ -191,7 +191,12 @@ impl WinMineMainWindow {
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
-        if self.drag_active.load(Ordering::Relaxed) {
+        if self.state.read().btn_face_pressed {
+            // If the face button is being clicked, handle mouse movement for that interaction
+            self.state
+                .read()
+                .handle_face_button_mouse_move(&self.wnd.hwnd().GetDC()?, point)?;
+        } else if self.drag_active.load(Ordering::Relaxed) {
             // If the user is dragging, track the mouse position
             if self.state.read().game_status.contains(StatusFlag::Play) {
                 let x_new = self.x_box_from_xpos(point.x);
@@ -261,6 +266,8 @@ impl WinMineMainWindow {
     }
 
     /// Handles clicks on the smiley face button.
+    ///
+    /// TODO: Move button handlers into `GameState`.
     /// # Arguments
     /// * `point`: The coordinates of the mouse cursor.
     /// # Returns
@@ -268,86 +275,61 @@ impl WinMineMainWindow {
     /// - `Ok(false)` if the click was not on the button.
     /// - `Err` if an error occurred while handling the click.
     fn btn_click_handler(&self, point: POINT) -> AnyResult<bool> {
-        let (dx_window, dy_top_led, dx_button, dy_button) = {
-            let state = self.state.read();
-            (
-                state.grafix.wnd_pos.x,
-                state.grafix.dims.button.cx,
-                state.grafix.dims.button.cy,
-                state.grafix.dims.top_led,
-            )
+        let rc = {
+            let grafix = &self.state.read().grafix;
+            RECT {
+                left: (grafix.wnd_pos.x - grafix.dims.button.cx) / 2,
+                right: (grafix.wnd_pos.x + grafix.dims.button.cx) / 2,
+                top: grafix.dims.top_led,
+                bottom: grafix.dims.top_led + grafix.dims.button.cy,
+            }
         };
-        // Compute the button rectangle
-        let mut rc = RECT {
-            // The button is centered horizontally within the window
-            left: (dx_window - dx_button) / 2,
-            right: (dx_window + dx_button) / 2,
-            // The button is vertically aligned with the top of the LEDs
-            top: dy_top_led,
-            bottom: dy_top_led + dy_button,
-        };
-
-        if !winsafe::PtInRect(rc, point) {
+        if !PtInRect(rc, point) {
             return Ok(false);
         }
 
-        let hdc = self.wnd.hwnd().GetDC()?;
+        self.state.write().btn_face_pressed = true;
         self.state
             .read()
             .grafix
-            .draw_button(&hdc, ButtonSprite::Down)?;
-        self.wnd
-            .hwnd()
-            .MapWindowPoints(&HWND::NULL, PtsRc::Rc(&mut rc))?;
+            .draw_button(self.wnd.hwnd().GetDC()?.deref(), ButtonSprite::Down)?;
 
-        let mut pressed = true;
-        let mut msg = MSG {
-            pt: point,
-            ..Default::default()
-        };
-        // Wait for the user to release the mouse button
-        // TODO: Surely there is a better way to do this?
-        loop {
-            if PeekMessage(
-                &mut msg,
-                self.wnd.hwnd().as_opt(),
-                WM::MOUSEFIRST.raw(),
-                WM::MOUSELAST.raw(),
-                PM::REMOVE,
-            ) {
-                match msg.message {
-                    WM::LBUTTONUP => {
-                        if pressed && winsafe::PtInRect(rc, msg.pt) {
-                            self.state.write().btn_face_state = ButtonSprite::Happy;
-                            self.state
-                                .read()
-                                .grafix
-                                .draw_button(&hdc, ButtonSprite::Happy)?;
-                            self.start_game()?;
-                        }
-                        return Ok(true);
-                    }
-                    WM::MOUSEMOVE => {
-                        if winsafe::PtInRect(rc, msg.pt) {
-                            if !pressed {
-                                pressed = true;
-                                self.state
-                                    .read()
-                                    .grafix
-                                    .draw_button(&hdc, ButtonSprite::Down)?;
-                            }
-                        } else if pressed {
-                            pressed = false;
-                            self.state
-                                .read()
-                                .grafix
-                                .draw_button(&hdc, self.state.read().btn_face_state)?;
-                        }
-                    }
-                    _ => {}
-                }
+        Ok(true)
+    }
+
+    /// Handles smiley-face click completion when the left button is released.
+    ///
+    /// TODO: Move function into `GameState`.
+    /// # Arguments
+    /// * `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// - `Ok(())` if the mouse button release was handled.
+    /// - `Err` if an error occurred while handling the mouse button release.
+    fn handle_face_button_lbutton_up(&self, point: POINT) -> AnyResult<()> {
+        let rc = {
+            let grafix = &self.state.read().grafix;
+            RECT {
+                left: (grafix.wnd_pos.x - grafix.dims.button.cx) / 2,
+                right: (grafix.wnd_pos.x + grafix.dims.button.cx) / 2,
+                top: grafix.dims.top_led,
+                bottom: grafix.dims.top_led + grafix.dims.button.cy,
             }
+        };
+        if PtInRect(rc, point) {
+            self.state.write().btn_face_state = ButtonSprite::Happy;
+            self.state
+                .read()
+                .grafix
+                .draw_button(self.wnd.hwnd().GetDC()?.deref(), ButtonSprite::Happy)?;
+            self.start_game()?;
+        } else {
+            let state = self.state.read();
+            state
+                .grafix
+                .draw_button(self.wnd.hwnd().GetDC()?.deref(), state.btn_face_state)?;
         }
+
+        Ok(())
     }
 
     /* Helper Functions */
@@ -732,8 +714,14 @@ impl WinMineMainWindow {
         self.wnd.on().wm_l_button_up({
             let self2 = self.clone();
             move |l_btn| {
-                self2.finish_primary_button_drag()?;
-                unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
+                if self2.state.read().btn_face_pressed {
+                    self2.state.write().btn_face_pressed = false;
+                    self2.handle_face_button_lbutton_up(l_btn.coords)?;
+                } else {
+                    self2.finish_primary_button_drag()?;
+                    // TODO: Is `DefWindowProc` necessary?
+                    unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
+                }
                 Ok(())
             }
         });
