@@ -308,7 +308,7 @@ impl GrafixState {
         hdc: &ReleaseDCGuard,
         x: usize,
         y: usize,
-        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+        board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> AnyResult<()> {
         let Some(src) = self.block_dc(x, y, board) else {
             return Ok(());
@@ -343,7 +343,7 @@ impl GrafixState {
         hdc: &HDC,
         width: usize,
         height: usize,
-        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+        board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> AnyResult<()> {
         let dst_w = self.dims.block.cx;
         let dst_h = self.dims.block.cy;
@@ -1106,7 +1106,7 @@ impl GrafixState {
         &self,
         x: usize,
         y: usize,
-        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+        board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> Option<&HDC> {
         let idx = self.block_sprite_index(x, y, board);
         if idx >= I_BLK_MAX {
@@ -1127,7 +1127,7 @@ impl GrafixState {
         &self,
         x: usize,
         y: usize,
-        board: &[[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+        board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> usize {
         board[x][y].block_type as usize
     }

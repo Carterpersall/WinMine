@@ -119,8 +119,8 @@ impl From<BlockCell> for BlockInfo {
 }
 
 /// Maximum number of board cells
-pub const MAX_X_BLKS: usize = 27;
-pub const MAX_Y_BLKS: usize = 32;
+pub const MAX_X_BLKS: usize = 32;
+pub const MAX_Y_BLKS: usize = 27;
 /// Upper bound on the flood-fill work queue used for empty regions.
 const I_STEP_MAX: usize = 100;
 
@@ -200,7 +200,7 @@ pub struct GameState {
     /// - Shift is held _then_ left button is held down
     pub chord_active: bool,
     /// 2D Array representing the state of each cell on the board
-    pub board_cells: [[BlockInfo; MAX_X_BLKS]; MAX_Y_BLKS],
+    pub board_cells: [[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     /// Initial number of bombs at the start of the game
     pub total_bombs: i16,
     /// Total number of visited boxes needed to win
@@ -235,7 +235,7 @@ impl GameState {
                 bomb: false,
                 visited: false,
                 block_type: BlockCell::BlankUp,
-            }; MAX_X_BLKS]; MAX_Y_BLKS],
+            }; MAX_Y_BLKS]; MAX_X_BLKS],
             total_bombs: 0,
             boxes_to_win: 0,
             timer_running: false,
