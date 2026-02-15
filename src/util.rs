@@ -3,7 +3,7 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use winsafe::{AnyResult, HMENU, HWND, IdPos, prelude::*};
+use winsafe::{AnyResult, HWND, IdPos, prelude::*};
 
 use crate::globals::BASE_DPI;
 use crate::pref::GameType;
@@ -236,21 +236,6 @@ pub fn rnd(rnd_max: u32) -> u32 {
     rand() % rnd_max
 }
 
-/// Check or uncheck a menu item based on the specified command ID.
-///
-/// TODO: This function no longer needs to exist
-/// # Arguments
-/// * `idm` - The menu command ID.
-/// * `f_check` - `true` to check the item, `false` to uncheck it.
-/// # Returns
-/// An `Ok(())` if successful, or an error if checking/unchecking failed.
-pub fn menu_check(hmenu: &HMENU, idm: ResourceId, f_check: bool) -> AnyResult<()> {
-    if let Some(menu) = hmenu.as_opt() {
-        menu.CheckMenuItem(IdPos::Id(idm as u16), f_check)?;
-    }
-    Ok(())
-}
-
 impl WinMineMainWindow {
     /// Update the menu bar to reflect current preferences.
     /// # Returns
@@ -268,15 +253,31 @@ impl WinMineMainWindow {
         };
 
         // Update the menu checkmarks to reflect the current preferences
-        let hmenu = self.wnd.hwnd().GetMenu().unwrap_or(HMENU::NULL);
-        menu_check(&hmenu, ResourceId::Begin, game_type == GameType::Begin)?;
-        menu_check(&hmenu, ResourceId::Inter, game_type == GameType::Inter)?;
-        menu_check(&hmenu, ResourceId::Expert, game_type == GameType::Expert)?;
-        menu_check(&hmenu, ResourceId::Custom, game_type == GameType::Other)?;
+        let hmenu = self
+            .wnd
+            .hwnd()
+            .GetMenu()
+            .ok_or("Failed to get menu handle")?;
+        hmenu.CheckMenuItem(
+            IdPos::Id(ResourceId::Begin as u16),
+            game_type == GameType::Begin,
+        )?;
+        hmenu.CheckMenuItem(
+            IdPos::Id(ResourceId::Inter as u16),
+            game_type == GameType::Inter,
+        )?;
+        hmenu.CheckMenuItem(
+            IdPos::Id(ResourceId::Expert as u16),
+            game_type == GameType::Expert,
+        )?;
+        hmenu.CheckMenuItem(
+            IdPos::Id(ResourceId::Custom as u16),
+            game_type == GameType::Other,
+        )?;
 
-        menu_check(&hmenu, ResourceId::Color, color)?;
-        menu_check(&hmenu, ResourceId::Mark, mark)?;
-        menu_check(&hmenu, ResourceId::Sound, sound)?;
+        hmenu.CheckMenuItem(IdPos::Id(ResourceId::Color as u16), color)?;
+        hmenu.CheckMenuItem(IdPos::Id(ResourceId::Mark as u16), mark)?;
+        hmenu.CheckMenuItem(IdPos::Id(ResourceId::Sound as u16), sound)?;
 
         Ok(())
     }

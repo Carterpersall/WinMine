@@ -13,7 +13,7 @@ use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, GetTickCount64, HBRUSH, HINSTANCE,
     INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, LOWORD, POINT, PtInRect, RECT,
-    SIZE, WINDOWPOS, gui, prelude::*,
+    SIZE, gui, prelude::*,
 };
 
 use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
@@ -246,25 +246,6 @@ impl WinMineMainWindow {
         let y = self.y_box_from_ypos(point.y);
         self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
         Ok(())
-    }
-
-    /// Handles the `WM_WINDOWPOSCHANGED` message to store the new window position in preferences.
-    ///
-    /// TODO: Move this function into the closure.
-    /// # Arguments
-    /// * `pos` - A reference to the `WINDOWPOS` structure containing the new window position.
-    fn handle_window_pos_changed(&self, pos: &WINDOWPOS) {
-        if self
-            .state
-            .read()
-            .game_status
-            .contains(StatusFlag::Minimized)
-        {
-            return;
-        }
-
-        let mut state = self.state.write();
-        state.prefs.wnd_pos = POINT { x: pos.x, y: pos.y };
     }
 
     /// Handles smiley-face click completion when the left button is released.
@@ -519,33 +500,26 @@ impl WinMineMainWindow {
         self.wnd.on().wm_window_pos_changed({
             let self2 = self.clone();
             move |wnd_pos| {
-                if self2
-                    .state
-                    .read()
-                    .game_status
-                    .contains(StatusFlag::Minimized)
-                    && !self2.wnd.hwnd().IsIconic()
+                let mut state = self2.state.write();
+                if state.game_status.contains(StatusFlag::Minimized) && !self2.wnd.hwnd().IsIconic()
                 {
                     // If the window was previously minimized but is no longer, it is being restored from a minimized state
-                    let state = &mut self2.state.write();
                     state.game_status.remove(StatusFlag::Pause);
                     state.game_status.remove(StatusFlag::Minimized);
                     state.resume_game();
-                } else if !self2
-                    .state
-                    .read()
-                    .game_status
-                    .contains(StatusFlag::Minimized)
+                } else if !state.game_status.contains(StatusFlag::Minimized)
                     && self2.wnd.hwnd().IsIconic()
                 {
                     // If the window was not previously minimized but now is, it is being minimized
-                    let state = &mut self2.state.write();
                     state.pause_game();
                     state.game_status.insert(StatusFlag::Pause);
                     state.game_status.insert(StatusFlag::Minimized);
-                } else {
-                    // Otherwise, the window is just being moved or resized
-                    self2.handle_window_pos_changed(wnd_pos.windowpos);
+                } else if !state.game_status.contains(StatusFlag::Minimized) {
+                    // If the window is not minimized, but its position has changed, update the stored window position in preferences
+                    state.prefs.wnd_pos = POINT {
+                        x: wnd_pos.windowpos.x,
+                        y: wnd_pos.windowpos.y,
+                    };
                 }
                 Ok(())
             }
