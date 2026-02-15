@@ -107,8 +107,8 @@ impl Help {
 
     /// Applies help context based on the HELPINFO structure pointed to by `l_param`.
     /// # Arguments
-    /// * `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
-    /// * `ids` - The array of help context IDs.
+    /// - `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
+    /// - `ids` - The array of help context IDs.
     /// # Returns
     /// True if help was applied, false otherwise.
     pub fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
@@ -124,8 +124,8 @@ impl Help {
 
     /// Applies help context to a specific control.
     /// # Arguments
-    /// * `hwnd` - The handle to the control.
-    /// * `ids` - The array of help context IDs.
+    /// - `hwnd` - The handle to the control.
+    /// - `ids` - The array of help context IDs.
     pub fn apply_help_to_control(hwnd: &HWND, ids: &[u32]) {
         unsafe {
             HtmlHelpW(
@@ -141,8 +141,8 @@ impl Help {
     ///
     /// TODO: Integrate help files directly into the executable
     /// # Arguments
-    /// * `w_command` - The help command (e.g., HELPONHELP).
-    /// * `l_param` - Additional parameter for the help command.
+    /// - `w_command` - The help command (e.g., HELPONHELP).
+    /// - `l_param` - Additional parameter for the help command.
     /// # Notes
     /// - If `w_command` is `HELPONHELP`, the standard Windows help file `NTHelp.chm` is used.
     /// - For other commands, the help file is derived from the executable's path, replacing its extension with `.chm`.

@@ -22,7 +22,7 @@ pub enum Sound {
 impl Sound {
     /// Play a specific UI tune using the sounds in the resource file
     /// # Arguments
-    /// * `tune` - The tune to play
+    /// - `tune` - The tune to play
     pub fn play(self, hinst: &HINSTANCE) {
         let resource_ptr = self as usize as *const u16;
         // Playback uses the async flag so the UI thread is never blocked.

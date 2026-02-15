@@ -154,7 +154,7 @@ pub struct StateLock<T>(RwLock<T>);
 impl<T> StateLock<T> {
     /// Create a new `StateLock` wrapping the given value.
     /// # Arguments
-    /// * `value` - The value to wrap in the `RwLock`.
+    /// - `value` - The value to wrap in the `RwLock`.
     pub const fn new(value: T) -> Self {
         Self(RwLock::new(value))
     }
@@ -181,7 +181,7 @@ static RNG_STATE: AtomicU32 = AtomicU32::new(0);
 
 /// Seed the RNG with the specified seed value.
 /// # Arguments
-/// * `seed` - The seed value to initialize the RNG with.
+/// - `seed` - The seed value to initialize the RNG with.
 /// # Notes
 /// This function replicates the functionality of the C standard library's `srand()` function.
 pub fn seed_rng(seed: u16) {
@@ -229,7 +229,7 @@ fn rand() -> u32 {
 
 /// Return a pseudo-random number in the [0, `rnd_max`) range
 /// # Arguments
-/// * `rnd_max` - Upper bound (exclusive) for the random number
+/// - `rnd_max` - Upper bound (exclusive) for the random number
 /// # Returns
 /// A pseudo-random number in the [0, `rnd_max`) range
 pub fn rnd(rnd_max: u32) -> u32 {
@@ -285,10 +285,10 @@ impl WinMineMainWindow {
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
 /// # Arguments
-/// * `h_dlg` - Handle to the dialog window.
-/// * `dlg_id` - Resource ID of the dialog item.
-/// * `num_lo` - Minimum allowed value.
-/// * `num_hi` - Maximum allowed value.
+/// - `h_dlg` - Handle to the dialog window.
+/// - `dlg_id` - Resource ID of the dialog item.
+/// - `num_lo` - Minimum allowed value.
+/// - `num_hi` - Maximum allowed value.
 /// # Returns
 /// The clamped integer value from the dialog item, or an error if retrieval or parsing fails.
 pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -> AnyResult<u32> {
@@ -307,8 +307,8 @@ pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -
 
 /// Scale a 96-DPI measurement to the current UI DPI
 /// # Arguments
-/// * `val` - The measurement in pixels at 96 DPI.
-/// * `dpi` - The UI DPI to scale the measurement to.
+/// - `val` - The measurement in pixels at 96 DPI.
+/// - `dpi` - The UI DPI to scale the measurement to.
 /// # Returns
 /// The measurement scaled to the given DPI.
 /// # Notes

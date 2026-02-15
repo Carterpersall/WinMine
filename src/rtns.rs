@@ -63,7 +63,7 @@ pub enum BlockCell {
 impl From<u8> for BlockCell {
     /// Convert a `u8` value to a `BlockCell` enum.
     /// # Arguments
-    /// * `value` - The `u8` value to convert.
+    /// - `value` - The `u8` value to convert.
     /// # Returns
     /// The corresponding `BlockCell` enum variant.
     fn from(value: u8) -> Self {
@@ -106,7 +106,7 @@ impl From<BlockCell> for BlockInfo {
     ///
     /// The `bomb` and `visited` fields are set to `false` by default.
     /// # Arguments
-    /// * `cell` - The `BlockCell` enum to convert.
+    /// - `cell` - The `BlockCell` enum to convert.
     /// # Returns
     /// The corresponding `BlockInfo` struct.
     fn from(cell: BlockCell) -> Self {
@@ -249,7 +249,7 @@ static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 impl GameState {
     /// Initialize local graphics resources and reset the minefield before the game starts.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// - `hwnd` - Handle to the main window.
     /// # Returns
     /// `Ok(())` if successful, or an error if loading resources failed.
     pub fn init_game(&mut self, hwnd: &HWND) -> AnyResult<()> {
@@ -260,8 +260,8 @@ impl GameState {
 
     /// Check if the given coordinates are within the valid range of the board.
     /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
+    /// - `x` - The X coordinate.
+    /// - `y` - The Y coordinate.
     /// # Returns
     /// `true` if the coordinates are within range, `false` otherwise.
     pub const fn in_range(&self, x: usize, y: usize) -> bool {
@@ -281,8 +281,8 @@ impl GameState {
     ///
     /// This is called when the game ends to show the final board state.
     /// # Arguments
-    /// * `hdc` - Handle to the device context to draw on.
-    /// * `cell` - The `BlockCell` type to use for revealed bombs:
+    /// - `hdc` - Handle to the device context to draw on.
+    /// - `cell` - The `BlockCell` type to use for revealed bombs:
     ///     - `BlockCell::BombDown` for a loss
     ///     - `BlockCell::BombUp` for a win
     ///
@@ -315,8 +315,8 @@ impl GameState {
 
     /// Count the number of adjacent marked squares around the specified coordinates.
     /// # Arguments
-    /// * `x_center` - The X coordinate of the center square.
-    /// * `y_center` - The Y coordinate of the center square.
+    /// - `x_center` - The X coordinate of the center square.
+    /// - `y_center` - The Y coordinate of the center square.
     /// # Returns
     /// The count of adjacent marked squares (maximum 8).
     fn count_marks(&self, x_center: usize, y_center: usize) -> u8 {
@@ -360,8 +360,8 @@ impl GameState {
 
     /// Handles smiley-face interaction while the left button is pressed.
     /// # Arguments
-    /// * `hdc`: Handle to the device context to draw on.
-    /// * `point`: The coordinates of the mouse cursor.
+    /// - `hdc`: Handle to the device context to draw on.
+    /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// - `Ok(())` if the mouse move was handled.
     /// - `Err` if an error occurred while handling the mouse move.
@@ -391,8 +391,8 @@ impl GameState {
 
     /// Update the button face based on the game result.
     /// # Arguments
-    /// * `hdc` - Handle to the device context.
-    /// * `win` - `true` if the player has won, `false` otherwise.
+    /// - `hdc` - Handle to the device context.
+    /// - `win` - `true` if the player has won, `false` otherwise.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn update_button_for_result(&mut self, hdc: &ReleaseDCGuard, win: bool) -> AnyResult<()> {
@@ -408,7 +408,7 @@ impl GameState {
 
     /// Record a new win time if it is a personal best.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// - `hwnd` - Handle to the main window.
     fn record_win_if_needed(&mut self, hwnd: &HWND) {
         let game = self.prefs.game_type;
         if game != GameType::Other {
@@ -434,11 +434,11 @@ impl GameState {
     ///
     /// TODO: Could this function be merged with `step_box` to avoid passing the queue around?
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `queue` - The flood-fill work queue.
-    /// * `tail` - The current tail index of the queue.
-    /// * `x` - The X coordinate of the square.
-    /// * `y` - The Y coordinate of the square.
+    /// - `hdc` - The device context to draw on.
+    /// - `queue` - The flood-fill work queue.
+    /// - `tail` - The current tail index of the queue.
+    /// - `x` - The X coordinate of the square.
+    /// - `y` - The Y coordinate of the square.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_xy(
@@ -490,9 +490,9 @@ impl GameState {
 
     /// Flood-fill contiguous empty squares starting from (x, y).
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `x` - X coordinate of the starting square
-    /// * `y` - Y coordinate of the starting square
+    /// - `hdc` - The device context to draw on.
+    /// - `x` - X coordinate of the starting square
+    /// - `y` - Y coordinate of the starting square
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_box(&mut self, hdc: &ReleaseDCGuard, x: usize, y: usize) -> AnyResult<()> {
@@ -540,8 +540,8 @@ impl GameState {
 
     /// Handle the end of the game - stopping the timer, revealing bombs, updating the face, and recording wins.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
-    /// * `win` - `true` if the player has won, `false` otherwise
+    /// - `hwnd` - Handle to the main window.
+    /// - `win` - `true` if the player has won, `false` otherwise
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
@@ -575,9 +575,9 @@ impl GameState {
 
     /// Handle a user click on a single square.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
-    /// * `x` - The X coordinate of the clicked square.
-    /// * `y` - The Y coordinate of the clicked square.
+    /// - `hwnd` - Handle to the main window.
+    /// - `x` - The X coordinate of the clicked square.
+    /// - `y` - The Y coordinate of the clicked square.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_square(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
@@ -614,9 +614,9 @@ impl GameState {
 
     /// Handle a chord action on a revealed number square.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
-    /// * `x_center` - The X coordinate of the center square.
-    /// * `y_center` - The Y coordinate of the center square.
+    /// - `hwnd` - Handle to the main window.
+    /// - `x_center` - The X coordinate of the center square.
+    /// - `y_center` - The Y coordinate of the center square.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     fn step_block(&mut self, hwnd: &HWND, x_center: usize, y_center: usize) -> AnyResult<()> {
@@ -660,9 +660,9 @@ impl GameState {
 
     /// Handle a user guess (flag or question mark) on a square.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
-    /// * `x` - The X coordinate of the square.
-    /// * `y` - The Y coordinate of the square.
+    /// - `hwnd` - Handle to the main window.
+    /// - `x` - The X coordinate of the square.
+    /// - `y` - The Y coordinate of the square.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn make_guess(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
@@ -715,8 +715,8 @@ impl GameState {
     /// - Boxes are pushed down while the left mouse button is pressed over them.
     /// - Boxes are restored to their raised state when the left mouse button is released or the cursor is no longer over them.
     /// # Arguments
-    /// * `x` - The X coordinate of the box.
-    /// * `y` - The Y coordinate of the box.
+    /// - `x` - The X coordinate of the box.
+    /// - `y` - The Y coordinate of the box.
     const fn invert_box(&mut self, x: usize, y: usize) {
         let mut blk = self.board_cells[x][y].block_type;
         blk = match blk {
@@ -733,8 +733,8 @@ impl GameState {
 
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
     /// # Arguments
-    /// * `x` - The X coordinate.
-    /// * `y` - The Y coordinate.
+    /// - `x` - The X coordinate.
+    /// - `y` - The Y coordinate.
     /// # Returns
     /// `true` if the coordinate is valid for flood-fill, `false` otherwise.
     fn in_range_step(&mut self, x: usize, y: usize) -> bool {
@@ -765,7 +765,7 @@ impl GameState {
 
     /// Handle the per-second game timer tick.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// - `hwnd` - Handle to the main window.
     /// # Returns
     /// An `Ok(())` if successful, or an error if updating the display failed
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
@@ -787,7 +787,7 @@ impl WinMineMainWindow {
     /// TODO: Move this into `GameState`.
     ///       Moving this into `GameState` is currently blocked by the function `adjust_window`.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// - `hwnd` - Handle to the main window.
     /// # Returns
     /// An `Ok(())` if successful, or an error if resizing or updating the display failed.
     pub fn start_game(&self) -> AnyResult<()> {
@@ -852,9 +852,9 @@ impl WinMineMainWindow {
 impl GameState {
     /// Track mouse movement over the board and provide visual feedback.
     /// # Arguments
-    /// * `hdc` - Handle to the device context to draw on.
-    /// * `x_new` - The new X coordinate of the mouse.
-    /// * `y_new` - The new Y coordinate of the mouse.
+    /// - `hdc` - Handle to the device context to draw on.
+    /// - `x_new` - The new X coordinate of the mouse.
+    /// - `y_new` - The new Y coordinate of the mouse.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn track_mouse(
@@ -943,7 +943,7 @@ impl GameState {
 
     /// Handle a left-button release: start the timer, then either chord or step.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
+    /// - `hwnd` - Handle to the main window.
     /// # Returns
     /// An `Ok(())` if successful, or an error if drawing failed.
     pub fn do_button_1_up(&mut self, hwnd: &HWND) -> AnyResult<()> {

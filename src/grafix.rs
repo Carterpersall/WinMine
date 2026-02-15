@@ -147,7 +147,7 @@ enum LEDSprite {
 impl From<u16> for LEDSprite {
     /// Create an `LEDSprite` from a `u16` value.
     /// # Arguments
-    /// * `value` - The `u16` value to convert.
+    /// - `value` - The `u16` value to convert.
     fn from(value: u16) -> Self {
         match value.into() {
             0 => LEDSprite::Zero,
@@ -169,7 +169,7 @@ impl From<u16> for LEDSprite {
 impl From<i16> for LEDSprite {
     /// Create an `LEDSprite` from an `i16` value.
     /// # Arguments
-    /// * `value` - The `i16` value to convert.
+    /// - `value` - The `i16` value to convert.
     fn from(value: i16) -> Self {
         LEDSprite::from(value.unsigned_abs())
     }
@@ -297,10 +297,10 @@ impl Default for GrafixState {
 impl GrafixState {
     /// Draw a single block at the specified board coordinates.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `x` - The X coordinate of the block.
-    /// * `y` - The Y coordinate of the block.
-    /// * `board` - Array slice containing the board state.
+    /// - `hdc` - The device context to draw on.
+    /// - `x` - The X coordinate of the block.
+    /// - `y` - The Y coordinate of the block.
+    /// - `board` - Array slice containing the board state.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_block(
@@ -332,10 +332,10 @@ impl GrafixState {
 
     /// Draw the entire minefield grid onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `width` - The width of the board in blocks.
-    /// * `height` - The height of the board in blocks.
-    /// * `board` - Array slice containing the board state.
+    /// - `hdc` - The device context to draw on.
+    /// - `width` - The width of the board in blocks.
+    /// - `height` - The height of the board in blocks.
+    /// - `board` - Array slice containing the board state.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_grid(
@@ -370,9 +370,9 @@ impl GrafixState {
 
     /// Draw a single LED digit at the specified X coordinate.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `x` - The X coordinate to draw the LED digit.
-    /// * `led_index` - The index of the LED digit to draw.
+    /// - `hdc` - The device context to draw on.
+    /// - `x` - The X coordinate to draw the LED digit.
+    /// - `led_index` - The index of the LED digit to draw.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     fn draw_led(&self, hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
@@ -399,8 +399,8 @@ impl GrafixState {
 
     /// Draw the bomb counter onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `bombs` - The number of bombs left to display.
+    /// - `hdc` - The device context to draw on.
+    /// - `bombs` - The number of bombs left to display.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
@@ -439,8 +439,8 @@ impl GrafixState {
 
     /// Draw the timer onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `time` - The time in seconds to display.
+    /// - `hdc` - The device context to draw on.
+    /// - `time` - The time in seconds to display.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
@@ -485,8 +485,8 @@ impl GrafixState {
 
     /// Draw the face button onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `sprite` - The button sprite to draw.
+    /// - `hdc` - The device context to draw on.
+    /// - `sprite` - The button sprite to draw.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
@@ -520,12 +520,12 @@ impl GrafixState {
 /// Create a resampled bitmap using area averaging to avoid aliasing artifacts when using fractional scaling.
 /// This function reads the source bitmap bits, performs area averaging, and creates a new bitmap with the resampled data.
 /// # Arguments
-/// * `hdc` - The device context used for bitmap operations.
-/// * `src_bmp` - The source bitmap to be resampled.
-/// * `src_w` - The width of the source bitmap in pixels.
-/// * `src_h` - The height of the source bitmap in pixels.
-/// * `dst_w` - The desired width of the destination bitmap in pixels.
-/// * `dst_h` - The desired height of the destination bitmap in pixels.
+/// - `hdc` - The device context used for bitmap operations.
+/// - `src_bmp` - The source bitmap to be resampled.
+/// - `src_w` - The width of the source bitmap in pixels.
+/// - `src_h` - The height of the source bitmap in pixels.
+/// - `dst_w` - The desired width of the destination bitmap in pixels.
+/// - `dst_h` - The desired height of the destination bitmap in pixels.
 /// # Returns
 /// An `AnyResult` containing a guard for the newly created resampled bitmap.
 fn create_resampled_bitmap(
@@ -651,8 +651,8 @@ fn create_resampled_bitmap(
 impl GrafixState {
     /// Set the pen for drawing based on the normal flag.
     /// # Arguments
-    /// * `hdc` - The device context to set the pen on.
-    /// * `border_style` - The border style determining the pen to use.
+    /// - `hdc` - The device context to set the pen on.
+    /// - `border_style` - The border style determining the pen to use.
     /// # Returns
     /// `Ok(())` if successful, or an error if setting the pen failed.
     fn select_border_pen(&self, hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
@@ -677,13 +677,13 @@ impl GrafixState {
 
     /// Draw a beveled border rectangle onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `x1` - The left X coordinate of the rectangle.
-    /// * `y1` - The top Y coordinate of the rectangle.
-    /// * `x2` - The right X coordinate of the rectangle.
-    /// * `y2` - The bottom Y coordinate of the rectangle.
-    /// * `width` - The width of the border in pixels.
-    /// * `border_style` - The border style determining the border appearance.
+    /// - `hdc` - The device context to draw on.
+    /// - `x1` - The left X coordinate of the rectangle.
+    /// - `y1` - The top Y coordinate of the rectangle.
+    /// - `x2` - The right X coordinate of the rectangle.
+    /// - `y2` - The bottom Y coordinate of the rectangle.
+    /// - `width` - The width of the border in pixels.
+    /// - `border_style` - The border style determining the border appearance.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     fn draw_border(
@@ -735,7 +735,7 @@ impl GrafixState {
 
     /// Draw the entire window background and chrome elements onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
+    /// - `hdc` - The device context to draw on.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     fn draw_background(&self, hdc: &HDC) -> AnyResult<()> {
@@ -822,8 +822,8 @@ impl GrafixState {
 
     /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
     /// # Arguments
-    /// * `hdc` - The device context to draw on.
-    /// * `state` - The current game state containing board and UI information.
+    /// - `hdc` - The device context to draw on.
+    /// - `state` - The current game state containing board and UI information.
     /// # Returns
     /// `Ok(())` if successful, or an error if drawing failed.
     pub fn draw_screen(&self, hdc: &HDC, state: &GameState) -> AnyResult<()> {
@@ -848,8 +848,8 @@ impl GrafixState {
 
     /// Load the bitmap resources and prepare cached DCs for rendering.
     /// # Arguments
-    /// * `hwnd` - Handle to the main window.
-    /// * `color` - Whether to load color or monochrome resources.
+    /// - `hwnd` - Handle to the main window.
+    /// - `color` - Whether to load color or monochrome resources.
     /// # Returns
     /// Ok(()) if successful, or an error if loading resources failed.
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
@@ -1045,8 +1045,8 @@ impl GrafixState {
 
     /// Load a bitmap resource from the application resources.
     /// # Arguments
-    /// * `id` - The bitmap resource ID to load.
-    /// * `color_on` - Whether color mode is enabled.
+    /// - `id` - The bitmap resource ID to load.
+    /// - `color_on` - Whether color mode is enabled.
     /// # Returns
     /// Optionally, a tuple containing the resource handle and a pointer to the bitmap data.
     fn load_bitmap_resource(
@@ -1070,7 +1070,7 @@ impl GrafixState {
 
     /// Calculate the size of the DIB header plus color palette
     /// # Arguments
-    /// * `color_on` - Whether color mode is enabled
+    /// - `color_on` - Whether color mode is enabled
     /// # Returns
     /// Size in bytes of the DIB header and palette
     const fn dib_header_size(&self, color_on: bool) -> usize {
@@ -1080,9 +1080,9 @@ impl GrafixState {
 
     /// Calculate the byte size of a bitmap given its dimensions and color mode
     /// # Arguments
-    /// * `color_on` - Whether color mode is enabled
-    /// * `x` - Width of the bitmap in pixels
-    /// * `y` - Height of the bitmap in pixels
+    /// - `color_on` - Whether color mode is enabled
+    /// - `x` - Width of the bitmap in pixels
+    /// - `y` - Height of the bitmap in pixels
     /// # Returns
     /// Size in bytes of the bitmap data
     const fn cb_bitmap(&self, color_on: bool, x: i32, y: i32) -> usize {
@@ -1097,9 +1097,9 @@ impl GrafixState {
 
     /// Retrieve the cached compatible DC for the block at the given board coordinates.
     /// # Arguments
-    /// * `x` - X coordinate on the board
-    /// * `y` - Y coordinate on the board
-    /// * `board` - Slice representing the board state
+    /// - `x` - X coordinate on the board
+    /// - `y` - Y coordinate on the board
+    /// - `board` - Slice representing the board state
     /// # Returns
     /// Optionally, a reference to the compatible DC for the block sprite
     fn block_dc(
@@ -1118,9 +1118,9 @@ impl GrafixState {
 
     /// Determine the sprite index for the block at the given board coordinates.
     /// # Arguments
-    /// * `x` - X coordinate on the board
-    /// * `y` - Y coordinate on the board
-    /// * `board` - Array slice containing the board state
+    /// - `x` - X coordinate on the board
+    /// - `y` - Y coordinate on the board
+    /// - `board` - Array slice containing the board state
     /// # Returns
     /// The sprite index for the block at the specified coordinates
     const fn block_sprite_index(

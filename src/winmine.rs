@@ -49,7 +49,7 @@ pub struct WinMineMainWindow {
 impl WinMineMainWindow {
     /// Creates the main window and hooks its events.
     /// # Arguments
-    /// * `wnd`: The main window to wrap.
+    /// - `wnd`: The main window to wrap.
     /// # Returns
     /// The wrapped main window with events hooked.
     fn new(wnd: gui::WindowMain) -> Self {
@@ -65,7 +65,7 @@ impl WinMineMainWindow {
 
     /// Runs the WinMine application.
     /// # Arguments
-    /// * `h_instance`: The application instance handle.
+    /// - `h_instance`: The application instance handle.
     /// # Returns
     /// Ok(()) on success, or an error on failure.
     pub fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
@@ -157,7 +157,7 @@ impl WinMineMainWindow {
     ///
     /// TODO: Move this function into the closure.
     /// # Arguments
-    /// * `key`: The virtual key code of the key that was pressed.
+    /// - `key`: The virtual key code of the key that was pressed.
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the key failed.
     fn handle_keydown(&self, key: VK) -> AnyResult<()> {
@@ -186,8 +186,8 @@ impl WinMineMainWindow {
 
     /// Handles mouse move events.
     /// # Arguments
-    /// * `key`: The mouse buttons currently pressed.
-    /// * `point`: The coordinates of the mouse cursor.
+    /// - `key`: The mouse buttons currently pressed.
+    /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
@@ -216,8 +216,8 @@ impl WinMineMainWindow {
 
     /// Handles right mouse button down events.
     /// # Arguments
-    /// * `btn`: The mouse button that was pressed.
-    /// * `point`: The coordinates of the mouse cursor.
+    /// - `btn`: The mouse button that was pressed.
+    /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the right button down failed.
     fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
@@ -253,7 +253,7 @@ impl WinMineMainWindow {
     /// TODO: Move function into `GameState`.
     ///       Moving this function is blocked by the function `start_game`
     /// # Arguments
-    /// * `point`: The coordinates of the mouse cursor.
+    /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// - `Ok(())` if the mouse button release was handled.
     /// - `Err` if an error occurred while handling the mouse button release.
@@ -295,7 +295,7 @@ impl WinMineMainWindow {
     /// This function is called whenever the board or menu state changes to ensure
     /// that the main window is appropriately sized and positioned on the screen.
     /// # Arguments
-    /// * `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
+    /// - `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
     /// # Returns
     /// An `Ok(())` if successful, or an error if adjustment failed.
     pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
@@ -398,7 +398,7 @@ impl WinMineMainWindow {
 
     /// Converts an x-coordinate in pixels to a box index.
     /// # Arguments
-    /// * `x`: The x-coordinate in pixels.
+    /// - `x`: The x-coordinate in pixels.
     /// # Returns
     /// The corresponding box index.
     pub fn x_box_from_xpos(&self, x: i32) -> usize {
@@ -411,7 +411,7 @@ impl WinMineMainWindow {
 
     /// Converts a y-coordinate in pixels to a box index.
     /// # Arguments
-    /// * `y`: The y-coordinate in pixels.
+    /// - `y`: The y-coordinate in pixels.
     /// # Returns
     /// The corresponding box index.
     pub fn y_box_from_ypos(&self, y: i32) -> usize {
@@ -906,7 +906,7 @@ impl PrefDialog {
 
     /// Displays the Preferences dialog as a modal window.
     /// # Arguments
-    /// * `parent`: The parent GUI element for the modal dialog.
+    /// - `parent`: The parent GUI element for the modal dialog.
     fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
         self.dlg.show_modal(parent)
     }
@@ -1021,7 +1021,7 @@ impl BestDialog {
 
     /// Displays the best-times dialog as a modal window.
     /// # Arguments
-    /// * `parent`: The parent GUI element for the modal dialog.
+    /// - `parent`: The parent GUI element for the modal dialog.
     fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
         self.dlg.show_modal(parent)
     }
@@ -1030,12 +1030,12 @@ impl BestDialog {
 
     /// Resets the best scores dialog with the provided times and names.
     /// # Arguments
-    /// * `time_begin` - The best time for the beginner level.
-    /// * `time_inter` - The best time for the intermediate level.
-    /// * `time_expert` - The best time for the expert level.
-    /// * `name_begin` - The name associated with the beginner level best time.
-    /// * `name_inter` - The name associated with the intermediate level best time.
-    /// * `name_expert` - The name associated with the expert level best time.
+    /// - `time_begin` - The best time for the beginner level.
+    /// - `time_inter` - The best time for the intermediate level.
+    /// - `time_expert` - The best time for the expert level.
+    /// - `name_begin` - The name associated with the beginner level best time.
+    /// - `name_inter` - The name associated with the intermediate level best time.
+    /// - `name_expert` - The name associated with the expert level best time.
     /// # Returns
     /// A `Result` indicating success or failure.
     fn reset_best_dialog(
@@ -1183,7 +1183,7 @@ impl EnterDialog {
 
     /// Displays the name entry dialog as a modal window.
     /// # Arguments
-    /// * `parent`: The parent GUI element for the modal dialog.
+    /// - `parent`: The parent GUI element for the modal dialog.
     fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
         self.dlg.show_modal(parent)
     }

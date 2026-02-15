@@ -38,7 +38,7 @@ impl WinMineMainWindow {
     /// XYZZY sequence and updates the counter accordingly.
     /// If the sequence is broken, the counter is reset.
     /// # Arguments
-    /// * `w_param` - The WPARAM from the keydown message, containing the virtual key code
+    /// - `w_param` - The WPARAM from the keydown message, containing the virtual key code
     pub fn handle_xyzzys_default_key(&self, key: VK) {
         let current = I_XYZZY.load(Ordering::Relaxed);
         if current < CCH_XYZZY {
@@ -59,8 +59,8 @@ impl WinMineMainWindow {
     ///
     /// until the first block is revealed.
     /// # Arguments
-    /// * `key` - The WPARAM from the mouse move message, containing key states.
-    /// * `point` - The LPARAM from the mouse move message, containing cursor position.
+    /// - `key` - The WPARAM from the mouse move message, containing key states.
+    /// - `point` - The LPARAM from the mouse move message, containing cursor position.
     /// # Returns
     /// An `Ok(())` if successful, or an error if handling the mouse move failed.
     pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) -> AnyResult<()> {

@@ -87,7 +87,7 @@ impl GameType {
 
     /// Returns the preset data for a given game type, or None for custom games.
     /// # Arguments
-    /// * `game`: The game type to get preset data for.
+    /// - `game`: The game type to get preset data for.
     /// # Returns
     /// The preset data as (mines, height, width), or None for a custom game.
     pub const fn preset_data(&self) -> Option<(i16, u32, u32)> {
@@ -119,7 +119,7 @@ impl GameType {
 
     /// Create a `GameType` from a `u32` value, defaulting to `Other` for invalid values.
     /// # Arguments
-    /// * `val` - The `u32` value to convert.
+    /// - `val` - The `u32` value to convert.
     /// # Returns
     /// A `GameType` corresponding to the given value, or `Other` if the value is invalid.
     pub const fn from(val: u32) -> GameType {
@@ -192,8 +192,8 @@ pub struct Pref {
 impl Pref {
     /// Read an integer preference from the registry with clamping.
     /// # Arguments
-    /// * `handle` - Open registry key handle
-    /// * `key` - Preference key to read
+    /// - `handle` - Open registry key handle
+    /// - `key` - Preference key to read
     /// # Returns
     /// The retrieved integer value, or an error if reading failed
     pub fn read_int(&self, handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
@@ -211,8 +211,8 @@ impl Pref {
 
     /// Read a string preference from the registry.
     /// # Arguments
-    /// * `handle` - Open registry key handle
-    /// * `key` - Preference key to read
+    /// - `handle` - Open registry key handle
+    /// - `key` - Preference key to read
     /// # Returns
     /// The retrieved string, or the default name on failure
     fn read_sz(&self, handle: &HKEY, key: PrefKey) -> String {
@@ -375,9 +375,9 @@ impl Pref {
 
     /// Write a preference to the registry.
     /// # Arguments
-    /// * `handle` - Open registry key handle
-    /// * `key` - Preference key to write
-    /// * `val` - Registry value to store
+    /// - `handle` - Open registry key handle
+    /// - `key` - Preference key to write
+    /// - `val` - Registry value to store
     /// # Returns
     /// An `Ok(())` if successful, or an error if writing failed.
     fn write(&self, handle: &HKEY, key: PrefKey, val: RegistryValue) -> AnyResult<()> {
