@@ -9,7 +9,7 @@
 //! code can be toggled on and off by pressing Shift or can
 //! be temporarily enabled by holding Ctrl.
 
-use core::sync::atomic::{AtomicI32, Ordering};
+use core::sync::atomic::{AtomicUsize, Ordering};
 
 use winsafe::co::{MK, PS, VK};
 use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
@@ -17,9 +17,9 @@ use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
 use crate::rtns::GameState;
 
 /// Length of the XYZZY cheat code sequence.
-const CCH_XYZZY: i32 = 5;
+const CCH_XYZZY: usize = 5;
 /// Atomic counter tracking the progress of the XYZZY cheat code entry.
-static I_XYZZY: AtomicI32 = AtomicI32::new(0);
+static I_XYZZY: AtomicUsize = AtomicUsize::new(0);
 /// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
@@ -42,7 +42,7 @@ impl GameState {
     pub fn handle_xyzzys_default_key(&self, key: VK) {
         let current = I_XYZZY.load(Ordering::Relaxed);
         if current < CCH_XYZZY {
-            let expected = XYZZY_SEQUENCE[current as usize];
+            let expected = XYZZY_SEQUENCE[current];
             if expected == key {
                 I_XYZZY.store(current + 1, Ordering::Relaxed);
             } else {

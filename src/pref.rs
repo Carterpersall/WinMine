@@ -183,6 +183,8 @@ pub struct Pref {
     /// Whether to use color assets.
     pub color: bool,
     /// Best times for each difficulty level.
+    ///
+    /// TODO: Make this a struct or split into separate fields.
     pub best_times: [u16; 3],
     /// Player name for Beginner level.
     pub beginner_name: String,
@@ -202,9 +204,10 @@ impl Pref {
     /// - `Err` - If the preference key is invalid or if the registry value is not a DWORD
     pub fn read_int(&self, handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
         // Get the name of the preference key
-        let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
-            return Err(format!("Invalid preference key: {}", key as u8).into());
-        };
+        let key_name = PREF_STRINGS
+            .get(key as usize)
+            .copied()
+            .ok_or(format!("Invalid preference key: {}", key as u8))?;
 
         // Attempt to read the DWORD value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(Some(key_name))? {
@@ -221,9 +224,10 @@ impl Pref {
     /// - `String` - The retrieved string, or the default name on failure
     fn read_sz(&self, handle: &HKEY, key: PrefKey) -> String {
         // Get the name of the preference key
-        let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
-            return DEFAULT_PLAYER_NAME.to_string();
-        };
+        let key_name = PREF_STRINGS
+            .get(key as usize)
+            .copied()
+            .unwrap_or(DEFAULT_PLAYER_NAME);
 
         // Attempt to read the string value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(Some(key_name)) {
@@ -389,9 +393,10 @@ impl Pref {
     /// - `Err` - If there was an error writing to the registry
     fn write(&self, handle: &HKEY, key: PrefKey, val: RegistryValue) -> AnyResult<()> {
         // Get the name of the preference key
-        let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
-            return Err("Invalid preference key".into());
-        };
+        let key_name = PREF_STRINGS
+            .get(key as usize)
+            .copied()
+            .ok_or(format!("Invalid preference key: {}", key as u8))?;
 
         // Store the value in the registry
         handle.RegSetValueEx(Some(key_name), val)?;

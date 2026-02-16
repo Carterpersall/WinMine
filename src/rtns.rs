@@ -560,8 +560,7 @@ impl GameState {
             if vkey.has(MK::MBUTTON) {
                 // If the middle button is pressed, start a chord operation
                 // However, if a chord is already active, end the chord instead
-                let chord_active = self.chord_active;
-                self.chord_active = !chord_active;
+                self.chord_active = !self.chord_active;
             }
 
             // Is the game is active, start a drag operation
@@ -891,6 +890,7 @@ impl GameState {
     /// - `x` - The X coordinate of the box.
     /// - `y` - The Y coordinate of the box.
     const fn invert_box(&mut self, x: usize, y: usize) {
+        // TODO: This can be improved.
         let mut blk = self.board_cells[x][y].block_type;
         blk = match blk {
             // Push the box down by changing the block type to the corresponding "down" version
@@ -1047,8 +1047,8 @@ impl GameState {
         let y_max = self.board_height;
         let x_max = self.board_width;
 
-        // Check if a chord operation is active
-        if self.chord_active {
+        // Check if a chord operation is active and the game is not in a non-play state (e.g. paused or game over)
+        if self.chord_active && self.game_status.contains(StatusFlag::Play) {
             // Determine if the old and new positions are within range
             let valid_new = self.in_range(x_new, y_new);
             let valid_old = self.in_range(self.cursor_x, self.cursor_y);
@@ -1131,9 +1131,7 @@ impl GameState {
                 // Play the tick sound, display the initial time, and start the timer
                 self.timer_running = true;
                 self.do_timer(hwnd)?;
-                if let Some(hwnd) = hwnd.as_opt() {
-                    hwnd.SetTimer(ID_TIMER, 1000, None)?;
-                }
+                hwnd.SetTimer(ID_TIMER, 1000, None)?;
             }
 
             // If the game is not in play mode, reset the cursor position to a location off the board

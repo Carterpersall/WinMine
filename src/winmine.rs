@@ -416,12 +416,10 @@ impl WinMineMainWindow {
         self.wnd.on().wm_mouse_move({
             let self2 = self.clone();
             move |msg| {
-                self2.state.write().handle_mouse_move(
-                    self2.wnd.hwnd(),
-                    msg.vkey_code,
-                    msg.coords,
-                )?;
-                Ok(())
+                self2
+                    .state
+                    .write()
+                    .handle_mouse_move(self2.wnd.hwnd(), msg.vkey_code, msg.coords)
             }
         });
 
@@ -432,8 +430,7 @@ impl WinMineMainWindow {
                     self2.wnd.hwnd(),
                     r_btn.vkey_code,
                     r_btn.coords,
-                )?;
-                Ok(())
+                )
             }
         });
 
@@ -444,9 +441,7 @@ impl WinMineMainWindow {
                     self2.wnd.hwnd(),
                     r_btn.vkey_code,
                     r_btn.coords,
-                )?;
-                // TODO: Single function closures don't need an explicit `Ok(())` return, instead just return the function result directly.
-                Ok(())
+                )
             }
         });
 
@@ -493,8 +488,7 @@ impl WinMineMainWindow {
                 self2
                     .state
                     .write()
-                    .finish_primary_button_drag(self2.wnd.hwnd())?;
-                Ok(())
+                    .finish_primary_button_drag(self2.wnd.hwnd())
             }
         });
 
@@ -893,9 +887,9 @@ impl BestDialog {
     /// - `name_inter` - The name associated with the intermediate level best time.
     /// - `name_expert` - The name associated with the expert level best time.
     /// # Returns
-    /// `Ok(())` - If the dialog was reset successfully.
-    /// `Err` - If an error occurred while resetting the dialog.
-    fn reset_best_dialog(
+    /// `Ok(())` - If the dialog was set successfully.
+    /// `Err` - If an error occurred while setting the dialog.
+    fn set_best_dialog(
         &self,
         time_begin: u16,
         time_inter: u16,
@@ -943,7 +937,7 @@ impl BestDialog {
             let self2 = self.clone();
             move |_| -> AnyResult<bool> {
                 let state = self2.state.read();
-                self2.reset_best_dialog(
+                self2.set_best_dialog(
                     state.prefs.best_times[GameType::Begin as usize],
                     state.prefs.best_times[GameType::Inter as usize],
                     state.prefs.best_times[GameType::Expert as usize],
@@ -976,7 +970,7 @@ impl BestDialog {
                         state.prefs.expert_name = DEFAULT_PLAYER_NAME.to_string();
                     };
 
-                    self2.reset_best_dialog(
+                    self2.set_best_dialog(
                         999,
                         999,
                         999,

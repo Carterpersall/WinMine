@@ -410,13 +410,11 @@ impl GrafixState {
     /// - `Err` - If drawing the LED digit failed.
     fn draw_led(&self, hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
         // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
-        let Some(src) = self
+        let src = self
             .mem_led_cache
             .get(led_index as usize)
-            .and_then(|cache| cache.as_ref())
-        else {
-            return Ok(());
-        };
+            .and_then(Option::as_ref)
+            .ok_or("LED bitmap not loaded or index out of range")?;
 
         hdc.SetStretchBltMode(STRETCH_MODE::COLORONCOLOR)?;
         hdc.StretchBlt(
@@ -537,9 +535,13 @@ impl GrafixState {
             return Ok(());
         }
 
-        let Some(src) = self.mem_button_cache[idx].as_ref() else {
-            return Ok(());
-        };
+        let src = self
+            .mem_button_cache
+            .get(idx)
+            .and_then(Option::as_ref)
+            .ok_or(format!(
+                "Button bitmap not loaded or index {idx} out of range"
+            ))?;
 
         hdc.BitBlt(
             POINT::with(x, self.dims.top_led),
@@ -1127,6 +1129,8 @@ impl GrafixState {
     /// # Returns
     /// - `Some(&HDC)` - The compatible DC containing the block sprite
     /// - `None` - If the block type is out of range or if the cached DC is not available
+    ///
+    /// TODO: Should this return a result instead of an option?
     fn block_dc(
         &self,
         x: usize,
@@ -1134,11 +1138,11 @@ impl GrafixState {
         board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> Option<&HDC> {
         let idx = self.block_sprite_index(x, y, board);
-        if idx >= I_BLK_MAX {
-            return None;
-        }
 
-        self.mem_blk_cache[idx].as_ref().map(CachedBitmapGuard::hdc)
+        self.mem_blk_cache
+            .get(idx)
+            .and_then(Option::as_ref)
+            .map(CachedBitmapGuard::hdc)
     }
 
     /// Determine the sprite index for the block at the given board coordinates.
@@ -1148,6 +1152,8 @@ impl GrafixState {
     /// - `board` - Array slice containing the board state
     /// # Returns
     /// - The sprite index for the block at the specified coordinates
+    ///
+    /// TODO: Should this return a result?
     const fn block_sprite_index(
         &self,
         x: usize,
