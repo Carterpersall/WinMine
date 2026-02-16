@@ -152,7 +152,7 @@ impl From<u16> for LEDSprite {
     /// # Arguments
     /// - `value` - The `u16` value to convert.
     fn from(value: u16) -> Self {
-        match value.into() {
+        match value {
             0 => LEDSprite::Zero,
             1 => LEDSprite::One,
             2 => LEDSprite::Two,
@@ -880,7 +880,6 @@ impl GrafixState {
     /// - `Ok(())` - If the bitmaps were loaded and cached successfully
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
-        // TODO: Replace these if-statements with `ok_or()?`
         let (h_blks, lp_blks) =
             self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::BlocksBmp, color)?;
         let (h_led, lp_led) =

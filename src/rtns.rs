@@ -54,9 +54,9 @@ pub enum BlockCell {
     BombUp = 14,
     /// A blank cell in the raised state.
     BlankUp = 15,
-    /// A border cell surrounding the playable area.
+    /// A border cell surrounding the playable area, used to simplify bounds checking.
     ///
-    /// TODO: I don't see this in the blocks.bmp file; is it actually used?
+    /// TODO: I don't think that this is needed, remove it.
     Border = 16,
 }
 
@@ -271,8 +271,6 @@ impl GameState {
     }
 
     /// Check if the player has won the game.
-    ///
-    /// TODO: Should this function be removed?
     /// # Returns
     /// - `true` - If the player has won.
     /// - `false` - If the player has not won.
@@ -805,58 +803,56 @@ impl WinMineMainWindow {
     /// - `Ok(())` - If the game was successfully started.
     /// - `Err` - If an error occurred while resizing or updating the display.
     pub fn start_game(&self) -> AnyResult<()> {
-        let x_prev = self.state.read().board_width;
-        let y_prev = self.state.read().board_height;
+        let mut state = self.state.write();
+        let x_prev = state.board_width;
+        let y_prev = state.board_height;
 
-        let (pref_width, pref_height, total_bombs) = {
-            let state = self.state.read();
-            (state.prefs.width, state.prefs.height, state.prefs.mines)
-        };
-
-        let f_adjust = if pref_width != x_prev || pref_height != y_prev {
+        let f_adjust = if state.prefs.width != x_prev || state.prefs.height != y_prev {
             AdjustFlag::ResizeAndRedraw
         } else {
             AdjustFlag::Redraw
         };
 
-        // TODO: Cache `self.state.write()`
-        self.state.write().board_width = pref_width;
-        self.state.write().board_height = pref_height;
+        // Update the board dimensions based on the current preferences
+        state.board_width = state.prefs.width;
+        state.board_height = state.prefs.height;
 
-        self.state.write().clear_field();
-        self.state.write().btn_face_state = ButtonSprite::Happy;
-        self.state.write().timer_running = false;
+        // Reset the board to a blank state
+        state.clear_field();
+        state.btn_face_state = ButtonSprite::Happy;
+        state.timer_running = false;
 
-        self.state.write().total_bombs = total_bombs;
-
-        let width = self.state.read().board_width;
-        let height = self.state.read().board_height;
-
-        let mut bombs = total_bombs;
+        // Randomly place bombs on the board until the total number of bombs matches the number specified in preferences
+        state.total_bombs = state.prefs.mines;
+        let mut bombs = state.prefs.mines;
         while bombs > 0 {
             let mut x;
             let mut y;
+            // TODO: Loops are bad. Look into doing this a different way.
             loop {
-                x = rnd(width as u32) as usize + 1;
-                y = rnd(height as u32) as usize + 1;
-                if !self.state.read().board_cells[x][y].bomb {
+                x = rnd(state.board_width as u32) as usize + 1;
+                y = rnd(state.board_height as u32) as usize + 1;
+                if !state.board_cells[x][y].bomb {
                     break;
                 }
             }
-            self.state.write().board_cells[x][y].bomb = true;
+            state.board_cells[x][y].bomb = true;
             bombs -= 1;
         }
 
-        self.state.write().secs_elapsed = 0;
-        self.state.write().bombs_left = total_bombs;
-        self.state.write().boxes_visited = 0;
-        self.state.write().boxes_to_win = (width * height) as u16 - total_bombs as u16;
-        self.state.write().game_status = StatusFlag::Play;
+        state.secs_elapsed = 0;
+        state.bombs_left = state.prefs.mines;
+        state.boxes_visited = 0;
+        state.boxes_to_win =
+            (state.board_width * state.board_height) as u16 - state.prefs.mines as u16;
+        state.game_status = StatusFlag::Play;
 
-        self.state
-            .write()
+        state
             .grafix
-            .draw_bomb_count(self.wnd.hwnd().GetDC()?.deref(), total_bombs)?;
+            .draw_bomb_count(self.wnd.hwnd().GetDC()?.deref(), state.prefs.mines)?;
+
+        // Drop the write lock before calling `adjust_window` since it also needs to acquire a write lock to update the board state for redrawing.
+        drop(state);
 
         self.adjust_window(f_adjust)?;
 

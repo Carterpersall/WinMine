@@ -225,6 +225,7 @@ fn rand() -> u32 {
     const RNG_INCREMENT: u32 = 2_531_011;
 
     let mut current = RNG_STATE.load(Ordering::Relaxed);
+    // TODO: Loops are bad. Look into doing this a different way.
     loop {
         // Compute the next RNG state using LCG formula
         let next = current

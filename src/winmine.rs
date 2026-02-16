@@ -600,7 +600,7 @@ impl WinMineMainWindow {
             move |r_btn| {
                 // If the right button is released while the left button is down, finish the drag operation
                 // This replicates the original behavior, though it does add some complexity.
-                if r_btn.vkey_code & MK::LBUTTON == MK::LBUTTON {
+                if r_btn.vkey_code.has(MK::LBUTTON) {
                     self2.finish_primary_button_drag()?;
                 }
                 unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };

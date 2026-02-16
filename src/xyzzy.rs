@@ -66,7 +66,7 @@ impl WinMineMainWindow {
     /// - `Err` - If there was an error during handling
     pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) -> AnyResult<()> {
         // Check if the Control key is held down.
-        let control_down = key == MK::CONTROL;
+        let control_down = key.has(MK::CONTROL);
 
         // Check if the XYZZY cheat code is active
         let state = I_XYZZY.load(Ordering::Relaxed);
