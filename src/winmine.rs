@@ -245,25 +245,20 @@ impl WinMineMainWindow {
     }
 
     fn handle_lbutton_down(&self, vkey: MK, point: POINT) -> AnyResult<()> {
-        if self.ignore_next_click.swap(false, Ordering::Relaxed) {
-            return Ok(());
-        }
-        // TODO: This logic can be simplified
-        // Check if the click was on the button
-        if self
-            .state
-            .write()
-            .btn_click_handler(&self.wnd.hwnd().GetDC()?, point)?
+        // If the next click should be ignored of if the click was on the button and was handled, do nothing else
+        if !self.ignore_next_click.swap(false, Ordering::Relaxed)
+            && !self
+                .state
+                .write()
+                .btn_click_handler(&self.wnd.hwnd().GetDC()?, point)?
         {
-            return Ok(());
-        }
-        // If the right button or the shift key is also down, start a chord operation
-        if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
-            self.state.write().chord_active = true;
-        }
-        if self.state.read().game_status.contains(StatusFlag::Play) {
-            self.begin_primary_button_drag()?;
-            self.handle_mouse_move(vkey, point)?;
+            if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
+                // If the right button or the shift key is also down, start a chord operation
+                self.state.write().chord_active = true;
+            } else if self.state.read().game_status.contains(StatusFlag::Play) {
+                self.begin_primary_button_drag()?;
+                self.handle_mouse_move(vkey, point)?;
+            }
         }
         Ok(())
     }
@@ -529,8 +524,6 @@ impl WinMineMainWindow {
                     BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
                     return Ok(0);
                 }
-
-                unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
                 Ok(0)
             }
         });
@@ -539,7 +532,6 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |key| {
                 self2.handle_keydown(key.vkey_code)?;
-                unsafe { self2.wnd.hwnd().DefWindowProc(key) };
                 Ok(())
             }
         });
@@ -562,7 +554,6 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg| {
                 self2.handle_mouse_move(msg.vkey_code, msg.coords)?;
-                unsafe { self2.wnd.hwnd().DefWindowProc(msg) };
                 Ok(())
             }
         });
@@ -571,7 +562,6 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |r_btn| {
                 self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords)?;
-                unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
                 Ok(())
             }
         });
@@ -580,7 +570,6 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |r_btn| {
                 self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords)?;
-                unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
                 Ok(())
             }
         });
@@ -593,7 +582,6 @@ impl WinMineMainWindow {
                 if r_btn.vkey_code.has(MK::LBUTTON) {
                     self2.finish_primary_button_drag()?;
                 }
-                unsafe { self2.wnd.hwnd().DefWindowProc(r_btn) };
                 Ok(())
             }
         });
@@ -616,16 +604,14 @@ impl WinMineMainWindow {
                     self2.begin_primary_button_drag()?;
                     self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords)?;
                 }
-                unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
             }
         });
 
         self.wnd.on().wm_m_button_up({
             let self2 = self.clone();
-            move |m_btn| {
+            move |_m_btn| {
                 self2.finish_primary_button_drag()?;
-                unsafe { self2.wnd.hwnd().DefWindowProc(m_btn) };
                 Ok(())
             }
         });
@@ -648,8 +634,6 @@ impl WinMineMainWindow {
                     self2.handle_face_button_lbutton_up(l_btn.coords)?;
                 } else {
                     self2.finish_primary_button_drag()?;
-                    // TODO: Is `DefWindowProc` necessary?
-                    unsafe { self2.wnd.hwnd().DefWindowProc(l_btn) };
                 }
                 Ok(())
             }
@@ -661,7 +645,6 @@ impl WinMineMainWindow {
                 if activate.event == WA::CLICKACTIVE {
                     self2.ignore_next_click.store(true, Ordering::Relaxed);
                 }
-                unsafe { self2.wnd.hwnd().DefWindowProc(activate) };
                 Ok(())
             }
         });
@@ -965,6 +948,7 @@ impl PrefDialog {
                 if context_menu.hwnd.GetDlgCtrlID() != Ok(0) {
                     Help::apply_help_to_control(&context_menu.hwnd, &Help::PREF_HELP_IDS);
                 } else {
+                    // Show a context menu when right clicking the title bar
                     unsafe { self2.dlg.hwnd().DefWindowProc(context_menu) };
                 }
                 Ok(())
@@ -1129,6 +1113,7 @@ impl BestDialog {
                 if context_menu.hwnd.GetDlgCtrlID() != Ok(0) {
                     Help::apply_help_to_control(&context_menu.hwnd, &Help::BEST_HELP_IDS);
                 } else {
+                    // Show a context menu when right clicking the title bar
                     unsafe { self2.dlg.hwnd().DefWindowProc(context_menu) };
                 }
                 Ok(())
