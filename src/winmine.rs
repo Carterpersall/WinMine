@@ -330,7 +330,7 @@ impl WinMineMainWindow {
             self.wnd.hwnd().style(),
             true,
             self.wnd.hwnd().style_ex(),
-            self.state.read().grafix.dpi,
+            self.state.read().grafix.dims.dpi,
         )?;
 
         // Calculate total window size including non-client areas
@@ -442,7 +442,6 @@ impl WinMineMainWindow {
                 }
                 {
                     let mut state = self2.state.write();
-                    state.grafix.dpi = dpi;
                     state.grafix.dims.update_dpi(dpi);
 
                     // Initialize local resources.
@@ -465,7 +464,6 @@ impl WinMineMainWindow {
                 if dpi == 0 {
                     dpi = BASE_DPI;
                 }
-                self2.state.write().grafix.dpi = dpi;
                 self2.state.write().grafix.dims.update_dpi(dpi);
 
                 let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };

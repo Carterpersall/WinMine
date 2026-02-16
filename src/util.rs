@@ -5,7 +5,6 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use winsafe::{AnyResult, HWND, IdPos, prelude::*};
 
-use crate::globals::BASE_DPI;
 use crate::pref::GameType;
 use crate::winmine::WinMineMainWindow;
 
@@ -316,22 +315,4 @@ pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -
         .and_then(|text| text.parse::<u32>().map_err(Into::into))
         // Clamp the parsed value within the specified bounds
         .map(|value| value.clamp(num_lo, num_hi))
-}
-
-/// Scale a 96-DPI measurement to the current UI DPI
-/// # Arguments
-/// - `val` - The measurement in pixels at 96 DPI.
-/// - `dpi` - The UI DPI to scale the measurement to.
-/// # Returns
-/// - The measurement scaled to the given DPI.
-/// # Notes
-/// This function replicates the functionality of the `MulDiv` Win32 API function, with a few differences:
-/// - It takes a signed and an unsigned integer and returns a signed integer, while `MulDiv` operates on only signed integers.
-/// - It assumes that the denominator is always non-zero, which can be safely assumed in this context since `BASE_DPI` is a constant
-///   and should never be zero.
-pub const fn scale_dpi(val: i32, dpi: u32) -> i32 {
-    // Perform multiplication in u64 to prevent overflow
-    let product = val as u64 * dpi as u64;
-    // Perform division with rounding
-    ((product + (BASE_DPI as u64 / 2)) / BASE_DPI as u64) as i32
 }

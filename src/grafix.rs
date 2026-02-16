@@ -15,7 +15,7 @@ use winsafe::{
 
 use crate::globals::BASE_DPI;
 use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
-use crate::util::{ResourceId, scale_dpi};
+use crate::util::ResourceId;
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -55,6 +55,8 @@ const DX_RIGHT_TIME_96: i32 = DX_RIGHT_SPACE_96 + 5;
 /// Current UI dimensions and offsets, scaled from the base 96-DPI values.
 #[derive(Default)]
 pub struct WindowDimensions {
+    /// Current UI DPI, used for scaling dimensions and offsets.
+    pub dpi: u32,
     /// Dimensions of a single board cell sprite.
     pub block: SIZE,
     /// Dimensions of an LED digit sprite.
@@ -80,24 +82,42 @@ pub struct WindowDimensions {
 }
 
 impl WindowDimensions {
-    /// Update the dimensions based on the current DPI by scaling the base 96-DPI values.
+    /// Scale a 96-DPI measurement to the current UI DPI
     /// # Arguments
-    /// - `dpi` - The current UI DPI to scale the dimensions for.
+    /// - `val` - The measurement in pixels at 96 DPI.
+    /// # Returns
+    /// - The measurement scaled to the current DPI.
+    /// # Notes
+    /// This function replicates the functionality of the `MulDiv` Win32 API function, with a few differences:
+    /// - It takes a signed and an unsigned integer and returns a signed integer, while `MulDiv` operates on only signed integers.
+    /// - It assumes that the denominator is always non-zero, which can be safely assumed in this context since `BASE_DPI` is a constant
+    ///   and should never be zero.
+    pub const fn scale_dpi(&self, val: i32) -> i32 {
+        // Perform multiplication in u64 to prevent overflow
+        let product = val as u64 * self.dpi as u64;
+        // Perform division with rounding
+        ((product + (BASE_DPI as u64 / 2)) / BASE_DPI as u64) as i32
+    }
+
+    /// Update the stored DPI and rescale all dimensions and offsets accordingly.
+    /// # Arguments
+    /// - `dpi` - The new UI DPI to apply.
     pub const fn update_dpi(&mut self, dpi: u32) {
-        self.block.cx = scale_dpi(DX_BLK_96, dpi);
-        self.block.cy = scale_dpi(DY_BLK_96, dpi);
-        self.led.cx = scale_dpi(DX_LED_96, dpi);
-        self.led.cy = scale_dpi(DY_LED_96, dpi);
-        self.button.cx = scale_dpi(DX_BUTTON_96, dpi);
-        self.button.cy = scale_dpi(DY_BUTTON_96, dpi);
-        self.left_space = scale_dpi(DX_LEFT_SPACE_96, dpi);
-        self.right_space = scale_dpi(DX_RIGHT_SPACE_96, dpi);
-        self.top_space = scale_dpi(DY_TOP_SPACE_96, dpi);
-        self.bottom_space = scale_dpi(DY_BOTTOM_SPACE_96, dpi);
-        self.top_led = scale_dpi(DY_TOP_LED_96, dpi);
-        self.grid_offset = scale_dpi(DY_GRID_OFF_96, dpi);
-        self.left_bomb = scale_dpi(DX_LEFT_BOMB_96, dpi);
-        self.right_timer = scale_dpi(DX_RIGHT_TIME_96, dpi);
+        self.dpi = dpi;
+        self.block.cx = self.scale_dpi(DX_BLK_96);
+        self.block.cy = self.scale_dpi(DY_BLK_96);
+        self.led.cx = self.scale_dpi(DX_LED_96);
+        self.led.cy = self.scale_dpi(DY_LED_96);
+        self.button.cx = self.scale_dpi(DX_BUTTON_96);
+        self.button.cy = self.scale_dpi(DY_BUTTON_96);
+        self.left_space = self.scale_dpi(DX_LEFT_SPACE_96);
+        self.right_space = self.scale_dpi(DX_RIGHT_SPACE_96);
+        self.top_space = self.scale_dpi(DY_TOP_SPACE_96);
+        self.bottom_space = self.scale_dpi(DY_BOTTOM_SPACE_96);
+        self.top_led = self.scale_dpi(DY_TOP_LED_96);
+        self.grid_offset = self.scale_dpi(DY_GRID_OFF_96);
+        self.left_bomb = self.scale_dpi(DX_LEFT_BOMB_96);
+        self.right_timer = self.scale_dpi(DX_RIGHT_TIME_96);
     }
 }
 
@@ -247,10 +267,6 @@ impl Drop for CachedBitmapGuard {
 
 /// Internal state tracking loaded graphics resources and cached DCs
 pub struct GrafixState {
-    /// Current UI DPI
-    ///
-    /// TODO: Should this be moved into `WindowDimensions`?
-    pub dpi: u32,
     /// Current window position
     pub wnd_pos: POINT,
     /// Current UI dimensions and offsets, scaled from the base 96-DPI values.
@@ -288,7 +304,6 @@ pub struct GrafixState {
 impl Default for GrafixState {
     fn default() -> Self {
         Self {
-            dpi: BASE_DPI,
             wnd_pos: POINT::new(),
             dims: WindowDimensions::default(),
             rg_dib_off: [0; I_BLK_MAX],
@@ -768,9 +783,9 @@ impl GrafixState {
         let dy_window = self.wnd_pos.y;
 
         // Scale the border widths based on the current DPI
-        let b3 = scale_dpi(3, self.dpi);
-        let b2 = scale_dpi(2, self.dpi);
-        let b1 = scale_dpi(1, self.dpi);
+        let b3 = self.dims.scale_dpi(3);
+        let b2 = self.dims.scale_dpi(2);
+        let b1 = self.dims.scale_dpi(1);
 
         // Outer sunken border
         let mut x = dx_window - 1;
@@ -802,7 +817,7 @@ impl GrafixState {
                 x,
                 self.dims.top_led
                     + self.dims.led.cy
-                    + (self.dims.bottom_space - scale_dpi(6, self.dpi)),
+                    + (self.dims.bottom_space - self.dims.scale_dpi(6)),
             ),
             b2,
             BorderStyle::Raised,
