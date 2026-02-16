@@ -523,7 +523,7 @@ impl GameState {
 
     /// Handles left mouse button down events.
     /// # Arguments
-    /// - `hwnd`: Handle to the main window, used to get the device context and reveal squares if the game is active.
+    /// - `hwnd`: Handle to the main window.
     /// - `vkey`: The virtual key code of the mouse button event.
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
@@ -531,7 +531,6 @@ impl GameState {
     /// - `Err` - If an error occurred.
     pub fn handle_lbutton_down(&mut self, hwnd: &HWND, vkey: MK, point: POINT) -> AnyResult<()> {
         // If the next click should be ignored of if the click was on the button and was handled, do nothing else
-        // TODO: Move `ignore_next_click` logic either entirely into functions or entirely into the event closures
         if !replace(&mut self.ignore_next_click, false)
             && !self.btn_click_handler(&hwnd.GetDC()?, point)?
         {
@@ -539,6 +538,33 @@ impl GameState {
                 // If the right button or the shift key is also down, start a chord operation
                 self.chord_active = true;
             }
+            if self.game_status.contains(StatusFlag::Play) {
+                self.begin_primary_button_drag(&hwnd.GetDC()?)?;
+                self.handle_mouse_move(hwnd, vkey, point)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Handles middle mouse button down events.
+    /// # Arguments
+    /// - `hwnd`: Handle to the main window.
+    /// - `vkey`: The virtual key code of the mouse button event.
+    /// - `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// - `Ok(())` - If the middle button down was handled successfully.
+    /// - `Err` - If an error occurred.
+    pub fn handle_mbutton_down(&mut self, hwnd: &HWND, vkey: MK, point: POINT) -> AnyResult<()> {
+        // Ignore middle-clicks if the next click is to be ignored
+        if !replace(&mut self.ignore_next_click, false) {
+            if vkey.has(MK::MBUTTON) {
+                // If the middle button is pressed, start a chord operation
+                // However, if a chord is already active, end the chord instead
+                let chord_active = self.chord_active;
+                self.chord_active = !chord_active;
+            }
+
+            // Is the game is active, start a drag operation
             if self.game_status.contains(StatusFlag::Play) {
                 self.begin_primary_button_drag(&hwnd.GetDC()?)?;
                 self.handle_mouse_move(hwnd, vkey, point)?;

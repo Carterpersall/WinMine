@@ -445,6 +445,7 @@ impl WinMineMainWindow {
                     r_btn.vkey_code,
                     r_btn.coords,
                 )?;
+                // TODO: Single function closures don't need an explicit `Ok(())` return, instead just return the function result directly.
                 Ok(())
             }
         });
@@ -467,31 +468,22 @@ impl WinMineMainWindow {
         self.wnd.on().wm_m_button_down({
             let self2 = self.clone();
             move |m_btn| {
-                // Ignore middle-clicks if the next click is to be ignored
-                if core::mem::replace(&mut self2.state.write().ignore_next_click, false) {
-                    return Ok(());
-                }
+                self2.state.write().handle_mbutton_down(
+                    self2.wnd.hwnd(),
+                    m_btn.vkey_code,
+                    m_btn.coords,
+                )
+            }
+        });
 
-                if m_btn.vkey_code.has(MK::MBUTTON) {
-                    // If the middle button is pressed, start a chord operation
-                    // However, if a chord is already active, end the chord instead
-                    let chord_active = self2.state.read().chord_active;
-                    self2.state.write().chord_active = !chord_active;
-                }
-
-                // Is the game is active, start a drag operation
-                if self2.state.read().game_status.contains(StatusFlag::Play) {
-                    self2
-                        .state
-                        .write()
-                        .begin_primary_button_drag(&self2.wnd.hwnd().GetDC()?)?;
-                    self2.state.write().handle_mouse_move(
-                        self2.wnd.hwnd(),
-                        m_btn.vkey_code,
-                        m_btn.coords,
-                    )?;
-                }
-                Ok(())
+        self.wnd.on().wm_m_button_dbl_clk({
+            let self2 = self.clone();
+            move |m_btn| {
+                self2.state.write().handle_mbutton_down(
+                    self2.wnd.hwnd(),
+                    m_btn.vkey_code,
+                    m_btn.coords,
+                )
             }
         });
 
