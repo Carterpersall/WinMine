@@ -981,14 +981,8 @@ impl GameState {
             // If the number of visits and elapsed seconds are both zero, the game has not started yet
             if self.boxes_visited == 0 && self.secs_elapsed == 0 {
                 // Play the tick sound, display the initial time, and start the timer
-                // TODO: Could we just call `do_timer` here instead?
-                if self.prefs.sound_enabled {
-                    Sound::Tick.play(&hwnd.hinstance());
-                }
-                self.secs_elapsed = 1;
-                self.grafix
-                    .draw_timer(hwnd.GetDC()?.deref(), self.secs_elapsed)?;
                 self.timer_running = true;
+                self.do_timer(hwnd)?;
                 if let Some(hwnd) = hwnd.as_opt() {
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
                 }

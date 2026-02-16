@@ -153,35 +153,6 @@ impl WinMineMainWindow {
         Ok(())
     }
 
-    /// Handles the `WM_KEYDOWN` message.
-    ///
-    /// TODO: Move this function into the closure.
-    /// # Arguments
-    /// - `key`: The virtual key code of the key that was pressed.
-    /// # Returns
-    /// - `Ok(())` - If the key was handled successfully.
-    /// - `Err` - If an error occurred while updating the menu bar.
-    fn handle_keydown(&self, key: VK) -> AnyResult<()> {
-        match key {
-            code if code == VK::F4 => {
-                let new_sound = match self.state.read().prefs.sound_enabled {
-                    true => {
-                        Sound::reset();
-                        false
-                    }
-                    false => Sound::reset(),
-                };
-                self.state.write().prefs.sound_enabled = new_sound;
-
-                self.set_menu_bar()?;
-            }
-            code if code == VK::SHIFT => self.handle_xyzzys_shift(),
-            _ => self.handle_xyzzys_default_key(key),
-        }
-
-        Ok(())
-    }
-
     /// Handles mouse move events.
     /// # Arguments
     /// - `key`: The mouse buttons currently pressed.
@@ -190,7 +161,7 @@ impl WinMineMainWindow {
     /// - `Ok(())` - If the mouse move was handled successfully.
     /// - `Err` - If an error occurred while handling the mouse move or if getting the device context failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
-        // TODO: Cache state once `x_box_from_xpos` and `y_box_from_ypos` are moved into `GameState`
+        // TODO: Cache state if xyzzy is moved into `GameState`
         if self.state.read().btn_face_pressed {
             // If the face button is being clicked, handle mouse movement for that interaction
             self.state
@@ -531,7 +502,23 @@ impl WinMineMainWindow {
         self.wnd.on().wm_key_down({
             let self2 = self.clone();
             move |key| {
-                self2.handle_keydown(key.vkey_code)?;
+                match key.vkey_code {
+                    code if code == VK::F4 => {
+                        let new_sound = match self2.state.read().prefs.sound_enabled {
+                            true => {
+                                Sound::reset();
+                                false
+                            }
+                            false => Sound::reset(),
+                        };
+                        self2.state.write().prefs.sound_enabled = new_sound;
+
+                        self2.set_menu_bar()?;
+                    }
+                    code if code == VK::SHIFT => self2.handle_xyzzys_shift(),
+                    _ => self2.handle_xyzzys_default_key(key.vkey_code),
+                }
+
                 Ok(())
             }
         });
