@@ -23,6 +23,7 @@ static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 /// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
+// TODO: Should this be in `GameState` instead?
 impl WinMineMainWindow {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles

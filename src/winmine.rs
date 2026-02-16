@@ -222,31 +222,51 @@ impl WinMineMainWindow {
     /// - `Ok(())` - If the right button down was handled successfully.
     /// - `Err` - If an error occurred.
     fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
-        // Ignore right-clicks if the next click is set to be ignored
-        if self.ignore_next_click.swap(false, Ordering::Relaxed)
-            || !self.state.read().game_status.contains(StatusFlag::Play)
+        // Ignore right-clicks if the next click is set to be ignored or if the game is not active
+        if !self.ignore_next_click.swap(false, Ordering::Relaxed)
+            && self.state.read().game_status.contains(StatusFlag::Play)
+        {
+            if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
+                // If the left and right buttons are both down, and the middle button is not down, start a chord operation
+                self.state.write().chord_active = true;
+                self.state.write().track_mouse(
+                    &self.wnd.hwnd().GetDC()?,
+                    usize::MAX - 3,
+                    usize::MAX - 3,
+                )?;
+                self.begin_primary_button_drag()?;
+                self.handle_mouse_move(btn, point)?;
+            } else {
+                // Regular right-click: make a guess
+                let x = self.x_box_from_xpos(point.x);
+                let y = self.y_box_from_ypos(point.y);
+                self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_lbutton_down(&self, vkey: MK, point: POINT) -> AnyResult<()> {
+        if self.ignore_next_click.swap(false, Ordering::Relaxed) {
+            return Ok(());
+        }
+        // TODO: This logic can be simplified
+        // Check if the click was on the button
+        if self
+            .state
+            .write()
+            .btn_click_handler(&self.wnd.hwnd().GetDC()?, point)?
         {
             return Ok(());
         }
-
-        // TODO: Merge these if-statements
-        if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
-            // If the left and right buttons are both down, and the middle button is not down, start a chord operation
+        // If the right button or the shift key is also down, start a chord operation
+        if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
             self.state.write().chord_active = true;
-            self.state.write().track_mouse(
-                &self.wnd.hwnd().GetDC()?,
-                usize::MAX - 3,
-                usize::MAX - 3,
-            )?;
-            self.begin_primary_button_drag()?;
-            self.handle_mouse_move(btn, point)?;
-            return Ok(());
         }
-
-        // Regular right-click: make a guess
-        let x = self.x_box_from_xpos(point.x);
-        let y = self.y_box_from_ypos(point.y);
-        self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
+        if self.state.read().game_status.contains(StatusFlag::Play) {
+            self.begin_primary_button_drag()?;
+            self.handle_mouse_move(vkey, point)?;
+        }
         Ok(())
     }
 
@@ -642,33 +662,14 @@ impl WinMineMainWindow {
             }
         });
 
-        // TODO: Handle double clicks
-        // TODO: Double clicking the button somehow clicks a tile on the board instead.
         self.wnd.on().wm_l_button_down({
             let self2 = self.clone();
-            move |l_btn| {
-                if self2.ignore_next_click.swap(false, Ordering::Relaxed) {
-                    return Ok(());
-                }
-                // TODO: This logic can be simplified
-                // Check if the click was on the button
-                if self2
-                    .state
-                    .write()
-                    .btn_click_handler(&self2.wnd.hwnd().GetDC()?, l_btn.coords)?
-                {
-                    return Ok(());
-                }
-                // If the right button or the shift key is also down, start a chord operation
-                if l_btn.vkey_code.has(MK::RBUTTON) || l_btn.vkey_code.has(MK::SHIFT) {
-                    self2.state.write().chord_active = true;
-                }
-                if self2.state.read().game_status.contains(StatusFlag::Play) {
-                    self2.begin_primary_button_drag()?;
-                    self2.handle_mouse_move(l_btn.vkey_code, l_btn.coords)?;
-                }
-                Ok(())
-            }
+            move |l_btn| self2.handle_lbutton_down(l_btn.vkey_code, l_btn.coords)
+        });
+
+        self.wnd.on().wm_l_button_dbl_clk({
+            let self2 = self.clone();
+            move |l_btn| self2.handle_lbutton_down(l_btn.vkey_code, l_btn.coords)
         });
 
         self.wnd.on().wm_l_button_up({
