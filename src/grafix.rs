@@ -920,7 +920,7 @@ impl GrafixState {
 
         self.h_white_pen = HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(255, 255, 255))?.into();
 
-        let header = self.dib_header_size(color);
+        let header = size_of::<BITMAPINFOHEADER>() + (if color { 16 } else { 2 }) * 4;
 
         let cb_blk = self.cb_bitmap(color, DX_BLK_96, DY_BLK_96);
         for (i, off) in self.rg_dib_off.iter_mut().enumerate() {
@@ -1094,16 +1094,6 @@ impl GrafixState {
         Ok((res_loaded, lp as *const BITMAPINFO))
     }
 
-    /// Calculate the size of the DIB header plus color palette
-    /// # Arguments
-    /// - `color_on` - Whether color mode is enabled
-    /// # Returns
-    /// - Size in bytes of the DIB header and palette
-    const fn dib_header_size(&self, color_on: bool) -> usize {
-        let palette_entries = if color_on { 16 } else { 2 };
-        size_of::<BITMAPINFOHEADER>() + palette_entries * 4
-    }
-
     /// Calculate the byte size of a bitmap given its dimensions and color mode
     /// # Arguments
     /// - `color_on` - Whether color mode is enabled
@@ -1122,6 +1112,8 @@ impl GrafixState {
     }
 
     /// Retrieve the cached compatible DC for the block at the given board coordinates.
+    ///
+    /// TODO: Should this function exist?
     /// # Arguments
     /// - `x` - X coordinate on the board
     /// - `y` - Y coordinate on the board
@@ -1129,37 +1121,15 @@ impl GrafixState {
     /// # Returns
     /// - `Some(&HDC)` - The compatible DC containing the block sprite
     /// - `None` - If the block type is out of range or if the cached DC is not available
-    ///
-    /// TODO: Should this return a result instead of an option?
     fn block_dc(
         &self,
         x: usize,
         y: usize,
         board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> Option<&HDC> {
-        let idx = self.block_sprite_index(x, y, board);
-
         self.mem_blk_cache
-            .get(idx)
+            .get(board[x][y].block_type as usize)
             .and_then(Option::as_ref)
             .map(CachedBitmapGuard::hdc)
-    }
-
-    /// Determine the sprite index for the block at the given board coordinates.
-    /// # Arguments
-    /// - `x` - X coordinate on the board
-    /// - `y` - Y coordinate on the board
-    /// - `board` - Array slice containing the board state
-    /// # Returns
-    /// - The sprite index for the block at the specified coordinates
-    ///
-    /// TODO: Should this return a result?
-    const fn block_sprite_index(
-        &self,
-        x: usize,
-        y: usize,
-        board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
-    ) -> usize {
-        board[x][y].block_type as usize
     }
 }

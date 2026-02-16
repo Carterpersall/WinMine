@@ -253,21 +253,11 @@ impl GameState {
 }
 
 /// Previous timer running state used to detect changes
+///
+/// TODO: Get rid of this somehow.
 static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 
 impl GameState {
-    /// Initialize local graphics resources and reset the minefield before the game starts.
-    /// # Arguments
-    /// - `hwnd` - Handle to the main window.
-    /// # Returns
-    /// - `Ok(())` - If initialization was successful
-    /// - `Err` - If loading the bitmaps failed
-    pub fn init_game(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        self.grafix.load_bitmaps(hwnd, self.prefs.color)?;
-        self.clear_field();
-        Ok(())
-    }
-
     /// Check if the given coordinates are within the valid range of the board.
     /// # Arguments
     /// - `x` - The X coordinate.
@@ -402,8 +392,35 @@ impl GameState {
     pub fn finish_primary_button_drag(&mut self, hwnd: &HWND) -> AnyResult<()> {
         self.drag_active = false;
         if self.game_status.contains(StatusFlag::Play) {
-            self.do_button_1_up(hwnd)?;
+            // Check if the cursor is within the valid range of the board
+            if self.in_range(self.cursor_x, self.cursor_y) {
+                // If the number of visits and elapsed seconds are both zero, the game has not started yet
+                if self.boxes_visited == 0 && self.secs_elapsed == 0 {
+                    // Play the tick sound, display the initial time, and start the timer
+                    self.timer_running = true;
+                    self.do_timer(hwnd)?;
+                    hwnd.SetTimer(ID_TIMER, 1000, None)?;
+                }
+
+                // If the game is not in play mode, reset the cursor position to a location off the board
+                if !self.game_status.contains(StatusFlag::Play) {
+                    self.cursor_x = usize::MAX - 2;
+                    self.cursor_y = usize::MAX - 2;
+                }
+
+                // Determine whether to chord (select adjacent squares) or step (reveal a single square)
+                if self.chord_active {
+                    self.step_block(hwnd, self.cursor_x, self.cursor_y)?;
+                } else if self.in_range_step(self.cursor_x, self.cursor_y) {
+                    // Handle a click on a single square
+                    self.step_square(hwnd, self.cursor_x, self.cursor_y)?;
+                }
+            }
+
+            self.grafix
+                .draw_button(hwnd.GetDC()?.deref(), self.btn_face_state)?;
         } else {
+            // If the game is not active, track the mouse on a location off the board to reset any drag states
             self.track_mouse(&hwnd.GetDC()?, usize::MAX - 2, usize::MAX - 2)?;
         }
         // If a chord operation was active, end it now
@@ -712,6 +729,12 @@ impl GameState {
     }
 
     /// Handle a user click on a single square.
+    ///
+    /// TODO: This function and `step_block` have a lot of overlap and could potentially be merged
+    ///       into a single function that handles both regular clicks and chord operations, since
+    ///       a chord is just a click with extra conditions.
+    ///       Also, they are both only used in `do_button_1_up`, so they could potentially be merged
+    ///       into that function as well.
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// - `x` - The X coordinate of the clicked square.
@@ -799,6 +822,8 @@ impl GameState {
     }
 
     /// Handle a user guess (flag or question mark) on a square.
+    ///
+    /// TODO: Should this be merged into `handle_rbutton_down`?
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// - `x` - The X coordinate of the square.
@@ -872,6 +897,8 @@ impl GameState {
     }
 
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
+    ///
+    /// TODO: Does this function need to exist?
     /// # Arguments
     /// - `x` - The X coordinate.
     /// - `y` - The Y coordinate.
@@ -1082,43 +1109,6 @@ impl GameState {
         // Store the new cursor position
         self.cursor_x = x_new;
         self.cursor_y = y_new;
-        Ok(())
-    }
-
-    /// Handle a left-button release: start the timer, then either chord or step.
-    /// # Arguments
-    /// - `hwnd` - Handle to the main window.
-    /// # Returns
-    /// - `Ok(())` - If the button release was successfully handled.
-    /// - `Err` - If an error occurred while drawing the board or updating the timer.
-    pub fn do_button_1_up(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        // Check if the cursor is within the valid range of the board
-        if self.in_range(self.cursor_x, self.cursor_y) {
-            // If the number of visits and elapsed seconds are both zero, the game has not started yet
-            if self.boxes_visited == 0 && self.secs_elapsed == 0 {
-                // Play the tick sound, display the initial time, and start the timer
-                self.timer_running = true;
-                self.do_timer(hwnd)?;
-                hwnd.SetTimer(ID_TIMER, 1000, None)?;
-            }
-
-            // If the game is not in play mode, reset the cursor position to a location off the board
-            if !self.game_status.contains(StatusFlag::Play) {
-                self.cursor_x = usize::MAX - 2;
-                self.cursor_y = usize::MAX - 2;
-            }
-
-            // Determine whether to chord (select adjacent squares) or step (reveal a single square)
-            if self.chord_active {
-                self.step_block(hwnd, self.cursor_x, self.cursor_y)?;
-            } else if self.in_range_step(self.cursor_x, self.cursor_y) {
-                self.step_square(hwnd, self.cursor_x, self.cursor_y)?;
-            }
-        }
-
-        self.grafix
-            .draw_button(hwnd.GetDC()?.deref(), self.btn_face_state)?;
-
         Ok(())
     }
 

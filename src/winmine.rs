@@ -274,8 +274,12 @@ impl WinMineMainWindow {
                     let mut state = self2.state.write();
                     state.grafix.dims.update_dpi(dpi);
 
-                    // Initialize local resources.
-                    state.init_game(self2.wnd.hwnd())?;
+                    // Initialize graphics resources based on the current DPI and color settings
+                    let color = state.prefs.color;
+                    state.grafix.load_bitmaps(self2.wnd.hwnd(), color)?;
+
+                    // Reset the game board to a blank state
+                    state.clear_field();
                 }
 
                 // Update the menu bar and start a new game
