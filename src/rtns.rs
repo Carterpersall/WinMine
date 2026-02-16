@@ -6,7 +6,7 @@ use core::ops::Deref as _;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use bitflags::bitflags;
-use winsafe::co::WM;
+use winsafe::co::{MK, WM};
 use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
 use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT, prelude::*};
@@ -199,6 +199,8 @@ pub struct GameState {
     /// - Only the middle button is held down
     /// - Shift is held _then_ left button is held down
     pub chord_active: bool,
+    /// Indicates whether a drag operation is currently active
+    drag_active: bool,
     /// 2D Array representing the state of each cell on the board
     pub board_cells: [[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     /// Initial number of bombs at the start of the game
@@ -231,6 +233,7 @@ impl GameState {
             cursor_x: 0,
             cursor_y: 0,
             chord_active: false,
+            drag_active: false,
             board_cells: [[BlockInfo {
                 bomb: false,
                 visited: false,
@@ -422,6 +425,65 @@ impl GameState {
         };
         self.btn_face_state = state;
         self.grafix.draw_button(hdc, state)?;
+        Ok(())
+    }
+
+    /// Begins a primary button drag operation.
+    /// # Arguments
+    /// - `hdc` - Handle to the device context, used to draw the button in the "caution" state to indicate the drag has started.
+    /// # Returns
+    /// - `Ok(())` - If the drag operation was successfully initiated and the button was drawn.
+    /// - `Err` - If an error occurred while getting the device context.
+    pub fn begin_primary_button_drag(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<()> {
+        self.drag_active = true;
+        self.cursor_x = usize::MAX - 1;
+        self.cursor_y = usize::MAX - 1;
+        self.grafix.draw_button(hdc, ButtonSprite::Caution)?;
+        Ok(())
+    }
+
+    /// Finishes a primary button drag operation.
+    /// # Arguments
+    /// - `hwnd` - Handle to the main window, used to get the device context and track the mouse if the game is not active.
+    /// # Returns
+    /// - `Ok(())` - If the drag operation was successfully finished and the button was drawn.
+    /// - `Err` - If an error occurred while getting the device context or drawing the button.
+    pub fn finish_primary_button_drag(&mut self, hwnd: &HWND) -> AnyResult<()> {
+        self.drag_active = false;
+        if self.game_status.contains(StatusFlag::Play) {
+            self.do_button_1_up(hwnd)?;
+        } else {
+            self.track_mouse(&hwnd.GetDC()?, usize::MAX - 2, usize::MAX - 2)?;
+        }
+        // If a chord operation was active, end it now
+        self.chord_active = false;
+        Ok(())
+    }
+
+    /// Handles mouse move events.
+    /// # Arguments
+    /// - `hwnd`: Handle to the main window, used to get the device context and track the mouse if the game is not active.
+    /// - `key`: The mouse buttons currently pressed.
+    /// - `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// - `Ok(())` - If the mouse move was handled successfully.
+    /// - `Err` - If an error occurred while handling the mouse move or if getting the device context failed.
+    pub fn handle_mouse_move(&mut self, hwnd: &HWND, key: MK, point: POINT) -> AnyResult<()> {
+        if self.btn_face_pressed {
+            // If the face button is being clicked, handle mouse movement for that interaction
+            self.handle_face_button_mouse_move(&hwnd.GetDC()?, point)?;
+        } else if self.drag_active {
+            // If the user is dragging, track the mouse position
+            if self.game_status.contains(StatusFlag::Play) {
+                let (x_new, y_new) = self.box_from_point(point);
+                self.track_mouse(&hwnd.GetDC()?, x_new, y_new)?;
+            } else {
+                self.finish_primary_button_drag(hwnd)?;
+            }
+        } else if self.secs_elapsed > 0 {
+            // If the user is not dragging but the game is active, track the mouse position for the XYZZY cheat code
+            self.handle_xyzzys_mouse(key, point)?;
+        }
         Ok(())
     }
 

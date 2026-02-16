@@ -38,8 +38,6 @@ pub struct WinMineMainWindow {
     pub wnd: gui::WindowMain,
     /// Shared state for the game
     pub state: Rc<StateLock<GameState>>,
-    /// Whether a drag operation is currently active
-    drag_active: Arc<AtomicBool>,
     /// Signals that the next click should be ignored
     ///
     /// This is used after window activation to prevent accidental clicks.
@@ -54,7 +52,6 @@ impl WinMineMainWindow {
         let new_self = Self {
             wnd,
             state: Rc::new(StateLock::new(GameState::new())),
-            drag_active: Arc::new(AtomicBool::new(false)),
             ignore_next_click: Arc::new(AtomicBool::new(false)),
         };
         new_self.events();
@@ -120,71 +117,9 @@ impl WinMineMainWindow {
 
     /* Message Helper Functions */
 
-    /// Begins a primary button drag operation.
-    /// # Returns
-    /// - `Ok(())` - If the drag operation was successfully initiated and the button was drawn.
-    /// - `Err` - If an error occurred while getting the device context.
-    fn begin_primary_button_drag(&self) -> AnyResult<()> {
-        self.drag_active.store(true, Ordering::Relaxed);
-        let mut state = self.state.write();
-        state.cursor_x = usize::MAX - 1;
-        state.cursor_y = usize::MAX - 1;
-        state
-            .grafix
-            .draw_button(self.wnd.hwnd().GetDC()?.deref(), ButtonSprite::Caution)
-    }
-
-    /// Finishes a primary button drag operation.
-    ///
-    /// TODO: Should this be in `GameState`?
-    /// # Returns
-    /// - `Ok(())` - If the drag operation was successfully finished and the button was drawn.
-    /// - `Err` - If an error occurred while getting the device context or drawing the button.
-    fn finish_primary_button_drag(&self) -> AnyResult<()> {
-        self.drag_active.store(false, Ordering::Relaxed);
-        let mut state = self.state.write();
-        if state.game_status.contains(StatusFlag::Play) {
-            state.do_button_1_up(self.wnd.hwnd())?;
-        } else {
-            state.track_mouse(&self.wnd.hwnd().GetDC()?, usize::MAX - 2, usize::MAX - 2)?;
-        }
-        // If a chord operation was active, end it now
-        state.chord_active = false;
-        Ok(())
-    }
-
-    /// Handles mouse move events.
-    /// # Arguments
-    /// - `key`: The mouse buttons currently pressed.
-    /// - `point`: The coordinates of the mouse cursor.
-    /// # Returns
-    /// - `Ok(())` - If the mouse move was handled successfully.
-    /// - `Err` - If an error occurred while handling the mouse move or if getting the device context failed.
-    fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
-        // TODO: Cache state if xyzzy is moved into `GameState`
-        if self.state.read().btn_face_pressed {
-            // If the face button is being clicked, handle mouse movement for that interaction
-            self.state
-                .read()
-                .handle_face_button_mouse_move(&self.wnd.hwnd().GetDC()?, point)?;
-        } else if self.drag_active.load(Ordering::Relaxed) {
-            // If the user is dragging, track the mouse position
-            if self.state.read().game_status.contains(StatusFlag::Play) {
-                let (x_new, y_new) = self.state.read().box_from_point(point);
-                self.state
-                    .write()
-                    .track_mouse(&self.wnd.hwnd().GetDC()?, x_new, y_new)?;
-            } else {
-                self.finish_primary_button_drag()?;
-            }
-        } else if self.state.read().secs_elapsed > 0 {
-            // If the user is not dragging but the game is active, track the mouse position for the XYZZY cheat code
-            self.handle_xyzzys_mouse(key, point)?;
-        }
-        Ok(())
-    }
-
     /// Handles right mouse button down events.
+    ///
+    /// TODO: Should this function be moved into `GameState`?
     /// # Arguments
     /// - `btn`: The mouse button that was pressed.
     /// - `point`: The coordinates of the mouse cursor.
@@ -204,8 +139,12 @@ impl WinMineMainWindow {
                     usize::MAX - 3,
                     usize::MAX - 3,
                 )?;
-                self.begin_primary_button_drag()?;
-                self.handle_mouse_move(btn, point)?;
+                self.state
+                    .write()
+                    .begin_primary_button_drag(&self.wnd.hwnd().GetDC()?)?;
+                self.state
+                    .write()
+                    .handle_mouse_move(self.wnd.hwnd(), btn, point)?;
             } else {
                 // Regular right-click: make a guess
                 let (x, y) = self.state.read().box_from_point(point);
@@ -215,6 +154,15 @@ impl WinMineMainWindow {
         Ok(())
     }
 
+    /// Handles left mouse button down events.
+    ///
+    /// TODO: Should this function be moved into `GameState`?
+    /// # Arguments
+    /// - `vkey`: The virtual key code of the mouse button event.
+    /// - `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    // - `Ok(())` - If the left button down was handled successfully.
+    /// - `Err` - If an error occurred.
     fn handle_lbutton_down(&self, vkey: MK, point: POINT) -> AnyResult<()> {
         // If the next click should be ignored of if the click was on the button and was handled, do nothing else
         if !self.ignore_next_click.swap(false, Ordering::Relaxed)
@@ -226,9 +174,14 @@ impl WinMineMainWindow {
             if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
                 // If the right button or the shift key is also down, start a chord operation
                 self.state.write().chord_active = true;
-            } else if self.state.read().game_status.contains(StatusFlag::Play) {
-                self.begin_primary_button_drag()?;
-                self.handle_mouse_move(vkey, point)?;
+            }
+            if self.state.read().game_status.contains(StatusFlag::Play) {
+                self.state
+                    .write()
+                    .begin_primary_button_drag(&self.wnd.hwnd().GetDC()?)?;
+                self.state
+                    .write()
+                    .handle_mouse_move(self.wnd.hwnd(), vkey, point)?;
             }
         }
         Ok(())
@@ -515,8 +468,8 @@ impl WinMineMainWindow {
 
                         self2.set_menu_bar()?;
                     }
-                    code if code == VK::SHIFT => self2.handle_xyzzys_shift(),
-                    _ => self2.handle_xyzzys_default_key(key.vkey_code),
+                    code if code == VK::SHIFT => self2.state.read().handle_xyzzys_shift(),
+                    _ => self2.state.read().handle_xyzzys_default_key(key.vkey_code),
                 }
 
                 Ok(())
@@ -540,7 +493,11 @@ impl WinMineMainWindow {
         self.wnd.on().wm_mouse_move({
             let self2 = self.clone();
             move |msg| {
-                self2.handle_mouse_move(msg.vkey_code, msg.coords)?;
+                self2.state.write().handle_mouse_move(
+                    self2.wnd.hwnd(),
+                    msg.vkey_code,
+                    msg.coords,
+                )?;
                 Ok(())
             }
         });
@@ -567,7 +524,10 @@ impl WinMineMainWindow {
                 // If the right button is released while the left button is down, finish the drag operation
                 // This replicates the original behavior, though it does add some complexity.
                 if r_btn.vkey_code.has(MK::LBUTTON) {
-                    self2.finish_primary_button_drag()?;
+                    self2
+                        .state
+                        .write()
+                        .finish_primary_button_drag(self2.wnd.hwnd())?;
                 }
                 Ok(())
             }
@@ -587,9 +547,18 @@ impl WinMineMainWindow {
                     let chord_active = self2.state.read().chord_active;
                     self2.state.write().chord_active = !chord_active;
                 }
+
+                // Is the game is active, start a drag operation
                 if self2.state.read().game_status.contains(StatusFlag::Play) {
-                    self2.begin_primary_button_drag()?;
-                    self2.handle_mouse_move(m_btn.vkey_code, m_btn.coords)?;
+                    self2
+                        .state
+                        .write()
+                        .begin_primary_button_drag(&self2.wnd.hwnd().GetDC()?)?;
+                    self2.state.write().handle_mouse_move(
+                        self2.wnd.hwnd(),
+                        m_btn.vkey_code,
+                        m_btn.coords,
+                    )?;
                 }
                 Ok(())
             }
@@ -598,7 +567,10 @@ impl WinMineMainWindow {
         self.wnd.on().wm_m_button_up({
             let self2 = self.clone();
             move |_m_btn| {
-                self2.finish_primary_button_drag()?;
+                self2
+                    .state
+                    .write()
+                    .finish_primary_button_drag(self2.wnd.hwnd())?;
                 Ok(())
             }
         });
@@ -620,7 +592,10 @@ impl WinMineMainWindow {
                     self2.state.write().btn_face_pressed = false;
                     self2.handle_face_button_lbutton_up(l_btn.coords)?;
                 } else {
-                    self2.finish_primary_button_drag()?;
+                    self2
+                        .state
+                        .write()
+                        .finish_primary_button_drag(self2.wnd.hwnd())?;
                 }
                 Ok(())
             }

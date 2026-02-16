@@ -14,7 +14,7 @@ use core::sync::atomic::{AtomicI32, Ordering};
 use winsafe::co::{MK, PS, VK};
 use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
 
-use crate::winmine::WinMineMainWindow;
+use crate::rtns::GameState;
 
 /// Length of the XYZZY cheat code sequence.
 const CCH_XYZZY: i32 = 5;
@@ -23,8 +23,7 @@ static I_XYZZY: AtomicI32 = AtomicI32::new(0);
 /// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
-// TODO: Should this be in `GameState` instead?
-impl WinMineMainWindow {
+impl GameState {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles
     /// the cheat code state by XORing the counter with 20 (0b10100).
@@ -65,22 +64,22 @@ impl WinMineMainWindow {
     /// # Returns
     /// - `Ok(())` - If the mouse move was handled successfully
     /// - `Err` - If there was an error during handling
-    pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) -> AnyResult<()> {
+    pub fn handle_xyzzys_mouse(&mut self, key: MK, point: POINT) -> AnyResult<()> {
         // Check if the Control key is held down.
         let control_down = key.has(MK::CONTROL);
 
         // Check if the XYZZY cheat code is active
         let state = I_XYZZY.load(Ordering::Relaxed);
         if (state == CCH_XYZZY && control_down) || state > CCH_XYZZY {
-            let (x_pos, y_pos) = self.state.read().box_from_point(point);
-            self.state.write().cursor_x = x_pos;
-            self.state.write().cursor_y = y_pos;
+            let (x_pos, y_pos) = self.box_from_point(point);
+            self.cursor_x = x_pos;
+            self.cursor_y = y_pos;
             // Check if the cursor is within the board's range
-            if self.state.read().in_range(x_pos, y_pos) {
+            if self.in_range(x_pos, y_pos) {
                 let hdc = HWND::DESKTOP.GetDC()?;
                 let is_bomb = {
                     // Check if the block at the calculated index is a bomb
-                    self.state.read().board_cells[x_pos][y_pos].bomb
+                    self.board_cells[x_pos][y_pos].bomb
                 };
 
                 // Determine the color based on bomb status:
