@@ -75,7 +75,7 @@ impl Help {
 
     /// Gets the help file path based on the current executable's path.
     /// # Returns
-    /// The help file path as a `Vec<u16>`.
+    /// - The help file path as a `Vec<u16>`.
     /// # Notes
     /// - The help file is expected to be in the same directory as the executable, and be named `(executable name).chm`.
     /// - The maximum path length for the executable is 245 characters. Any value exceeding this causes help to malfunction.
@@ -109,8 +109,6 @@ impl Help {
     /// # Arguments
     /// - `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
     /// - `ids` - The array of help context IDs.
-    /// # Returns
-    /// True if help was applied, false otherwise.
     pub fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
         unsafe {
             HtmlHelpW(
@@ -141,6 +139,7 @@ impl Help {
     ///
     /// TODO: Integrate help files directly into the executable
     /// # Arguments
+    /// - `hwnd` - The handle to the parent window for the help dialog.
     /// - `w_command` - The help command (e.g., HELPONHELP).
     /// - `l_param` - Additional parameter for the help command.
     /// # Notes

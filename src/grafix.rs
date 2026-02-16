@@ -80,6 +80,9 @@ pub struct WindowDimensions {
 }
 
 impl WindowDimensions {
+    /// Update the dimensions based on the current DPI by scaling the base 96-DPI values.
+    /// # Arguments
+    /// - `dpi` - The current UI DPI to scale the dimensions for.
     pub const fn update_dpi(&mut self, dpi: u32) {
         self.block.cx = scale_dpi(DX_BLK_96, dpi);
         self.block.cy = scale_dpi(DY_BLK_96, dpi);
@@ -201,6 +204,13 @@ struct CachedBitmapGuard {
 }
 
 impl CachedBitmapGuard {
+    /// Create a new `CachedBitmapGuard` by selecting the provided bitmap into the provided DC.
+    /// # Arguments
+    /// - `dc` - The compatible DC to select the bitmap into.
+    /// - `bitmap` - The bitmap to select into the DC.
+    /// # Returns
+    /// - `Ok(CachedBitmapGuard)` - A new `CachedBitmapGuard` instance
+    /// - `Err` - If selecting the bitmap into the DC fails
     fn new(dc: DeleteDCGuard, bitmap: DeleteObjectGuard<HBITMAP>) -> AnyResult<Self> {
         let prev_bitmap = {
             // Select the cached bitmap into the DC
@@ -215,12 +225,17 @@ impl CachedBitmapGuard {
         })
     }
 
+    /// Get a reference to the DC with the cached bitmap selected into it.
+    /// # Returns
+    /// - A reference to the DC that can be used for drawing operations.
     fn hdc(&self) -> &HDC {
         &self.dc
     }
 }
 
 impl Drop for CachedBitmapGuard {
+    /// When the `CachedBitmapGuard` is dropped, restore the previous bitmap into the DC,
+    /// and allow the bitmap and DC guards to clean up their resources.
     fn drop(&mut self) {
         // Bring the bitmap into scope, which ensures it will be dropped at the end of this function
         let _ = self.bitmap.as_opt();
@@ -302,7 +317,8 @@ impl GrafixState {
     /// - `y` - The Y coordinate of the block.
     /// - `board` - Array slice containing the board state.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the block was drawn successfully.
+    /// - `Err` - If drawing the block failed.
     pub fn draw_block(
         &self,
         hdc: &ReleaseDCGuard,
@@ -337,7 +353,8 @@ impl GrafixState {
     /// - `height` - The height of the board in blocks.
     /// - `board` - Array slice containing the board state.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the grid was drawn successfully.
+    /// - `Err` - If `BitBlt` failed for any block.
     pub fn draw_grid(
         &self,
         hdc: &HDC,
@@ -374,7 +391,8 @@ impl GrafixState {
     /// - `x` - The X coordinate to draw the LED digit.
     /// - `led_index` - The index of the LED digit to draw.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the LED digit was drawn successfully.
+    /// - `Err` - If drawing the LED digit failed.
     fn draw_led(&self, hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
         // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
         let Some(src) = self
@@ -402,7 +420,8 @@ impl GrafixState {
     /// - `hdc` - The device context to draw on.
     /// - `bombs` - The number of bombs left to display.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the bomb count was drawn successfully.
+    /// - `Err` - If drawing the bomb count LEDs failed.
     pub fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
         // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
         let layout = unsafe { GetLayout(hdc.ptr()) };
@@ -442,7 +461,8 @@ impl GrafixState {
     /// - `hdc` - The device context to draw on.
     /// - `time` - The time in seconds to display.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the timer was drawn successfully.
+    /// - `Err` - If drawing the timer LEDs failed.
     pub fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
         // The timer uses the same mirroring trick as the bomb counter.
         let layout = unsafe { GetLayout(hdc.ptr()) };
@@ -488,7 +508,8 @@ impl GrafixState {
     /// - `hdc` - The device context to draw on.
     /// - `sprite` - The button sprite to draw.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the face button was drawn successfully.
+    /// - `Err` - If drawing the face button failed.
     pub fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
         // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         let dx_window = self.wnd_pos.x;
@@ -527,7 +548,8 @@ impl GrafixState {
 /// - `dst_w` - The desired width of the destination bitmap in pixels.
 /// - `dst_h` - The desired height of the destination bitmap in pixels.
 /// # Returns
-/// An `AnyResult` containing a guard for the newly created resampled bitmap.
+/// - `Ok(DeleteObjectGuard<HBITMAP>)` - A guard containing the newly created resampled bitmap, which will be automatically deleted when dropped.
+/// - `Err` - If any step of the bitmap creation or resampling process fails.
 fn create_resampled_bitmap(
     hdc: &HDC,
     src_bmp: &HBITMAP,
@@ -654,7 +676,8 @@ impl GrafixState {
     /// - `hdc` - The device context to set the pen on.
     /// - `border_style` - The border style determining the pen to use.
     /// # Returns
-    /// `Ok(())` if successful, or an error if setting the pen failed.
+    /// - `Ok(())` - If the pen was successfully selected
+    /// - `Err` - If selecting the pen into the device context failed or if the required pen is not initialized
     fn select_border_pen(&self, hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
         // Select the appropriate pen based on the border style
         let pen = if border_style == BorderStyle::Sunken {
@@ -685,7 +708,8 @@ impl GrafixState {
     /// - `width` - The width of the border in pixels.
     /// - `border_style` - The border style determining the border appearance.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the border was drawn successfully
+    /// - `Err` - If drawing the border failed
     fn draw_border(
         &self,
         hdc: &HDC,
@@ -737,7 +761,8 @@ impl GrafixState {
     /// # Arguments
     /// - `hdc` - The device context to draw on.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the background was drawn successfully
+    /// - `Err` - If drawing any of the background borders failed
     fn draw_background(&self, hdc: &HDC) -> AnyResult<()> {
         let dx_window = self.wnd_pos.x;
         let dy_window = self.wnd_pos.y;
@@ -825,7 +850,8 @@ impl GrafixState {
     /// - `hdc` - The device context to draw on.
     /// - `state` - The current game state containing board and UI information.
     /// # Returns
-    /// `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the screen was drawn successfully
+    /// - `Err` - If drawing any of the screen elements failed
     pub fn draw_screen(&self, hdc: &HDC, state: &GameState) -> AnyResult<()> {
         // 1. Draw background and borders
         self.draw_background(hdc)?;
@@ -851,8 +877,10 @@ impl GrafixState {
     /// - `hwnd` - Handle to the main window.
     /// - `color` - Whether to load color or monochrome resources.
     /// # Returns
-    /// Ok(()) if successful, or an error if loading resources failed.
+    /// - `Ok(())` - If the bitmaps were loaded and cached successfully
+    /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
+        // TODO: Replace these if-statements with `ok_or()?`
         let Some((h_blks, lp_blks)) =
             self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::BlocksBmp, color)
         else {
@@ -878,11 +906,13 @@ impl GrafixState {
         self.lp_dib_button = lp_button;
 
         self.h_gray_pen = if color {
+            // TODO: Don't use `.ok()`
             HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128)).ok()
         } else {
             HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(0, 0, 0)).ok()
         };
 
+        // TODO: Once again, use `ok_or()?` instead of this if-statement
         if self.h_gray_pen.is_none() {
             return Err("Failed to create gray pen".into());
         }
@@ -1048,7 +1078,10 @@ impl GrafixState {
     /// - `id` - The bitmap resource ID to load.
     /// - `color_on` - Whether color mode is enabled.
     /// # Returns
-    /// Optionally, a tuple containing the resource handle and a pointer to the bitmap data.
+    /// - `Some((HRSRCMEM, *const BITMAPINFO))` - The resource handle and a pointer to the bitmap data if successful.
+    /// - `None` - If loading the resource failed at any step (finding, loading, locking).
+    ///
+    /// TODO: Return `AnyResult` instead of `Option`
     fn load_bitmap_resource(
         &self,
         hinst: &HINSTANCE,
@@ -1072,7 +1105,7 @@ impl GrafixState {
     /// # Arguments
     /// - `color_on` - Whether color mode is enabled
     /// # Returns
-    /// Size in bytes of the DIB header and palette
+    /// - Size in bytes of the DIB header and palette
     const fn dib_header_size(&self, color_on: bool) -> usize {
         let palette_entries = if color_on { 16 } else { 2 };
         size_of::<BITMAPINFOHEADER>() + palette_entries * 4
@@ -1084,7 +1117,7 @@ impl GrafixState {
     /// - `x` - Width of the bitmap in pixels
     /// - `y` - Height of the bitmap in pixels
     /// # Returns
-    /// Size in bytes of the bitmap data
+    /// - Size in bytes of the bitmap data
     const fn cb_bitmap(&self, color_on: bool, x: i32, y: i32) -> usize {
         // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
         let mut bits = x;
@@ -1101,7 +1134,8 @@ impl GrafixState {
     /// - `y` - Y coordinate on the board
     /// - `board` - Slice representing the board state
     /// # Returns
-    /// Optionally, a reference to the compatible DC for the block sprite
+    /// - `Some(&HDC)` - The compatible DC containing the block sprite
+    /// - `None` - If the block type is out of range or if the cached DC is not available
     fn block_dc(
         &self,
         x: usize,
@@ -1122,7 +1156,7 @@ impl GrafixState {
     /// - `y` - Y coordinate on the board
     /// - `board` - Array slice containing the board state
     /// # Returns
-    /// The sprite index for the block at the specified coordinates
+    /// - The sprite index for the block at the specified coordinates
     const fn block_sprite_index(
         &self,
         x: usize,

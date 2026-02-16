@@ -62,7 +62,8 @@ impl WinMineMainWindow {
     /// - `key` - The WPARAM from the mouse move message, containing key states.
     /// - `point` - The LPARAM from the mouse move message, containing cursor position.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if handling the mouse move failed.
+    /// - `Ok(())` - If the mouse move was handled successfully
+    /// - `Err` - If there was an error during handling
     pub fn handle_xyzzys_mouse(&self, key: MK, point: POINT) -> AnyResult<()> {
         // Check if the Control key is held down.
         let control_down = key == MK::CONTROL;

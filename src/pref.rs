@@ -89,7 +89,8 @@ impl GameType {
     /// # Arguments
     /// - `game`: The game type to get preset data for.
     /// # Returns
-    /// The preset data as (mines, height, width), or None for a custom game.
+    /// - `Some((mines, height, width))` - The preset data for the given game type.
+    /// - `None` - If the game type is custom.
     pub const fn preset_data(&self) -> Option<(i16, u32, u32)> {
         match self {
             GameType::Begin => Some(Self::LEVEL_DATA[0]),
@@ -101,7 +102,7 @@ impl GameType {
 
     /// Returns the message string shown when the player achieves the fastest time for each difficulty.
     /// # Returns
-    /// The fastest time message string.
+    /// - The fastest time message string.
     pub const fn fastest_time_msg(&self) -> &'static str {
         match self {
             GameType::Begin => {
@@ -121,7 +122,7 @@ impl GameType {
     /// # Arguments
     /// - `val` - The `u32` value to convert.
     /// # Returns
-    /// A `GameType` corresponding to the given value, or `Other` if the value is invalid.
+    /// - A `GameType` corresponding to the given value, or `Other` if the value is invalid.
     pub const fn from(val: u32) -> GameType {
         match val {
             0 => GameType::Begin,
@@ -195,7 +196,8 @@ impl Pref {
     /// - `handle` - Open registry key handle
     /// - `key` - Preference key to read
     /// # Returns
-    /// The retrieved integer value, or an error if reading failed
+    /// - `Ok(u32)` - The retrieved integer value
+    /// - `Err` - If the preference key is invalid or if the registry value is not a DWORD
     pub fn read_int(&self, handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
         // Get the name of the preference key
         let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
@@ -214,7 +216,7 @@ impl Pref {
     /// - `handle` - Open registry key handle
     /// - `key` - Preference key to read
     /// # Returns
-    /// The retrieved string, or the default name on failure
+    /// - `String` - The retrieved string, or the default name on failure
     fn read_sz(&self, handle: &HKEY, key: PrefKey) -> String {
         // Get the name of the preference key
         let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {
@@ -230,7 +232,8 @@ impl Pref {
 
     /// Read all user preferences from the registry into the shared PREF struct.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if accessing the registry failed.
+    /// - `Ok(())` - If preferences were successfully read and loaded
+    /// - `Err` - If there was an error accessing the registry or reading preferences
     pub fn read_preferences(&mut self) -> SysResult<()> {
         /// Default board height used if not set in the registry.
         const DEFHEIGHT: u32 = 9;
@@ -309,7 +312,8 @@ impl Pref {
 
     /// Write all user preferences from the shared PREF struct into the registry.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if writing failed.
+    /// - `Ok(())` - If preferences were successfully written to the registry
+    /// - `Err` - If there was an error writing to the registry
     pub fn write_preferences(&mut self) -> AnyResult<()> {
         // Create or open the preferences registry key with write access
         let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
@@ -379,7 +383,8 @@ impl Pref {
     /// - `key` - Preference key to write
     /// - `val` - Registry value to store
     /// # Returns
-    /// An `Ok(())` if successful, or an error if writing failed.
+    /// - `Ok(())` - If the value was successfully written to the registry
+    /// - `Err` - If there was an error writing to the registry
     fn write(&self, handle: &HKEY, key: PrefKey, val: RegistryValue) -> AnyResult<()> {
         // Get the name of the preference key
         let Some(key_name) = PREF_STRINGS.get(key as usize).copied() else {

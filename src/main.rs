@@ -11,6 +11,7 @@
 //#![warn(clippy::multiple_unsafe_ops_per_block)]
 #![warn(clippy::missing_const_for_fn)]
 //#![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::must_use_candidate)]
 #![warn(clippy::needless_pass_by_value)]
 #![warn(clippy::option_if_let_else)]
 #![warn(clippy::redundant_pub_crate)]
@@ -35,6 +36,11 @@ mod xyzzy;
 use crate::winmine::WinMineMainWindow;
 use winsafe::HINSTANCE;
 
+/// The main entry point for the Minesweeper game application.
+/// It initializes the application and starts the main window loop.
+/// # Returns
+/// - `Ok(())` - If the application ran successfully and exited without errors.
+/// - `Err` - If there was an error during app execution
 fn main() -> Result<(), Box<dyn core::error::Error>> {
     // Get the module handle for the current process
     let h_instance_handle = HINSTANCE::GetModuleHandle(None)?;

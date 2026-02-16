@@ -9,6 +9,7 @@ use crate::globals::BASE_DPI;
 use crate::pref::GameType;
 use crate::winmine::WinMineMainWindow;
 
+/// Identifiers for resources used in the application, such as dialogs, menu items, and help contexts.
 #[derive(Copy, Clone)]
 pub enum ResourceId {
     /// Value representing no resource, used as a sentinel in arrays of resource IDs.
@@ -143,6 +144,11 @@ pub enum ResourceId {
 }
 
 impl From<ResourceId> for u16 {
+    /// Convert a `ResourceId` to a `u16` by using its underlying integer value.
+    /// # Arguments
+    /// - `res_id` - The `ResourceId` to convert.
+    /// # Returns
+    /// - The `u16` representation of the `ResourceId`.
     fn from(res_id: ResourceId) -> Self {
         res_id as u16
     }
@@ -160,6 +166,8 @@ impl<T> StateLock<T> {
     }
 
     /// Get a read lock on the inner value, handling poisoning.
+    /// # Returns
+    /// - A `RwLockReadGuard` for the inner value
     pub fn read(&self) -> RwLockReadGuard<'_, T> {
         match self.0.read() {
             Ok(guard) => guard,
@@ -168,6 +176,8 @@ impl<T> StateLock<T> {
     }
 
     /// Get a write lock on the inner value, handling poisoning.
+    /// # Returns
+    /// - A `RwLockWriteGuard` for the inner value
     pub fn write(&self) -> RwLockWriteGuard<'_, T> {
         match self.0.write() {
             Ok(guard) => guard,
@@ -191,7 +201,7 @@ pub fn seed_rng(seed: u16) {
 
 /// Generate the next pseudo-random number using a linear congruential generator.
 /// # Returns
-/// The next pseudo-random number.
+/// - The next pseudo-random number.
 /// # Notes
 /// A linear congruential generator (LCG) is a simple algorithm for generating a sequence of pseudo-random numbers.
 ///
@@ -231,7 +241,7 @@ fn rand() -> u32 {
 /// # Arguments
 /// - `rnd_max` - Upper bound (exclusive) for the random number
 /// # Returns
-/// A pseudo-random number in the [0, `rnd_max`) range
+/// - A pseudo-random number in the [0, `rnd_max`) range
 pub fn rnd(rnd_max: u32) -> u32 {
     rand() % rnd_max
 }
@@ -239,7 +249,8 @@ pub fn rnd(rnd_max: u32) -> u32 {
 impl WinMineMainWindow {
     /// Update the menu bar to reflect current preferences.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if updating the menu bar failed.
+    /// - `Ok(())` - If the menu bar was successfully updated
+    /// - `Err` - If there was an error retrieving the menu handle or updating the menu items
     pub fn set_menu_bar(&self) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (game_type, color, mark, sound) = {
@@ -290,7 +301,8 @@ impl WinMineMainWindow {
 /// - `num_lo` - Minimum allowed value.
 /// - `num_hi` - Maximum allowed value.
 /// # Returns
-/// The clamped integer value from the dialog item, or an error if retrieval or parsing fails.
+/// - `Ok(u32)` - The clamped integer value from the dialog item.
+/// - `Err` - If there was an error retrieving or parsing the value.
 pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -> AnyResult<u32> {
     h_dlg
         // Get a handle to the dialog item
@@ -310,7 +322,7 @@ pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -
 /// - `val` - The measurement in pixels at 96 DPI.
 /// - `dpi` - The UI DPI to scale the measurement to.
 /// # Returns
-/// The measurement scaled to the given DPI.
+/// - The measurement scaled to the given DPI.
 /// # Notes
 /// This function replicates the functionality of the `MulDiv` Win32 API function, with a few differences:
 /// - It takes a signed and an unsigned integer and returns a signed integer, while `MulDiv` operates on only signed integers.

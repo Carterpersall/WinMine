@@ -50,8 +50,6 @@ impl WinMineMainWindow {
     /// Creates the main window and hooks its events.
     /// # Arguments
     /// - `wnd`: The main window to wrap.
-    /// # Returns
-    /// The wrapped main window with events hooked.
     fn new(wnd: gui::WindowMain) -> Self {
         let new_self = Self {
             wnd,
@@ -67,7 +65,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `h_instance`: The application instance handle.
     /// # Returns
-    /// Ok(()) on success, or an error on failure.
+    /// - `Ok(())` - If the application ran successfully and exited without errors.
+    /// - `Err` - If there was an error during app execution.
     pub fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
         // Seed the RNG using the low 16 bits of the current tick count
         let ticks = LOWORD(GetTickCount64() as u32);
@@ -123,7 +122,8 @@ impl WinMineMainWindow {
 
     /// Begins a primary button drag operation.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the drag operation was successfully initiated and the button was drawn.
+    /// - `Err` - If an error occurred while getting the device context.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(true, Ordering::Relaxed);
         self.state.write().cursor_x = usize::MAX - 1;
@@ -136,7 +136,8 @@ impl WinMineMainWindow {
 
     /// Finishes a primary button drag operation.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the drag operation was successfully finished and the button was drawn.
+    /// - `Err` - If an error occurred while getting the device context or drawing the button.
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(false, Ordering::Relaxed);
         if self.state.read().game_status.contains(StatusFlag::Play) {
@@ -159,7 +160,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `key`: The virtual key code of the key that was pressed.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if handling the key failed.
+    /// - `Ok(())` - If the key was handled successfully.
+    /// - `Err` - If an error occurred while updating the menu bar.
     fn handle_keydown(&self, key: VK) -> AnyResult<()> {
         match key {
             code if code == VK::F4 => {
@@ -189,7 +191,8 @@ impl WinMineMainWindow {
     /// - `key`: The mouse buttons currently pressed.
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if handling the mouse move failed.
+    /// - `Ok(())` - If the mouse move was handled successfully.
+    /// - `Err` - If an error occurred while handling the mouse move or if getting the device context failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
         if self.state.read().btn_face_pressed {
             // If the face button is being clicked, handle mouse movement for that interaction
@@ -219,7 +222,8 @@ impl WinMineMainWindow {
     /// - `btn`: The mouse button that was pressed.
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if handling the right button down failed.
+    /// - `Ok(())` - If the right button down was handled successfully.
+    /// - `Err` - If an error occurred.
     fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
         // Ignore right-clicks if the next click is set to be ignored
         if self.ignore_next_click.swap(false, Ordering::Relaxed)
@@ -255,8 +259,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// - `Ok(())` if the mouse button release was handled.
-    /// - `Err` if an error occurred while handling the mouse button release.
+    /// - `Ok(())` - If the mouse button release was handled successfully.
+    /// - `Err` - If an error occurred while handling the mouse button release.
     fn handle_face_button_lbutton_up(&self, point: POINT) -> AnyResult<()> {
         let rc = {
             let grafix = &self.state.read().grafix;
@@ -297,7 +301,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `f_adjust` - Flags indicating how to adjust the window (e.g., resize).
     /// # Returns
-    /// An `Ok(())` if successful, or an error if adjustment failed.
+    /// - `Ok(())` - If the window adjustment was successful.
+    /// - `Err` - If an error occurred while adjusting the window.
     pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Calculate desired window size based on board dimensions and DPI scaling
         let (dx_window, dy_window) = {
@@ -400,7 +405,7 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `x`: The x-coordinate in pixels.
     /// # Returns
-    /// The corresponding box index.
+    /// - The corresponding box index.
     pub fn x_box_from_xpos(&self, x: i32) -> usize {
         let cell = self.state.read().grafix.dims.block.cx;
         if cell <= 0 {
@@ -413,7 +418,7 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `y`: The y-coordinate in pixels.
     /// # Returns
-    /// The corresponding box index.
+    /// - The corresponding box index.
     pub fn y_box_from_ypos(&self, y: i32) -> usize {
         let cell = self.state.read().grafix.dims.block.cy;
         if cell <= 0 {
@@ -1010,8 +1015,6 @@ struct BestDialog {
 
 impl BestDialog {
     /// Creates a new `BestDialog` instance and sets up event handlers.
-    /// # Returns
-    /// A new `BestDialog` instance.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(ResourceId::BestDlg as u16);
         let new_self = Self { dlg, state };
@@ -1022,6 +1025,9 @@ impl BestDialog {
     /// Displays the best-times dialog as a modal window.
     /// # Arguments
     /// - `parent`: The parent GUI element for the modal dialog.
+    /// # Returns
+    /// `Ok(())` - If the dialog was displayed successfully.
+    /// `Err` - If an error occurred while displaying the dialog.
     fn show_modal(&self, parent: &impl GuiParent) -> AnyResult<()> {
         self.dlg.show_modal(parent)
     }
@@ -1037,7 +1043,8 @@ impl BestDialog {
     /// - `name_inter` - The name associated with the intermediate level best time.
     /// - `name_expert` - The name associated with the expert level best time.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// `Ok(())` - If the dialog was reset successfully.
+    /// `Err` - If an error occurred while resetting the dialog.
     fn reset_best_dialog(
         &self,
         time_begin: u16,
@@ -1172,8 +1179,6 @@ struct EnterDialog {
 
 impl EnterDialog {
     /// Creates a new `EnterDialog` instance and sets up event handlers.
-    /// # Returns
-    /// A new `EnterDialog` instance.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(ResourceId::EnterDlg as u16);
         let new_self = Self { dlg, state };
@@ -1190,7 +1195,8 @@ impl EnterDialog {
 
     /// Saves the entered high-score name to preferences.
     /// # Returns
-    /// A `Result` indicating success or failure.
+    /// `Ok(())` - If the name was saved successfully.
+    /// `Err` - If an error occurred while getting the entered name.
     fn save_high_score_name(&self) -> AnyResult<()> {
         // Retrieve the entered name from the dialog's edit control
         let new_name = self

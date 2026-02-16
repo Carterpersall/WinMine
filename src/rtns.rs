@@ -65,7 +65,7 @@ impl From<u8> for BlockCell {
     /// # Arguments
     /// - `value` - The `u8` value to convert.
     /// # Returns
-    /// The corresponding `BlockCell` enum variant.
+    /// - The corresponding `BlockCell` enum variant.
     fn from(value: u8) -> Self {
         match value {
             0 => BlockCell::Blank,
@@ -108,7 +108,7 @@ impl From<BlockCell> for BlockInfo {
     /// # Arguments
     /// - `cell` - The `BlockCell` enum to convert.
     /// # Returns
-    /// The corresponding `BlockInfo` struct.
+    /// - A `BlockInfo` struct with the `block_type` set to the given `BlockCell`, and `bomb` and `visited` set to `false`.
     fn from(cell: BlockCell) -> Self {
         Self {
             bomb: false,
@@ -251,7 +251,8 @@ impl GameState {
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// # Returns
-    /// `Ok(())` if successful, or an error if loading resources failed.
+    /// - `Ok(())` - If initialization was successful
+    /// - `Err` - If loading the bitmaps failed
     pub fn init_game(&mut self, hwnd: &HWND) -> AnyResult<()> {
         self.grafix.load_bitmaps(hwnd, self.prefs.color)?;
         self.clear_field();
@@ -263,7 +264,8 @@ impl GameState {
     /// - `x` - The X coordinate.
     /// - `y` - The Y coordinate.
     /// # Returns
-    /// `true` if the coordinates are within range, `false` otherwise.
+    /// - `true` - If the coordinates are within the valid range of the board.
+    /// - `false` - If the coordinates are out of range.
     pub const fn in_range(&self, x: usize, y: usize) -> bool {
         x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
     }
@@ -272,7 +274,8 @@ impl GameState {
     ///
     /// TODO: Should this function be removed?
     /// # Returns
-    /// `true` if the player has won, `false` otherwise.
+    /// - `true` - If the player has won.
+    /// - `false` - If the player has not won.
     const fn check_win(&self) -> bool {
         self.boxes_visited == self.boxes_to_win
     }
@@ -288,7 +291,8 @@ impl GameState {
     ///
     /// TODO: Should the caller just pass in whether the game was won or lost instead of a `BlockCell`?
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the bombs were successfully revealed and drawn.
+    /// - `Err` - If there was an error while drawing the board.
     fn show_bombs(&mut self, hdc: &HDC, cell: BlockCell) -> AnyResult<()> {
         for y in 1..=self.board_height {
             for x in 1..=self.board_width {
@@ -318,7 +322,7 @@ impl GameState {
     /// - `x_center` - The X coordinate of the center square.
     /// - `y_center` - The Y coordinate of the center square.
     /// # Returns
-    /// The count of adjacent marked squares (maximum 8).
+    /// - The number of adjacent marked squares (maximum 8).
     fn count_marks(&self, x_center: usize, y_center: usize) -> u8 {
         let mut count = 0;
         for y in (y_center - 1)..=(y_center + 1) {
@@ -336,9 +340,9 @@ impl GameState {
     /// - `hdc`: Handle to the device context to draw on.
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// - `Ok(true)` if the click was on the button and handled.
-    /// - `Ok(false)` if the click was not on the button.
-    /// - `Err` if an error occurred while handling the click.
+    /// - `Ok(true)` - If the click was on the button and handled.
+    /// - `Ok(false)` - If the click was not on the button.
+    /// - `Err` - If an error occurred while handling the click.
     pub fn btn_click_handler(&mut self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<bool> {
         let rc = {
             RECT {
@@ -363,8 +367,8 @@ impl GameState {
     /// - `hdc`: Handle to the device context to draw on.
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
-    /// - `Ok(())` if the mouse move was handled.
-    /// - `Err` if an error occurred while handling the mouse move.
+    /// - `Ok(())` - If the mouse move was handled.
+    /// - `Err` - If an error occurred while handling the mouse move.
     pub fn handle_face_button_mouse_move(
         &self,
         hdc: &ReleaseDCGuard,
@@ -394,7 +398,8 @@ impl GameState {
     /// - `hdc` - Handle to the device context.
     /// - `win` - `true` if the player has won, `false` otherwise.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the button was successfully updated.
+    /// - `Err` - If an error occurred while drawing the button.
     fn update_button_for_result(&mut self, hdc: &ReleaseDCGuard, win: bool) -> AnyResult<()> {
         let state = if win {
             ButtonSprite::Win
@@ -440,7 +445,8 @@ impl GameState {
     /// - `x` - The X coordinate of the square.
     /// - `y` - The Y coordinate of the square.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the square was successfully processed.
+    /// - `Err` - If an error occurred while drawing a square.
     fn step_xy(
         &mut self,
         hdc: &ReleaseDCGuard,
@@ -494,7 +500,8 @@ impl GameState {
     /// - `x` - X coordinate of the starting square
     /// - `y` - Y coordinate of the starting square
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the flood-fill was successful.
+    /// - `Err` - If an error occurred while drawing the board.
     fn step_box(&mut self, hdc: &ReleaseDCGuard, x: usize, y: usize) -> AnyResult<()> {
         // Use a queue to perform a breadth-first flood-fill of empty squares.
         // The queue has a fixed maximum size, and if it overflows we loop back to the start and overwrite old entries.
@@ -543,7 +550,8 @@ impl GameState {
     /// - `hwnd` - Handle to the main window.
     /// - `win` - `true` if the player has won, `false` otherwise
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the game over state was successfully handled.
+    /// - `Err` - If an error occurred while drawing the board.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
         self.timer_running = false;
         let hdc = hwnd.GetDC()?;
@@ -579,7 +587,8 @@ impl GameState {
     /// - `x` - The X coordinate of the clicked square.
     /// - `y` - The Y coordinate of the clicked square.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the square was successfully processed.
+    /// - `Err` - If an error occurred while drawing the square.
     fn step_square(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
         let hdc = hwnd.GetDC()?;
         if self.board_cells[x][y].bomb {
@@ -618,7 +627,8 @@ impl GameState {
     /// - `x_center` - The X coordinate of the center square.
     /// - `y_center` - The Y coordinate of the center square.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the chord operation was successful.
+    /// - `Err` - If an error occurred while drawing the board.
     fn step_block(&mut self, hwnd: &HWND, x_center: usize, y_center: usize) -> AnyResult<()> {
         let hdc = hwnd.GetDC()?;
 
@@ -664,7 +674,8 @@ impl GameState {
     /// - `x` - The X coordinate of the square.
     /// - `y` - The Y coordinate of the square.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the guess was successfully processed.
+    /// - `Err` - If an error occurred while drawing the square.
     pub fn make_guess(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
         // Cycle through blank -> flag -> question mark states depending on preferences.
 
@@ -736,7 +747,8 @@ impl GameState {
     /// - `x` - The X coordinate.
     /// - `y` - The Y coordinate.
     /// # Returns
-    /// `true` if the coordinate is valid for flood-fill, `false` otherwise.
+    /// - `true` - If the coordinate is within range, not visited, and not guessed as a bomb.
+    /// - `false` - If any of the conditions are not met.
     fn in_range_step(&mut self, x: usize, y: usize) -> bool {
         self.in_range(x, y)
             && !self.board_cells[x][y].visited
@@ -767,7 +779,8 @@ impl GameState {
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if updating the display failed
+    /// - `Ok(())` - If the timer was successfully updated.
+    /// - `Err` - If an error occurred while updating the display.
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
@@ -789,7 +802,8 @@ impl WinMineMainWindow {
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if resizing or updating the display failed.
+    /// - `Ok(())` - If the game was successfully started.
+    /// - `Err` - If an error occurred while resizing or updating the display.
     pub fn start_game(&self) -> AnyResult<()> {
         let x_prev = self.state.read().board_width;
         let y_prev = self.state.read().board_height;
@@ -805,6 +819,7 @@ impl WinMineMainWindow {
             AdjustFlag::Redraw
         };
 
+        // TODO: Cache `self.state.write()`
         self.state.write().board_width = pref_width;
         self.state.write().board_height = pref_height;
 
@@ -856,7 +871,8 @@ impl GameState {
     /// - `x_new` - The new X coordinate of the mouse.
     /// - `y_new` - The new Y coordinate of the mouse.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the mouse tracking was successfully handled and the board was updated.
+    /// - `Err` - If an error occurred while drawing the board or if getting the device context failed.
     pub fn track_mouse(
         &mut self,
         hdc: &ReleaseDCGuard,
@@ -945,7 +961,8 @@ impl GameState {
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// # Returns
-    /// An `Ok(())` if successful, or an error if drawing failed.
+    /// - `Ok(())` - If the button release was successfully handled.
+    /// - `Err` - If an error occurred while drawing the board or updating the timer.
     pub fn do_button_1_up(&mut self, hwnd: &HWND) -> AnyResult<()> {
         // Check if the cursor is within the valid range of the board
         if self.in_range(self.cursor_x, self.cursor_y) {

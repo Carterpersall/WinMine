@@ -22,7 +22,7 @@ pub enum Sound {
 impl Sound {
     /// Play a specific UI tune using the sounds in the resource file
     /// # Arguments
-    /// - `tune` - The tune to play
+    /// - `hinst` - The HINSTANCE of the current process, used to locate the sound resource.
     pub fn play(self, hinst: &HINSTANCE) {
         let resource_ptr = self as usize as *const u16;
         // Playback uses the async flag so the UI thread is never blocked.
@@ -32,8 +32,11 @@ impl Sound {
     }
 
     /// Initialize the sound system and determine whether sound effects can be played.
+    ///
+    /// TODO: Remove either this function or `stop_all`
     /// # Returns
-    /// `true` if sound effects can be played, `false` otherwise.
+    /// - `true` - If sound effects are supported and can be played
+    /// - `false` - If the sound API is unavailable or fails, indicating that sound effects should be disabled in preferences.
     pub fn init() -> bool {
         // Attempt to stop any playing sounds; if the API fails we assume the
         // machine cannot play audio and disable sound effects in preferences.
@@ -42,7 +45,8 @@ impl Sound {
 
     /// Stop all currently playing sounds.
     /// # Returns
-    /// `true` if the operation succeeded, `false` otherwise.
+    /// - `true` - If the sound API successfully stopped all sounds (or if no sounds were playing)
+    /// - `false` - If the sound API failed to stop sounds, indicating a potential issue with the sound system.
     pub fn stop_all() -> bool {
         // Passing NULL tells PlaySound to purge the current queue.
         unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
