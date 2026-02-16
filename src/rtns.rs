@@ -1000,7 +1000,7 @@ impl GameState {
 
     /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.
     pub fn pause_game(&mut self) {
-        Sound::stop_all();
+        Sound::reset();
 
         if !self.game_status.contains(StatusFlag::Pause) {
             F_OLD_TIMER_STATUS.store(self.timer_running, Ordering::Relaxed);

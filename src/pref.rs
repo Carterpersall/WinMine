@@ -307,7 +307,7 @@ impl Pref {
             != 0;
         // If sound is enabled, initialize the sound system
         if self.sound_enabled {
-            self.sound_enabled = Sound::init();
+            self.sound_enabled = Sound::reset();
         }
         Ok(())
     }

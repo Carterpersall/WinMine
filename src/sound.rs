@@ -31,23 +31,11 @@ impl Sound {
         }
     }
 
-    /// Initialize the sound system and determine whether sound effects can be played.
-    ///
-    /// TODO: Remove either this function or `stop_all`
+    /// Reset the sound system by stopping any currently playing sounds.
     /// # Returns
-    /// - `true` - If sound effects are supported and can be played
-    /// - `false` - If the sound API is unavailable or fails, indicating that sound effects should be disabled in preferences.
-    pub fn init() -> bool {
-        // Attempt to stop any playing sounds; if the API fails we assume the
-        // machine cannot play audio and disable sound effects in preferences.
-        Self::stop_all()
-    }
-
-    /// Stop all currently playing sounds.
-    /// # Returns
-    /// - `true` - If the sound API successfully stopped all sounds (or if no sounds were playing)
+    /// - `true` - If the sound API successfully stopped all sounds, indicating that sounds can be played without issue.
     /// - `false` - If the sound API failed to stop sounds, indicating a potential issue with the sound system.
-    pub fn stop_all() -> bool {
+    pub fn reset() -> bool {
         // Passing NULL tells PlaySound to purge the current queue.
         unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
     }

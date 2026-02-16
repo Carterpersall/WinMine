@@ -166,10 +166,10 @@ impl WinMineMainWindow {
             code if code == VK::F4 => {
                 let new_sound = match self.state.read().prefs.sound_enabled {
                     true => {
-                        Sound::stop_all();
+                        Sound::reset();
                         false
                     }
-                    false => Sound::init(),
+                    false => Sound::reset(),
                 };
                 self.state.write().prefs.sound_enabled = new_sound;
 
@@ -796,10 +796,10 @@ impl WinMineMainWindow {
             move || {
                 let new_sound = match self2.state.read().prefs.sound_enabled {
                     true => {
-                        Sound::stop_all();
+                        Sound::reset();
                         false
                     }
-                    false => Sound::init(),
+                    false => Sound::reset(),
                 };
                 self2.state.write().prefs.sound_enabled = new_sound;
                 self2.set_menu_bar()?;
