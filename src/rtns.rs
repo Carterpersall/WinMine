@@ -10,7 +10,7 @@ use bitflags::bitflags;
 use winsafe::co::{MK, WM};
 use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT, prelude::*};
+use winsafe::{AnyResult, HWND, POINT, PtInRect, RECT, prelude::*};
 
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
@@ -303,43 +303,6 @@ impl GameState {
         self.boxes_visited == self.boxes_to_win
     }
 
-    /// Reveal all bombs on the board and mark incorrect guesses.
-    ///
-    /// This is called when the game ends to show the final board state.
-    /// # Arguments
-    /// - `hdc` - Handle to the device context to draw on.
-    /// - `cell` - The `BlockCell` type to use for revealed bombs:
-    ///     - `BlockCell::BombDown` for a loss
-    ///     - `BlockCell::BombUp` for a win
-    ///
-    /// TODO: Should the caller just pass in whether the game was won or lost instead of a `BlockCell`?
-    /// # Returns
-    /// - `Ok(())` - If the bombs were successfully revealed and drawn.
-    /// - `Err` - If there was an error while drawing the board.
-    fn show_bombs(&mut self, hdc: &HDC, cell: BlockCell) -> AnyResult<()> {
-        for y in 1..=self.board_height {
-            for x in 1..=self.board_width {
-                // If the cell is not visited is not the exploded bomb cell
-                if !self.board_cells[x][y].visited
-                    && self.board_cells[x][y].block_type != BlockCell::Explode
-                {
-                    if self.board_cells[x][y].bomb {
-                        if self.board_cells[x][y].block_type != BlockCell::BombUp {
-                            // If a bomb cell was not marked, reveal it
-                            self.board_cells[x][y].block_type = cell;
-                        }
-                    } else if self.board_cells[x][y].block_type == BlockCell::BombUp {
-                        // If a non-bomb cell was marked as a bomb, show it as incorrect
-                        self.board_cells[x][y].block_type = BlockCell::Wrong;
-                    }
-                }
-            }
-        }
-        self.grafix
-            .draw_grid(hdc, self.board_width, self.board_height, &self.board_cells)?;
-        Ok(())
-    }
-
     /// Count the number of adjacent marked squares around the specified coordinates.
     /// # Arguments
     /// - `x_center` - The X coordinate of the center square.
@@ -413,24 +376,6 @@ impl GameState {
             self.grafix.draw_button(hdc, self.btn_face_state)?;
         }
 
-        Ok(())
-    }
-
-    /// Update the button face based on the game result.
-    /// # Arguments
-    /// - `hdc` - Handle to the device context.
-    /// - `win` - `true` if the player has won, `false` otherwise.
-    /// # Returns
-    /// - `Ok(())` - If the button was successfully updated.
-    /// - `Err` - If an error occurred while drawing the button.
-    fn update_button_for_result(&mut self, hdc: &ReleaseDCGuard, win: bool) -> AnyResult<()> {
-        let state = if win {
-            ButtonSprite::Win
-        } else {
-            ButtonSprite::Lose
-        };
-        self.btn_face_state = state;
-        self.grafix.draw_button(hdc, state)?;
         Ok(())
     }
 
@@ -572,30 +517,6 @@ impl GameState {
         Ok(())
     }
 
-    /// Record a new win time if it is a personal best.
-    /// # Arguments
-    /// - `hwnd` - Handle to the main window.
-    fn record_win_if_needed(&mut self, hwnd: &HWND) {
-        let game = self.prefs.game_type;
-        if game != GameType::Other {
-            let game_idx = game as usize;
-            if game_idx < self.prefs.best_times.len()
-                && self.secs_elapsed < self.prefs.best_times[game_idx]
-            {
-                {
-                    self.prefs.best_times[game_idx] = self.secs_elapsed;
-                }
-
-                if hwnd.as_opt().is_some() {
-                    // TODO: Don't use PostMessage to do what could just be a function call
-                    unsafe {
-                        let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
-                    }
-                }
-            }
-        }
-    }
-
     /// Enqueue a square for flood-fill processing if it is empty.
     ///
     /// TODO: Could this function be merged with `step_box` to avoid passing the queue around?
@@ -716,17 +637,45 @@ impl GameState {
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
         self.timer_running = false;
         let hdc = hwnd.GetDC()?;
-        self.update_button_for_result(&hdc, win)?;
-        self.show_bombs(
-            &hdc,
-            if win {
-                BlockCell::BombUp
-            } else {
-                BlockCell::BombDown
-            },
-        )?;
+
+        // Update the button face to show win or loss
+        let state = if win {
+            ButtonSprite::Win
+        } else {
+            ButtonSprite::Lose
+        };
+        self.btn_face_state = state;
+        self.grafix.draw_button(&hdc, state)?;
+
+        // Show all of the bombs and mark incorrect guesses
+        for y in 1..=self.board_height {
+            for x in 1..=self.board_width {
+                // If the cell is not visited is not the exploded bomb cell
+                if !self.board_cells[x][y].visited
+                    && self.board_cells[x][y].block_type != BlockCell::Explode
+                {
+                    if self.board_cells[x][y].bomb {
+                        if self.board_cells[x][y].block_type != BlockCell::BombUp {
+                            // If a bomb cell was not marked, reveal it
+                            let cell = if win {
+                                BlockCell::BombUp
+                            } else {
+                                BlockCell::BombDown
+                            };
+                            self.board_cells[x][y].block_type = cell;
+                        }
+                    } else if self.board_cells[x][y].block_type == BlockCell::BombUp {
+                        // If a non-bomb cell was marked as a bomb, show it as incorrect
+                        self.board_cells[x][y].block_type = BlockCell::Wrong;
+                    }
+                }
+            }
+        }
+        self.grafix
+            .draw_grid(&hdc, self.board_width, self.board_height, &self.board_cells)?;
+
+        // Play the appropriate sound effect based on win or loss
         if win {
-            self.bombs_left = 0;
             if self.prefs.sound_enabled {
                 Sound::WinGame.play(&hwnd.hinstance());
             }
@@ -735,8 +684,28 @@ impl GameState {
         }
         self.game_status = StatusFlag::GameOver;
 
+        // If the player won, set the bomb count to 0 and record the win if it's a personal best
         if win {
-            self.record_win_if_needed(hwnd);
+            self.bombs_left = 0;
+
+            // Skip recording the win if the game type is "Other", since there is no associated best time for that mode
+            if self.prefs.game_type != GameType::Other {
+                let game_idx = self.prefs.game_type as usize;
+                if game_idx < self.prefs.best_times.len()
+                    && self.secs_elapsed < self.prefs.best_times[game_idx]
+                {
+                    {
+                        self.prefs.best_times[game_idx] = self.secs_elapsed;
+                    }
+
+                    if hwnd.as_opt().is_some() {
+                        // TODO: Don't use PostMessage to do what could just be a function call
+                        unsafe {
+                            let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
+                        }
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -890,9 +859,8 @@ impl GameState {
     /// - `x` - The X coordinate of the box.
     /// - `y` - The Y coordinate of the box.
     const fn invert_box(&mut self, x: usize, y: usize) {
-        // TODO: This can be improved.
-        let mut blk = self.board_cells[x][y].block_type;
-        blk = match blk {
+        let blk = self.board_cells[x][y].block_type;
+        self.board_cells[x][y].block_type = match blk {
             // Push the box down by changing the block type to the corresponding "down" version
             BlockCell::GuessUp => BlockCell::GuessDown,
             BlockCell::BlankUp => BlockCell::Blank,
@@ -901,7 +869,6 @@ impl GameState {
             BlockCell::Blank => BlockCell::BlankUp,
             _ => blk,
         };
-        self.board_cells[x][y].block_type = blk;
     }
 
     /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
@@ -992,10 +959,11 @@ impl WinMineMainWindow {
         while bombs > 0 {
             let mut x;
             let mut y;
-            // TODO: Loops are bad. Look into doing this a different way.
             loop {
+                // Select a random position on the board
                 x = rnd(state.board_width as u32) as usize + 1;
                 y = rnd(state.board_height as u32) as usize + 1;
+                // If there is not already a bomb at that position, place a bomb there
                 if !state.board_cells[x][y].bomb {
                     break;
                 }
