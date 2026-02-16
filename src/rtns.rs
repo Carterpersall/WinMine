@@ -270,6 +270,22 @@ impl GameState {
         x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
     }
 
+    /// Convert a set of coordinates in pixels to a box index on the board.
+    /// # Arguments
+    /// - `pos`: The POINT structure containing the x and y coordinates in pixels.
+    /// # Returns
+    /// - The corresponding box index.
+    pub const fn box_from_point(&self, pos: POINT) -> (usize, usize) {
+        let cell = self.grafix.dims.block.cx;
+        if cell <= 0 {
+            return (0, 0);
+        }
+        (
+            ((pos.x - (self.grafix.dims.left_space - cell)) / cell) as usize,
+            ((pos.y - (self.grafix.dims.grid_offset - cell)) / cell) as usize,
+        )
+    }
+
     /// Check if the player has won the game.
     /// # Returns
     /// - `true` - If the player has won.

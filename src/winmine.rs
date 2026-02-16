@@ -199,8 +199,7 @@ impl WinMineMainWindow {
         } else if self.drag_active.load(Ordering::Relaxed) {
             // If the user is dragging, track the mouse position
             if self.state.read().game_status.contains(StatusFlag::Play) {
-                let x_new = self.x_box_from_xpos(point.x);
-                let y_new = self.y_box_from_ypos(point.y);
+                let (x_new, y_new) = self.state.read().box_from_point(point);
                 self.state
                     .write()
                     .track_mouse(&self.wnd.hwnd().GetDC()?, x_new, y_new)?;
@@ -238,8 +237,7 @@ impl WinMineMainWindow {
                 self.handle_mouse_move(btn, point)?;
             } else {
                 // Regular right-click: make a guess
-                let x = self.x_box_from_xpos(point.x);
-                let y = self.y_box_from_ypos(point.y);
+                let (x, y) = self.state.read().box_from_point(point);
                 self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
             }
         }
@@ -416,36 +414,6 @@ impl WinMineMainWindow {
         self.state.write().prefs.wnd_pos = pos;
 
         Ok(())
-    }
-
-    /// Converts an x-coordinate in pixels to a box index.
-    ///
-    /// TODO: Move this function into `GameState`.
-    /// # Arguments
-    /// - `x`: The x-coordinate in pixels.
-    /// # Returns
-    /// - The corresponding box index.
-    pub fn x_box_from_xpos(&self, x: i32) -> usize {
-        let state = self.state.read();
-        let cell = state.grafix.dims.block.cx;
-        if cell <= 0 {
-            return 0;
-        }
-        ((x - (state.grafix.dims.left_space - cell)) / cell) as usize
-    }
-
-    /// Converts a y-coordinate in pixels to a box index.
-    /// # Arguments
-    /// - `y`: The y-coordinate in pixels.
-    /// # Returns
-    /// - The corresponding box index.
-    pub fn y_box_from_ypos(&self, y: i32) -> usize {
-        let state = self.state.read();
-        let cell = state.grafix.dims.block.cy;
-        if cell <= 0 {
-            return 0;
-        }
-        ((y - (state.grafix.dims.grid_offset - cell)) / cell) as usize
     }
 
     /* Event Handlers */
