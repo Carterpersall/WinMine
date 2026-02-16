@@ -881,21 +881,12 @@ impl GrafixState {
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
         // TODO: Replace these if-statements with `ok_or()?`
-        let Some((h_blks, lp_blks)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::BlocksBmp, color)
-        else {
-            return Err("Failed to load block bitmap resource".into());
-        };
-        let Some((h_led, lp_led)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::LedBmp, color)
-        else {
-            return Err("Failed to load LED bitmap resource".into());
-        };
-        let Some((h_button, lp_button)) =
-            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::ButtonBmp, color)
-        else {
-            return Err("Failed to load button bitmap resource".into());
-        };
+        let (h_blks, lp_blks) =
+            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::BlocksBmp, color)?;
+        let (h_led, lp_led) =
+            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::LedBmp, color)?;
+        let (h_button, lp_button) =
+            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::ButtonBmp, color)?;
 
         self.h_res_blks = h_blks;
         self.h_res_led = h_led;
@@ -906,22 +897,12 @@ impl GrafixState {
         self.lp_dib_button = lp_button;
 
         self.h_gray_pen = if color {
-            // TODO: Don't use `.ok()`
-            HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128)).ok()
+            HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128))?.into()
         } else {
-            HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(0, 0, 0)).ok()
+            HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(0, 0, 0))?.into()
         };
 
-        // TODO: Once again, use `ok_or()?` instead of this if-statement
-        if self.h_gray_pen.is_none() {
-            return Err("Failed to create gray pen".into());
-        }
-
-        self.h_white_pen = HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(255, 255, 255)).ok();
-
-        if self.h_white_pen.is_none() {
-            return Err("Failed to get white pen".into());
-        }
+        self.h_white_pen = HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(255, 255, 255))?.into();
 
         let header = self.dib_header_size(color);
 
@@ -1080,25 +1061,21 @@ impl GrafixState {
     /// # Returns
     /// - `Some((HRSRCMEM, *const BITMAPINFO))` - The resource handle and a pointer to the bitmap data if successful.
     /// - `None` - If loading the resource failed at any step (finding, loading, locking).
-    ///
-    /// TODO: Return `AnyResult` instead of `Option`
     fn load_bitmap_resource(
         &self,
         hinst: &HINSTANCE,
         id: ResourceId,
         color_on: bool,
-    ) -> Option<(HRSRCMEM, *const BITMAPINFO)> {
+    ) -> AnyResult<(HRSRCMEM, *const BITMAPINFO)> {
         let offset = if color_on { 0 } else { 1 };
         let resource_id = (id as u16) + offset;
         // Colorless devices load the grayscale resource IDs immediately following the color ones.
-        let res_info = hinst
-            .FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))
-            .ok()?;
-        let res_loaded = hinst.LoadResource(&res_info).ok()?;
-        let lp = hinst.LockResource(&res_info, &res_loaded).ok()?.as_ptr();
+        let res_info = hinst.FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))?;
+        let res_loaded = hinst.LoadResource(&res_info)?;
+        let lp = hinst.LockResource(&res_info, &res_loaded)?.as_ptr();
         // The cast to `BITMAPINFO` should be safe because `LockResource` returns a pointer to the first byte of the resource data,
         // which is structured as a `BITMAPINFO` according to the resource format.
-        Some((res_loaded, lp as *const BITMAPINFO))
+        Ok((res_loaded, lp as *const BITMAPINFO))
     }
 
     /// Calculate the size of the DIB header plus color palette
