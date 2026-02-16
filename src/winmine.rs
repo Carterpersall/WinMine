@@ -126,31 +126,30 @@ impl WinMineMainWindow {
     /// - `Err` - If an error occurred while getting the device context.
     fn begin_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(true, Ordering::Relaxed);
-        self.state.write().cursor_x = usize::MAX - 1;
-        self.state.write().cursor_y = usize::MAX - 1;
-        self.state
-            .read()
+        let mut state = self.state.write();
+        state.cursor_x = usize::MAX - 1;
+        state.cursor_y = usize::MAX - 1;
+        state
             .grafix
             .draw_button(self.wnd.hwnd().GetDC()?.deref(), ButtonSprite::Caution)
     }
 
     /// Finishes a primary button drag operation.
+    ///
+    /// TODO: Should this be in `GameState`?
     /// # Returns
     /// - `Ok(())` - If the drag operation was successfully finished and the button was drawn.
     /// - `Err` - If an error occurred while getting the device context or drawing the button.
     fn finish_primary_button_drag(&self) -> AnyResult<()> {
         self.drag_active.store(false, Ordering::Relaxed);
-        if self.state.read().game_status.contains(StatusFlag::Play) {
-            self.state.write().do_button_1_up(self.wnd.hwnd())?;
+        let mut state = self.state.write();
+        if state.game_status.contains(StatusFlag::Play) {
+            state.do_button_1_up(self.wnd.hwnd())?;
         } else {
-            self.state.write().track_mouse(
-                &self.wnd.hwnd().GetDC()?,
-                usize::MAX - 2,
-                usize::MAX - 2,
-            )?;
+            state.track_mouse(&self.wnd.hwnd().GetDC()?, usize::MAX - 2, usize::MAX - 2)?;
         }
         // If a chord operation was active, end it now
-        self.state.write().chord_active = false;
+        state.chord_active = false;
         Ok(())
     }
 
@@ -172,10 +171,7 @@ impl WinMineMainWindow {
                     }
                     false => Sound::init(),
                 };
-
-                {
-                    self.state.write().prefs.sound_enabled = new_sound;
-                };
+                self.state.write().prefs.sound_enabled = new_sound;
 
                 self.set_menu_bar()?;
             }
@@ -194,6 +190,7 @@ impl WinMineMainWindow {
     /// - `Ok(())` - If the mouse move was handled successfully.
     /// - `Err` - If an error occurred while handling the mouse move or if getting the device context failed.
     fn handle_mouse_move(&self, key: MK, point: POINT) -> AnyResult<()> {
+        // TODO: Cache state once `x_box_from_xpos` and `y_box_from_ypos` are moved into `GameState`
         if self.state.read().btn_face_pressed {
             // If the face button is being clicked, handle mouse movement for that interaction
             self.state
@@ -232,8 +229,9 @@ impl WinMineMainWindow {
             return Ok(());
         }
 
-        // If the left and right buttons are both down, and the middle button is not down, start a chord operation
+        // TODO: Merge these if-statements
         if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
+            // If the left and right buttons are both down, and the middle button is not down, start a chord operation
             self.state.write().chord_active = true;
             self.state.write().track_mouse(
                 &self.wnd.hwnd().GetDC()?,
@@ -315,8 +313,7 @@ impl WinMineMainWindow {
                 + state.grafix.dims.bottom_space;
             (dx_window, dy_window)
         };
-        self.state.write().grafix.wnd_pos.x = dx_window;
-        self.state.write().grafix.wnd_pos.y = dy_window;
+        self.state.write().grafix.wnd_pos = POINT::with(dx_window, dy_window);
 
         // Get the current window position from preferences
         let mut pos = self.state.read().prefs.wnd_pos;
@@ -402,16 +399,19 @@ impl WinMineMainWindow {
     }
 
     /// Converts an x-coordinate in pixels to a box index.
+    ///
+    /// TODO: Move this function into `GameState`.
     /// # Arguments
     /// - `x`: The x-coordinate in pixels.
     /// # Returns
     /// - The corresponding box index.
     pub fn x_box_from_xpos(&self, x: i32) -> usize {
-        let cell = self.state.read().grafix.dims.block.cx;
+        let state = self.state.read();
+        let cell = state.grafix.dims.block.cx;
         if cell <= 0 {
             return 0;
         }
-        ((x - (self.state.read().grafix.dims.left_space - cell)) / cell) as usize
+        ((x - (state.grafix.dims.left_space - cell)) / cell) as usize
     }
 
     /// Converts a y-coordinate in pixels to a box index.
@@ -420,11 +420,12 @@ impl WinMineMainWindow {
     /// # Returns
     /// - The corresponding box index.
     pub fn y_box_from_ypos(&self, y: i32) -> usize {
-        let cell = self.state.read().grafix.dims.block.cy;
+        let state = self.state.read();
+        let cell = state.grafix.dims.block.cy;
         if cell <= 0 {
             return 0;
         }
-        ((y - (self.state.read().grafix.dims.grid_offset - cell)) / cell) as usize
+        ((y - (state.grafix.dims.grid_offset - cell)) / cell) as usize
     }
 
     /* Event Handlers */
@@ -439,11 +440,14 @@ impl WinMineMainWindow {
                 if dpi == 0 {
                     dpi = BASE_DPI;
                 }
-                self2.state.write().grafix.dpi = dpi;
-                self2.state.write().grafix.dims.update_dpi(dpi);
+                {
+                    let mut state = self2.state.write();
+                    state.grafix.dpi = dpi;
+                    state.grafix.dims.update_dpi(dpi);
 
-                // Initialize local resources.
-                self2.state.write().init_game(self2.wnd.hwnd())?;
+                    // Initialize local resources.
+                    state.init_game(self2.wnd.hwnd())?;
+                }
 
                 // Update the menu bar and start a new game
                 self2.set_menu_bar()?;
@@ -799,9 +803,7 @@ impl WinMineMainWindow {
                     }
                     false => Sound::init(),
                 };
-                {
-                    self2.state.write().prefs.sound_enabled = new_sound;
-                };
+                self2.state.write().prefs.sound_enabled = new_sound;
                 self2.set_menu_bar()?;
                 Ok(())
             }
