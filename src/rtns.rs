@@ -2,6 +2,7 @@
 //! This includes board representation, game status tracking, and related utilities.
 
 use core::cmp::{max, min};
+use core::mem::replace;
 use core::ops::Deref as _;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -187,6 +188,10 @@ pub struct GameState {
     pub cursor_x: usize,
     /// Current cursor y position in board coordinates
     pub cursor_y: usize,
+    /// Signals that the next click should be ignored
+    ///
+    /// This is used after window activation to prevent accidental clicks.
+    pub ignore_next_click: bool,
     /// Indicates whether a chord operation is currently active.
     ///
     /// A chord operation allows the player to reveal adjacent squares if the number of marked squares
@@ -232,6 +237,7 @@ impl GameState {
             boxes_visited: 0,
             cursor_x: 0,
             cursor_y: 0,
+            ignore_next_click: false,
             chord_active: false,
             drag_active: false,
             board_cells: [[BlockInfo {
@@ -483,6 +489,60 @@ impl GameState {
         } else if self.secs_elapsed > 0 {
             // If the user is not dragging but the game is active, track the mouse position for the XYZZY cheat code
             self.handle_xyzzys_mouse(key, point)?;
+        }
+        Ok(())
+    }
+
+    /// Handles right mouse button down events.
+    /// # Arguments
+    /// - `hwnd`: Handle to the main window, used to get the device context and make guesses if the game is active.
+    /// - `btn`: The mouse button that was pressed.
+    /// - `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    /// - `Ok(())` - If the right button down was handled successfully.
+    /// - `Err` - If an error occurred.
+    pub fn handle_rbutton_down(&mut self, hwnd: &HWND, btn: MK, point: POINT) -> AnyResult<()> {
+        // Ignore right-clicks if the next click is set to be ignored or if the game is not active
+        if !replace(&mut self.ignore_next_click, false)
+            && self.game_status.contains(StatusFlag::Play)
+        {
+            if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
+                // If the left and right buttons are both down, and the middle button is not down, start a chord operation
+                self.chord_active = true;
+                self.track_mouse(&hwnd.GetDC()?, usize::MAX - 3, usize::MAX - 3)?;
+                self.begin_primary_button_drag(&hwnd.GetDC()?)?;
+                self.handle_mouse_move(hwnd, btn, point)?;
+            } else {
+                // Regular right-click: make a guess
+                let (x, y) = self.box_from_point(point);
+                self.make_guess(hwnd, x, y)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Handles left mouse button down events.
+    /// # Arguments
+    /// - `hwnd`: Handle to the main window, used to get the device context and reveal squares if the game is active.
+    /// - `vkey`: The virtual key code of the mouse button event.
+    /// - `point`: The coordinates of the mouse cursor.
+    /// # Returns
+    // - `Ok(())` - If the left button down was handled successfully.
+    /// - `Err` - If an error occurred.
+    pub fn handle_lbutton_down(&mut self, hwnd: &HWND, vkey: MK, point: POINT) -> AnyResult<()> {
+        // If the next click should be ignored of if the click was on the button and was handled, do nothing else
+        // TODO: Move `ignore_next_click` logic either entirely into functions or entirely into the event closures
+        if !replace(&mut self.ignore_next_click, false)
+            && !self.btn_click_handler(&hwnd.GetDC()?, point)?
+        {
+            if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
+                // If the right button or the shift key is also down, start a chord operation
+                self.chord_active = true;
+            }
+            if self.game_status.contains(StatusFlag::Play) {
+                self.begin_primary_button_drag(&hwnd.GetDC()?)?;
+                self.handle_mouse_move(hwnd, vkey, point)?;
+            }
         }
         Ok(())
     }

@@ -2,9 +2,7 @@
 
 use core::cmp::{max, min};
 use core::ops::Deref as _;
-use core::sync::atomic::{AtomicBool, Ordering};
 use std::rc::Rc;
-use std::sync::Arc;
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
 
@@ -38,10 +36,6 @@ pub struct WinMineMainWindow {
     pub wnd: gui::WindowMain,
     /// Shared state for the game
     pub state: Rc<StateLock<GameState>>,
-    /// Signals that the next click should be ignored
-    ///
-    /// This is used after window activation to prevent accidental clicks.
-    ignore_next_click: Arc<AtomicBool>,
 }
 
 impl WinMineMainWindow {
@@ -52,7 +46,6 @@ impl WinMineMainWindow {
         let new_self = Self {
             wnd,
             state: Rc::new(StateLock::new(GameState::new())),
-            ignore_next_click: Arc::new(AtomicBool::new(false)),
         };
         new_self.events();
         new_self
@@ -116,76 +109,6 @@ impl WinMineMainWindow {
     }
 
     /* Message Helper Functions */
-
-    /// Handles right mouse button down events.
-    ///
-    /// TODO: Should this function be moved into `GameState`?
-    /// # Arguments
-    /// - `btn`: The mouse button that was pressed.
-    /// - `point`: The coordinates of the mouse cursor.
-    /// # Returns
-    /// - `Ok(())` - If the right button down was handled successfully.
-    /// - `Err` - If an error occurred.
-    fn handle_rbutton_down(&self, btn: MK, point: POINT) -> AnyResult<()> {
-        // Ignore right-clicks if the next click is set to be ignored or if the game is not active
-        if !self.ignore_next_click.swap(false, Ordering::Relaxed)
-            && self.state.read().game_status.contains(StatusFlag::Play)
-        {
-            if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
-                // If the left and right buttons are both down, and the middle button is not down, start a chord operation
-                self.state.write().chord_active = true;
-                self.state.write().track_mouse(
-                    &self.wnd.hwnd().GetDC()?,
-                    usize::MAX - 3,
-                    usize::MAX - 3,
-                )?;
-                self.state
-                    .write()
-                    .begin_primary_button_drag(&self.wnd.hwnd().GetDC()?)?;
-                self.state
-                    .write()
-                    .handle_mouse_move(self.wnd.hwnd(), btn, point)?;
-            } else {
-                // Regular right-click: make a guess
-                let (x, y) = self.state.read().box_from_point(point);
-                self.state.write().make_guess(self.wnd.hwnd(), x, y)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Handles left mouse button down events.
-    ///
-    /// TODO: Should this function be moved into `GameState`?
-    /// # Arguments
-    /// - `vkey`: The virtual key code of the mouse button event.
-    /// - `point`: The coordinates of the mouse cursor.
-    /// # Returns
-    // - `Ok(())` - If the left button down was handled successfully.
-    /// - `Err` - If an error occurred.
-    fn handle_lbutton_down(&self, vkey: MK, point: POINT) -> AnyResult<()> {
-        // If the next click should be ignored of if the click was on the button and was handled, do nothing else
-        if !self.ignore_next_click.swap(false, Ordering::Relaxed)
-            && !self
-                .state
-                .write()
-                .btn_click_handler(&self.wnd.hwnd().GetDC()?, point)?
-        {
-            if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
-                // If the right button or the shift key is also down, start a chord operation
-                self.state.write().chord_active = true;
-            }
-            if self.state.read().game_status.contains(StatusFlag::Play) {
-                self.state
-                    .write()
-                    .begin_primary_button_drag(&self.wnd.hwnd().GetDC()?)?;
-                self.state
-                    .write()
-                    .handle_mouse_move(self.wnd.hwnd(), vkey, point)?;
-            }
-        }
-        Ok(())
-    }
 
     /// Handles smiley-face click completion when the left button is released.
     ///
@@ -505,7 +428,11 @@ impl WinMineMainWindow {
         self.wnd.on().wm_r_button_down({
             let self2 = self.clone();
             move |r_btn| {
-                self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords)?;
+                self2.state.write().handle_rbutton_down(
+                    self2.wnd.hwnd(),
+                    r_btn.vkey_code,
+                    r_btn.coords,
+                )?;
                 Ok(())
             }
         });
@@ -513,7 +440,11 @@ impl WinMineMainWindow {
         self.wnd.on().wm_r_button_dbl_clk({
             let self2 = self.clone();
             move |r_btn| {
-                self2.handle_rbutton_down(r_btn.vkey_code, r_btn.coords)?;
+                self2.state.write().handle_rbutton_down(
+                    self2.wnd.hwnd(),
+                    r_btn.vkey_code,
+                    r_btn.coords,
+                )?;
                 Ok(())
             }
         });
@@ -537,7 +468,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |m_btn| {
                 // Ignore middle-clicks if the next click is to be ignored
-                if self2.ignore_next_click.swap(false, Ordering::Relaxed) {
+                if core::mem::replace(&mut self2.state.write().ignore_next_click, false) {
                     return Ok(());
                 }
 
@@ -577,12 +508,24 @@ impl WinMineMainWindow {
 
         self.wnd.on().wm_l_button_down({
             let self2 = self.clone();
-            move |l_btn| self2.handle_lbutton_down(l_btn.vkey_code, l_btn.coords)
+            move |l_btn| {
+                self2.state.write().handle_lbutton_down(
+                    self2.wnd.hwnd(),
+                    l_btn.vkey_code,
+                    l_btn.coords,
+                )
+            }
         });
 
         self.wnd.on().wm_l_button_dbl_clk({
             let self2 = self.clone();
-            move |l_btn| self2.handle_lbutton_down(l_btn.vkey_code, l_btn.coords)
+            move |l_btn| {
+                self2.state.write().handle_lbutton_down(
+                    self2.wnd.hwnd(),
+                    l_btn.vkey_code,
+                    l_btn.coords,
+                )
+            }
         });
 
         self.wnd.on().wm_l_button_up({
@@ -605,7 +548,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |activate| {
                 if activate.event == WA::CLICKACTIVE {
-                    self2.ignore_next_click.store(true, Ordering::Relaxed);
+                    self2.state.write().ignore_next_click = true;
                 }
                 Ok(())
             }
