@@ -7,7 +7,7 @@ use core::ptr::null;
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
 
 use winsafe::co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE};
-use winsafe::guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard};
+use winsafe::guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard, SelectObjectGuard};
 use winsafe::{
     AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
     HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, prelude::*,
@@ -695,7 +695,11 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the pen was successfully selected
     /// - `Err` - If selecting the pen into the device context failed or if the required pen is not initialized
-    fn select_border_pen(&self, hdc: &HDC, border_style: BorderStyle) -> AnyResult<()> {
+    fn select_border_pen<'a>(
+        &self,
+        hdc: &'a HDC,
+        border_style: BorderStyle,
+    ) -> AnyResult<SelectObjectGuard<'a, HPEN>> {
         // Select the appropriate pen based on the border style
         let pen = if border_style == BorderStyle::Sunken {
             // Use cached white pen for sunken borders
@@ -711,8 +715,8 @@ impl GrafixState {
 
         // Note: This does not leak since both pens are stored in `GrafixState`
         // TODO: Could the `leak()` be avoided?
-        hdc.SelectObject(&**pen).map(|mut guard| guard.leak())?;
-        Ok(())
+        let guard = hdc.SelectObject(&**pen)?;
+        Ok(guard)
     }
 
     /// Draw a beveled border rectangle onto the provided device context.
@@ -736,8 +740,8 @@ impl GrafixState {
         border_style: BorderStyle,
     ) -> AnyResult<()> {
         let mut i = 0;
-        // Set the initial pen based on the border style
-        self.select_border_pen(hdc, border_style)?;
+        // Set the initial pen based on the requested border style
+        let mut _pen_guard = self.select_border_pen(hdc, border_style)?;
 
         // Draw the top and left edges
         while i < width {
@@ -751,12 +755,14 @@ impl GrafixState {
             i += 1;
         }
 
-        // Switch pen style for bottom and right edges if not flat
+        // Switch pen style for bottom and right edges if a beveled border is requested
         if border_style != BorderStyle::Flat {
-            if border_style == BorderStyle::Sunken {
-                self.select_border_pen(hdc, BorderStyle::Raised)?;
+            // Drop the current pen guard to restore the previous pen before selecting the new one
+            drop(_pen_guard);
+            _pen_guard = if border_style == BorderStyle::Sunken {
+                self.select_border_pen(hdc, BorderStyle::Raised)?
             } else {
-                self.select_border_pen(hdc, BorderStyle::Sunken)?;
+                self.select_border_pen(hdc, BorderStyle::Sunken)?
             };
         }
 
