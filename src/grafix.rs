@@ -693,8 +693,8 @@ impl GrafixState {
     /// - `hdc` - The device context to set the pen on.
     /// - `border_style` - The border style determining the pen to use.
     /// # Returns
-    /// - `Ok(())` - If the pen was successfully selected
-    /// - `Err` - If selecting the pen into the device context failed or if the required pen is not initialized
+    /// - `Ok(SelectObjectGuard<HPEN>)` - A guard that will restore the previous pen when dropped
+    /// - `Err` - If selecting the pen into the DC fails or if the required pen is not initialized
     fn select_border_pen<'a>(
         &self,
         hdc: &'a HDC,
@@ -713,8 +713,7 @@ impl GrafixState {
                 .ok_or("Gray pen is not initialized")?
         };
 
-        // Note: This does not leak since both pens are stored in `GrafixState`
-        // TODO: Could the `leak()` be avoided?
+        // Select the pen into the DC and return a guard that will restore the previous pen when dropped
         let guard = hdc.SelectObject(&**pen)?;
         Ok(guard)
     }
