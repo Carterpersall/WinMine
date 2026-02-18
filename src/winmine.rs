@@ -300,31 +300,6 @@ impl WinMineMainWindow {
                 }
                 self2.state.write().grafix.dims.update_dpi(dpi);
 
-                let suggested = unsafe { (msg.lparam as *const RECT).as_ref() };
-
-                if let Some(rc) = suggested {
-                    // Persist the suggested top-left so adjust_window keeps us on the same monitor
-                    {
-                        let mut state = self2.state.write();
-                        state.prefs.wnd_pos.x = rc.left;
-                        state.prefs.wnd_pos.y = rc.top;
-                    }
-
-                    let width = max(0, rc.right - rc.left);
-                    let height = max(0, rc.bottom - rc.top);
-                    self2.wnd.hwnd().MoveWindow(
-                        POINT {
-                            x: rc.left,
-                            y: rc.top,
-                        },
-                        SIZE {
-                            cx: width,
-                            cy: height,
-                        },
-                        true,
-                    )?;
-                }
-
                 // Our block + face-button bitmaps are cached pre-scaled, so they must be rebuilt after a DPI transition.
                 let color = self2.state.read().prefs.color;
                 self2
@@ -333,6 +308,7 @@ impl WinMineMainWindow {
                     .grafix
                     .load_bitmaps(self2.wnd.hwnd(), color)?;
 
+                // Adjust the window size and position based on the new DPI
                 self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
                 Ok(0)
             }

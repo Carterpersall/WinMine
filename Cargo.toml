@@ -17,11 +17,11 @@ windows-sys = { version = "0.61.2", features = [
 	"Win32_Graphics_Gdi",
 	"Win32_Data_HtmlHelp",
 ] }
-bitflags = "2.10.0"
+bitflags = "2.11.0"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "7c5efe842218168cfff60433bf1672527f070670"
+rev = "2754fd5415f01a3d96815420c8cf026886a1f417"
 features = [
 	"advapi",
 	"comctl",
