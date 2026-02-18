@@ -217,12 +217,11 @@ enum BorderStyle {
 struct CachedBitmapGuard {
     /// Guard for the compatible DC with the bitmap selected into it
     dc: DeleteDCGuard,
-    /// Guard for the cached bitmap resource
-    bitmap: DeleteObjectGuard<HBITMAP>,
     /// The previous bitmap that was selected into the DC before the cached bitmap, which will be restored on drop
     prev_bitmap: HBITMAP,
 }
 
+// TODO: WinSafe's `SelectObjectGuard` does not expose the DC publicly, open an issue about it.
 impl CachedBitmapGuard {
     /// Create a new `CachedBitmapGuard` by selecting the provided bitmap into the provided DC.
     /// # Arguments
@@ -231,18 +230,14 @@ impl CachedBitmapGuard {
     /// # Returns
     /// - `Ok(CachedBitmapGuard)` - A new `CachedBitmapGuard` instance
     /// - `Err` - If selecting the bitmap into the DC fails
-    fn new(dc: DeleteDCGuard, bitmap: DeleteObjectGuard<HBITMAP>) -> AnyResult<Self> {
+    fn new(dc: DeleteDCGuard, bitmap: &DeleteObjectGuard<HBITMAP>) -> AnyResult<Self> {
         let prev_bitmap = {
             // Select the cached bitmap into the DC
-            let mut guard = dc.SelectObject(&*bitmap)?;
+            let mut guard = dc.SelectObject(&**bitmap)?;
             // Leak the guard to keep the bitmap selected until this struct is dropped
             guard.leak()
         };
-        Ok(Self {
-            dc,
-            bitmap,
-            prev_bitmap,
-        })
+        Ok(Self { dc, prev_bitmap })
     }
 
     /// Get a reference to the DC with the cached bitmap selected into it.
@@ -257,11 +252,8 @@ impl Drop for CachedBitmapGuard {
     /// When the `CachedBitmapGuard` is dropped, restore the previous bitmap into the DC,
     /// and allow the bitmap and DC guards to clean up their resources.
     fn drop(&mut self) {
-        // Bring the bitmap into scope, which ensures it will be dropped at the end of this function
-        let _ = self.bitmap.as_opt();
-        if let Ok(mut guard) = self.dc.SelectObject(&self.prev_bitmap) {
-            let _ = guard.leak();
-        }
+        // Restore the previous bitmap into the DC. Ignore errors
+        self.dc.SelectObject(&self.prev_bitmap).ok();
     }
 }
 
@@ -987,7 +979,7 @@ impl GrafixState {
                 base_bmp
             };
 
-            self.mem_blk_cache[i] = Some(CachedBitmapGuard::new(dc_guard, final_bmp)?);
+            self.mem_blk_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &final_bmp)?);
         }
 
         // Cache LED digits in compatible bitmaps.
@@ -1016,7 +1008,7 @@ impl GrafixState {
                     return Err("Failed to paint LED bitmap".into());
                 }
             }
-            self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, bmp_guard)?);
+            self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
         }
 
         // Cache face button sprites in compatible bitmaps.
@@ -1069,7 +1061,7 @@ impl GrafixState {
                 base_bmp
             };
 
-            self.mem_button_cache[i] = Some(CachedBitmapGuard::new(dc_guard, final_bmp)?);
+            self.mem_button_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &final_bmp)?);
         }
 
         Ok(())

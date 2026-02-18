@@ -3,7 +3,7 @@
 use core::ptr::{null, null_mut};
 
 use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
-use winsafe::HINSTANCE;
+use winsafe::{HINSTANCE, IdStr};
 
 use crate::util::ResourceId;
 
@@ -24,7 +24,7 @@ impl Sound {
     /// # Arguments
     /// - `hinst` - The HINSTANCE of the current process, used to locate the sound resource.
     pub fn play(self, hinst: &HINSTANCE) {
-        let resource_ptr = self as usize as *const u16;
+        let resource_ptr = IdStr::Id(self as u16).as_ptr();
         // Playback uses the async flag so the UI thread is never blocked.
         unsafe {
             PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);

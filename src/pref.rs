@@ -240,6 +240,10 @@ impl Pref {
     /// # Returns
     /// - `Ok(())` - If preferences were successfully read and loaded
     /// - `Err` - If there was an error accessing the registry or reading preferences
+    /// # Notes
+    /// - Preferences are clamped to valid ranges where applicable.
+    /// - If an error occurs while reading some specific preference,
+    ///   the default value for that preference will be used instead.
     pub fn read_preferences(&mut self) -> SysResult<()> {
         /// Default board height used if not set in the registry.
         const DEFHEIGHT: u32 = 9;
