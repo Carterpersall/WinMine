@@ -2,15 +2,16 @@
 //! scaling, and rendering of game elements.
 
 use core::mem::size_of;
-use core::ptr::null;
 
-use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout};
+use windows_sys::Win32::Graphics::Gdi::{
+    BITMAPINFO as WinBITMAPINFO, GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout,
+};
 
 use winsafe::co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE};
 use winsafe::guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard, SelectObjectGuard};
 use winsafe::{
-    AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRCMEM,
-    HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE, prelude::*,
+    AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRC,
+    HRSRCMEM, HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE,
 };
 
 use crate::globals::BASE_DPI;
@@ -269,18 +270,6 @@ pub struct GrafixState {
     rg_dib_led_off: [usize; I_LED_MAX],
     /// Precalculated byte offsets to each button sprite within the DIB
     rg_dib_button_off: [usize; BUTTON_SPRITE_COUNT],
-    /// Resource handle for the block spritesheet
-    h_res_blks: HRSRCMEM,
-    /// Resource handle for the LED digits spritesheet
-    h_res_led: HRSRCMEM,
-    /// Resource handle for the button spritesheet
-    h_res_button: HRSRCMEM,
-    /// Pointer to the loaded block sprites DIB
-    lp_dib_blks: *const BITMAPINFO,
-    /// Pointer to the loaded LED digits DIB
-    lp_dib_led: *const BITMAPINFO,
-    /// Pointer to the loaded button sprites DIB
-    lp_dib_button: *const BITMAPINFO,
     /// Cached gray pen used for drawing borders
     h_gray_pen: Option<DeleteObjectGuard<HPEN>>,
     /// Cached white pen used for drawing borders
@@ -301,12 +290,6 @@ impl Default for GrafixState {
             rg_dib_off: [0; I_BLK_MAX],
             rg_dib_led_off: [0; I_LED_MAX],
             rg_dib_button_off: [0; BUTTON_SPRITE_COUNT],
-            h_res_blks: HRSRCMEM::NULL,
-            h_res_led: HRSRCMEM::NULL,
-            h_res_button: HRSRCMEM::NULL,
-            lp_dib_blks: null(),
-            lp_dib_led: null(),
-            lp_dib_button: null(),
             h_gray_pen: None,
             h_white_pen: None,
             mem_blk_cache: [const { None }; I_BLK_MAX],
@@ -894,20 +877,14 @@ impl GrafixState {
     /// - `Ok(())` - If the bitmaps were loaded and cached successfully
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
-        let (h_blks, lp_blks) =
-            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::BlocksBmp, color)?;
-        let (h_led, lp_led) =
-            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::LedBmp, color)?;
-        let (h_button, lp_button) =
-            self.load_bitmap_resource(&hwnd.hinstance(), ResourceId::ButtonBmp, color)?;
+        let hinst = hwnd.hinstance();
+        let (res_blks, h_blks) = self.load_bitmap_resource(&hinst, ResourceId::BlocksBmp, color)?;
+        let (res_led, h_led) = self.load_bitmap_resource(&hinst, ResourceId::LedBmp, color)?;
+        let (res_btn, h_btn) = self.load_bitmap_resource(&hinst, ResourceId::ButtonBmp, color)?;
 
-        self.h_res_blks = h_blks;
-        self.h_res_led = h_led;
-        self.h_res_button = h_button;
-
-        self.lp_dib_blks = lp_blks;
-        self.lp_dib_led = lp_led;
-        self.lp_dib_button = lp_button;
+        let dib_blks = hinst.LockResource(&res_blks, &h_blks)?;
+        let dib_led = hinst.LockResource(&res_led, &h_led)?;
+        let dib_button = hinst.LockResource(&res_btn, &h_btn)?;
 
         self.h_gray_pen = if color {
             HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128))?.into()
@@ -951,6 +928,8 @@ impl GrafixState {
             // Paint the sprite into the 96-DPI bitmap.
             {
                 let _sel_guard = dc_guard.SelectObject(&*base_bmp)?;
+                let (bits_ptr, dib_info_ptr) =
+                    self.dib_pointers(dib_blks, self.rg_dib_off[i], cb_blk)?;
                 let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
@@ -962,8 +941,8 @@ impl GrafixState {
                         0,
                         0,
                         DY_BLK_96 as u32,
-                        self.lp_dib_blks.byte_add(self.rg_dib_off[i]).cast(),
-                        self.lp_dib_blks as *const _,
+                        bits_ptr,
+                        dib_info_ptr.cast(),
                         DIB::RGB_COLORS.raw(),
                     )
                 };
@@ -988,6 +967,8 @@ impl GrafixState {
             let bmp_guard = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?;
             {
                 let _sel_guard = dc_guard.SelectObject(&*bmp_guard)?;
+                let (bits_ptr, dib_info_ptr) =
+                    self.dib_pointers(dib_led, self.rg_dib_led_off[i], cb_led)?;
                 let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
@@ -999,8 +980,8 @@ impl GrafixState {
                         0,
                         0,
                         DY_LED_96 as u32,
-                        self.lp_dib_led.byte_add(self.rg_dib_led_off[i]).cast(),
-                        self.lp_dib_led as *const _,
+                        bits_ptr,
+                        dib_info_ptr.cast(),
                         DIB::RGB_COLORS.raw(),
                     )
                 };
@@ -1024,6 +1005,8 @@ impl GrafixState {
             // Paint the sprite into the 96-DPI bitmap.
             {
                 let _sel_guard = dc_guard.SelectObject(&*base_bmp)?;
+                let (bits_ptr, dib_info_ptr) =
+                    self.dib_pointers(dib_button, self.rg_dib_button_off[i], cb_button)?;
                 let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
@@ -1035,10 +1018,8 @@ impl GrafixState {
                         0,
                         0,
                         DY_BUTTON_96 as u32,
-                        self.lp_dib_button
-                            .byte_add(self.rg_dib_button_off[i])
-                            .cast(),
-                        self.lp_dib_button as *const _,
+                        bits_ptr,
+                        dib_info_ptr.cast(),
                         DIB::RGB_COLORS.raw(),
                     )
                 };
@@ -1072,23 +1053,62 @@ impl GrafixState {
     /// - `id` - The bitmap resource ID to load.
     /// - `color_on` - Whether color mode is enabled.
     /// # Returns
-    /// - `Some((HRSRCMEM, *const BITMAPINFO))` - The resource handle and a pointer to the bitmap data if successful.
-    /// - `None` - If loading the resource failed at any step (finding, loading, locking).
+    /// - `Ok((HRSRC, HRSRCMEM))` - The located resource and loaded resource memory handles.
+    /// - `Err` - If finding or loading the resource fails.
     fn load_bitmap_resource(
         &self,
         hinst: &HINSTANCE,
         id: ResourceId,
         color_on: bool,
-    ) -> AnyResult<(HRSRCMEM, *const BITMAPINFO)> {
+    ) -> AnyResult<(HRSRC, HRSRCMEM)> {
         let offset = if color_on { 0 } else { 1 };
         let resource_id = (id as u16) + offset;
         // Colorless devices load the grayscale resource IDs immediately following the color ones.
         let res_info = hinst.FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))?;
         let res_loaded = hinst.LoadResource(&res_info)?;
-        let lp = hinst.LockResource(&res_info, &res_loaded)?.as_ptr();
-        // The cast to `BITMAPINFO` should be safe because `LockResource` returns a pointer to the first byte of the resource data,
-        // which is structured as a `BITMAPINFO` according to the resource format.
-        Ok((res_loaded, lp as *const BITMAPINFO))
+        Ok((res_info, res_loaded))
+    }
+
+    /// Compute validated pointers for `SetDIBitsToDevice` from a locked bitmap resource.
+    /// # Arguments
+    /// - `resource` - The locked bitmap resource data.
+    /// - `pixel_offset` - The byte offset within the resource where the pixel data begins.
+    /// - `pixel_len` - The length in bytes of the pixel data section.
+    /// # Returns
+    /// - `Ok((bits_ptr, dib_info_ptr))` - Pointers to the pixel bits and the DIB info header, ready for use with `SetDIBitsToDevice`.
+    /// - `Err` - If the resource is too small to contain the header or if the pixel data section is out of bounds, an error is returned describing the issue.
+    /// # Notes
+    /// - The resource must begin with a `BITMAPINFOHEADER`, followed by packed image data.
+    fn dib_pointers(
+        &self,
+        resource: &[u8],
+        pixel_offset: usize,
+        pixel_len: usize,
+    ) -> AnyResult<(*const core::ffi::c_void, *const WinBITMAPINFO)> {
+        // Validate that the resource is large enough to contain the BITMAPINFOHEADER
+        if resource.len() < size_of::<BITMAPINFOHEADER>() {
+            return Err("Bitmap resource is smaller than BITMAPINFOHEADER".into());
+        }
+
+        // Add the pixel offset to get the end pointer
+        let end = pixel_offset
+            .checked_add(pixel_len)
+            .ok_or("Bitmap resource offset overflow")?;
+
+        // Validate that the pixel data section is within the bounds of the resource
+        if end > resource.len() {
+            return Err(format!(
+                "Bitmap resource section out of bounds (offset={}, len={}, total={})",
+                pixel_offset,
+                pixel_len,
+                resource.len()
+            )
+            .into());
+        }
+
+        let bits_ptr = unsafe { resource.as_ptr().add(pixel_offset) }.cast();
+        let dib_info_ptr = resource.as_ptr().cast();
+        Ok((bits_ptr, dib_info_ptr))
     }
 
     /// Calculate the byte size of a bitmap given its dimensions and color mode
