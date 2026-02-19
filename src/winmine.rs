@@ -360,7 +360,10 @@ impl WinMineMainWindow {
             move |key| {
                 match key.vkey_code {
                     code if code == VK::F4 => {
-                        let new_sound = match self2.state.read().prefs.sound_enabled {
+                        // TODO: This code is duplicated in the `ResourceId::Sound` menu command handler.
+                        //       Refactor to eliminate duplication.
+                        let sound_enabled = self2.state.read().prefs.sound_enabled;
+                        let new_sound = match sound_enabled {
                             true => {
                                 Sound::reset();
                                 false
@@ -371,8 +374,8 @@ impl WinMineMainWindow {
 
                         self2.set_menu_bar()?;
                     }
-                    code if code == VK::SHIFT => self2.state.read().handle_xyzzys_shift(),
-                    _ => self2.state.read().handle_xyzzys_default_key(key.vkey_code),
+                    code if code == VK::SHIFT => GameState::handle_xyzzys_shift(),
+                    _ => GameState::handle_xyzzys_default_key(key.vkey_code),
                 }
 
                 Ok(())
@@ -617,7 +620,8 @@ impl WinMineMainWindow {
         self.wnd.on().wm_command_acc_menu(ResourceId::Sound, {
             let self2 = self.clone();
             move || {
-                let new_sound = match self2.state.read().prefs.sound_enabled {
+                let sound_enabled = self2.state.read().prefs.sound_enabled;
+                let new_sound = match sound_enabled {
                     true => {
                         Sound::reset();
                         false
@@ -1053,7 +1057,7 @@ impl EnterDialog {
                         GameType::Inter => state.prefs.inter_name.clone(),
                         GameType::Expert => state.prefs.expert_name.clone(),
                         // Unreachable
-                        GameType::Other => "".to_string(),
+                        GameType::Other => String::new(),
                     };
                     (state.prefs.game_type, name)
                 };

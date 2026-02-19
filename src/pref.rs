@@ -91,7 +91,7 @@ impl GameType {
     /// # Returns
     /// - `Some((mines, height, width))` - The preset data for the given game type.
     /// - `None` - If the game type is custom.
-    pub const fn preset_data(&self) -> Option<(i16, u32, u32)> {
+    pub const fn preset_data(self) -> Option<(i16, u32, u32)> {
         match self {
             GameType::Begin => Some(Self::LEVEL_DATA[0]),
             GameType::Inter => Some(Self::LEVEL_DATA[1]),
@@ -103,7 +103,7 @@ impl GameType {
     /// Returns the message string shown when the player achieves the fastest time for each difficulty.
     /// # Returns
     /// - The fastest time message string.
-    pub const fn fastest_time_msg(&self) -> &'static str {
+    pub const fn fastest_time_msg(self) -> &'static str {
         match self {
             GameType::Begin => {
                 "You have the fastest time\rfor beginner level.\rPlease enter your name."
@@ -202,17 +202,17 @@ impl Pref {
     /// # Returns
     /// - `Ok(u32)` - The retrieved integer value
     /// - `Err` - If the preference key is invalid or if the registry value is not a DWORD
-    pub fn read_int(&self, handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
+    pub fn read_int(handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
         // Get the name of the preference key
         let key_name = PREF_STRINGS
             .get(key as usize)
             .copied()
-            .ok_or(format!("Invalid preference key: {}", key as u8))?;
+            .ok_or_else(|| format!("Invalid preference key: {}", key as u8))?;
 
         // Attempt to read the DWORD value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(Some(key_name))? {
             RegistryValue::Dword(val) => Ok(val),
-            val => Err(format!("Preference key {} is not a DWORD: {:?}", key_name, val).into()),
+            val => Err(format!("Preference key {key_name} is not a DWORD: {val:?}").into()),
         }
     }
 
@@ -222,7 +222,7 @@ impl Pref {
     /// - `key` - Preference key to read
     /// # Returns
     /// - `String` - The retrieved string, or the default name on failure
-    fn read_sz(&self, handle: &HKEY, key: PrefKey) -> String {
+    fn read_sz(handle: &HKEY, key: PrefKey) -> String {
         // Get the name of the preference key
         let key_name = PREF_STRINGS
             .get(key as usize)
@@ -260,59 +260,50 @@ impl Pref {
         )?;
 
         // Get the height of the board
-        self.height = self
-            .read_int(&key_guard, PrefKey::Height)
+        self.height = Self::read_int(&key_guard, PrefKey::Height)
             .unwrap_or(DEFHEIGHT)
             .clamp(MINHEIGHT, 25) as usize;
 
         // Get the width of the board
-        self.width = self
-            .read_int(&key_guard, PrefKey::Width)
+        self.width = Self::read_int(&key_guard, PrefKey::Width)
             .unwrap_or(DEFWIDTH)
             .clamp(MINWIDTH, 30) as usize;
 
         // Get the game difficulty
         self.game_type =
-            GameType::from(self.read_int(&key_guard, PrefKey::Difficulty).unwrap_or(0));
+            GameType::from(Self::read_int(&key_guard, PrefKey::Difficulty).unwrap_or(0));
         // Get the number of mines on the board and the window position
-        self.mines = self
-            .read_int(&key_guard, PrefKey::Mines)
+        self.mines = Self::read_int(&key_guard, PrefKey::Mines)
             .unwrap_or(10)
             .clamp(10, 999) as i16;
         self.wnd_pos = POINT {
-            x: self.read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32,
-            y: self.read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32,
+            x: Self::read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32,
+            y: Self::read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32,
         };
         // Get sound, marking, ticking, and menu preferences
-        self.sound_enabled = matches!(self.read_int(&key_guard, PrefKey::Sound), Ok(3));
-        self.mark_enabled = self.read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
+        self.sound_enabled = matches!(Self::read_int(&key_guard, PrefKey::Sound), Ok(3));
+        self.mark_enabled = Self::read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
 
         // Get best times and player names for each difficulty level
-        self.best_times[GameType::Begin as usize] = self
-            .read_int(&key_guard, PrefKey::Time1)
+        self.best_times[GameType::Begin as usize] = Self::read_int(&key_guard, PrefKey::Time1)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.best_times[GameType::Inter as usize] = self
-            .read_int(&key_guard, PrefKey::Time2)
+        self.best_times[GameType::Inter as usize] = Self::read_int(&key_guard, PrefKey::Time2)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.best_times[GameType::Expert as usize] = self
-            .read_int(&key_guard, PrefKey::Time3)
+        self.best_times[GameType::Expert as usize] = Self::read_int(&key_guard, PrefKey::Time3)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.beginner_name = self.read_sz(&key_guard, PrefKey::Name1);
-        self.inter_name = self.read_sz(&key_guard, PrefKey::Name2);
-        self.expert_name = self.read_sz(&key_guard, PrefKey::Name3);
+        self.beginner_name = Self::read_sz(&key_guard, PrefKey::Name1);
+        self.inter_name = Self::read_sz(&key_guard, PrefKey::Name2);
+        self.expert_name = Self::read_sz(&key_guard, PrefKey::Name3);
 
         // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
         let default_color = match HWND::GetDesktopWindow().GetDC() {
             Ok(hdc) if hdc.GetDeviceCaps(GDC::NUMCOLORS) != 2 => 1,
             _ => 0,
         };
-        self.color = self
-            .read_int(&key_guard, PrefKey::Color)
-            .unwrap_or(default_color)
-            != 0;
+        self.color = Self::read_int(&key_guard, PrefKey::Color).unwrap_or(default_color) != 0;
         // If sound is enabled, initialize the sound system
         if self.sound_enabled {
             self.sound_enabled = Sound::reset();
@@ -324,7 +315,7 @@ impl Pref {
     /// # Returns
     /// - `Ok(())` - If preferences were successfully written to the registry
     /// - `Err` - If there was an error writing to the registry
-    pub fn write_preferences(&mut self) -> AnyResult<()> {
+    pub fn write_preferences(&self) -> AnyResult<()> {
         // Create or open the preferences registry key with write access
         let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
             SZ_WINMINE_REG_STR,
@@ -338,23 +329,23 @@ impl Pref {
         };
 
         // Save all preferences to the registry
-        self.write(
+        Self::write(
             &key_guard,
             PrefKey::Difficulty,
             Dword(self.game_type as u32),
         )?;
-        self.write(&key_guard, PrefKey::Height, Dword(self.height as u32))?;
-        self.write(&key_guard, PrefKey::Width, Dword(self.width as u32))?;
-        self.write(&key_guard, PrefKey::Mines, Dword(self.mines as u32))?;
-        self.write(
+        Self::write(&key_guard, PrefKey::Height, Dword(self.height as u32))?;
+        Self::write(&key_guard, PrefKey::Width, Dword(self.width as u32))?;
+        Self::write(&key_guard, PrefKey::Mines, Dword(self.mines as u32))?;
+        Self::write(
             &key_guard,
             PrefKey::Mark,
             Dword(u32::from(self.mark_enabled)),
         )?;
-        self.write(&key_guard, PrefKey::AlreadyPlayed, Dword(1))?;
+        Self::write(&key_guard, PrefKey::AlreadyPlayed, Dword(1))?;
 
-        self.write(&key_guard, PrefKey::Color, Dword(u32::from(self.color)))?;
-        self.write(
+        Self::write(&key_guard, PrefKey::Color, Dword(u32::from(self.color)))?;
+        Self::write(
             &key_guard,
             PrefKey::Sound,
             if self.sound_enabled {
@@ -363,27 +354,27 @@ impl Pref {
                 Dword(2)
             },
         )?;
-        self.write(&key_guard, PrefKey::Xpos, Dword(self.wnd_pos.x as u32))?;
-        self.write(&key_guard, PrefKey::Ypos, Dword(self.wnd_pos.y as u32))?;
-        self.write(
+        Self::write(&key_guard, PrefKey::Xpos, Dword(self.wnd_pos.x as u32))?;
+        Self::write(&key_guard, PrefKey::Ypos, Dword(self.wnd_pos.y as u32))?;
+        Self::write(
             &key_guard,
             PrefKey::Time1,
             Dword(self.best_times[GameType::Begin as usize] as u32),
         )?;
-        self.write(
+        Self::write(
             &key_guard,
             PrefKey::Time2,
             Dword(self.best_times[GameType::Inter as usize] as u32),
         )?;
-        self.write(
+        Self::write(
             &key_guard,
             PrefKey::Time3,
             Dword(self.best_times[GameType::Expert as usize] as u32),
         )?;
 
-        self.write(&key_guard, PrefKey::Name1, Sz(self.beginner_name.clone()))?;
-        self.write(&key_guard, PrefKey::Name2, Sz(self.inter_name.clone()))?;
-        self.write(&key_guard, PrefKey::Name3, Sz(self.expert_name.clone()))?;
+        Self::write(&key_guard, PrefKey::Name1, Sz(self.beginner_name.clone()))?;
+        Self::write(&key_guard, PrefKey::Name2, Sz(self.inter_name.clone()))?;
+        Self::write(&key_guard, PrefKey::Name3, Sz(self.expert_name.clone()))?;
         Ok(())
     }
 
@@ -395,12 +386,12 @@ impl Pref {
     /// # Returns
     /// - `Ok(())` - If the value was successfully written to the registry
     /// - `Err` - If there was an error writing to the registry
-    fn write(&self, handle: &HKEY, key: PrefKey, val: RegistryValue) -> AnyResult<()> {
+    fn write(handle: &HKEY, key: PrefKey, val: RegistryValue) -> AnyResult<()> {
         // Get the name of the preference key
         let key_name = PREF_STRINGS
             .get(key as usize)
             .copied()
-            .ok_or(format!("Invalid preference key: {}", key as u8))?;
+            .ok_or_else(|| format!("Invalid preference key: {}", key as u8))?;
 
         // Store the value in the registry
         handle.RegSetValueEx(Some(key_name), val)?;

@@ -16,7 +16,7 @@ use winsafe::{HELPINFO, HWND, co::HELPW};
 
 use crate::util::ResourceId;
 
-pub struct Help {}
+pub struct Help;
 
 impl Help {
     /// Help context ID mappings for dialogs

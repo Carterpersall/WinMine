@@ -514,9 +514,7 @@ impl GrafixState {
             .mem_button_cache
             .get(idx)
             .and_then(Option::as_ref)
-            .ok_or(format!(
-                "Button bitmap not loaded or index {idx} out of range"
-            ))?;
+            .ok_or_else(|| format!("Button bitmap not loaded or index {idx} out of range"))?;
 
         hdc.BitBlt(
             POINT::with(x, self.dims.top_led),
@@ -878,9 +876,9 @@ impl GrafixState {
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
     pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
         let hinst = hwnd.hinstance();
-        let (res_blks, h_blks) = self.load_bitmap_resource(&hinst, ResourceId::BlocksBmp, color)?;
-        let (res_led, h_led) = self.load_bitmap_resource(&hinst, ResourceId::LedBmp, color)?;
-        let (res_btn, h_btn) = self.load_bitmap_resource(&hinst, ResourceId::ButtonBmp, color)?;
+        let (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BlocksBmp, color)?;
+        let (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::LedBmp, color)?;
+        let (res_btn, h_btn) = Self::load_bitmap_resource(&hinst, ResourceId::ButtonBmp, color)?;
 
         let dib_blks = hinst.LockResource(&res_blks, &h_blks)?;
         let dib_led = hinst.LockResource(&res_led, &h_led)?;
@@ -896,17 +894,17 @@ impl GrafixState {
 
         let header = size_of::<BITMAPINFOHEADER>() + (if color { 16 } else { 2 }) * 4;
 
-        let cb_blk = self.cb_bitmap(color, DX_BLK_96, DY_BLK_96);
+        let cb_blk = Self::cb_bitmap(color, DX_BLK_96, DY_BLK_96);
         for (i, off) in self.rg_dib_off.iter_mut().enumerate() {
             *off = header + i * cb_blk;
         }
 
-        let cb_led = self.cb_bitmap(color, DX_LED_96, DY_LED_96);
+        let cb_led = Self::cb_bitmap(color, DX_LED_96, DY_LED_96);
         for (i, off) in self.rg_dib_led_off.iter_mut().enumerate() {
             *off = header + i * cb_led;
         }
 
-        let cb_button = self.cb_bitmap(color, DX_BUTTON_96, DY_BUTTON_96);
+        let cb_button = Self::cb_bitmap(color, DX_BUTTON_96, DY_BUTTON_96);
         for (i, off) in self.rg_dib_button_off.iter_mut().enumerate() {
             *off = header + i * cb_button;
         }
@@ -929,7 +927,7 @@ impl GrafixState {
             {
                 let _sel_guard = dc_guard.SelectObject(&*base_bmp)?;
                 let (bits_ptr, dib_info_ptr) =
-                    self.dib_pointers(dib_blks, self.rg_dib_off[i], cb_blk)?;
+                    Self::dib_pointers(dib_blks, self.rg_dib_off[i], cb_blk)?;
                 let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
@@ -968,7 +966,7 @@ impl GrafixState {
             {
                 let _sel_guard = dc_guard.SelectObject(&*bmp_guard)?;
                 let (bits_ptr, dib_info_ptr) =
-                    self.dib_pointers(dib_led, self.rg_dib_led_off[i], cb_led)?;
+                    Self::dib_pointers(dib_led, self.rg_dib_led_off[i], cb_led)?;
                 let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
@@ -1006,7 +1004,7 @@ impl GrafixState {
             {
                 let _sel_guard = dc_guard.SelectObject(&*base_bmp)?;
                 let (bits_ptr, dib_info_ptr) =
-                    self.dib_pointers(dib_button, self.rg_dib_button_off[i], cb_button)?;
+                    Self::dib_pointers(dib_button, self.rg_dib_button_off[i], cb_button)?;
                 let scan_lines = unsafe {
                     SetDIBitsToDevice(
                         dc_guard.ptr(),
@@ -1056,12 +1054,11 @@ impl GrafixState {
     /// - `Ok((HRSRC, HRSRCMEM))` - The located resource and loaded resource memory handles.
     /// - `Err` - If finding or loading the resource fails.
     fn load_bitmap_resource(
-        &self,
         hinst: &HINSTANCE,
         id: ResourceId,
         color_on: bool,
     ) -> AnyResult<(HRSRC, HRSRCMEM)> {
-        let offset = if color_on { 0 } else { 1 };
+        let offset = !color_on as u16;
         let resource_id = (id as u16) + offset;
         // Colorless devices load the grayscale resource IDs immediately following the color ones.
         let res_info = hinst.FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))?;
@@ -1080,7 +1077,6 @@ impl GrafixState {
     /// # Notes
     /// - The resource must begin with a `BITMAPINFOHEADER`, followed by packed image data.
     fn dib_pointers(
-        &self,
         resource: &[u8],
         pixel_offset: usize,
         pixel_len: usize,
@@ -1118,7 +1114,7 @@ impl GrafixState {
     /// - `y` - Height of the bitmap in pixels
     /// # Returns
     /// - Size in bytes of the bitmap data
-    const fn cb_bitmap(&self, color_on: bool, x: i32, y: i32) -> usize {
+    const fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
         // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
         let mut bits = x;
         if color_on {

@@ -692,6 +692,7 @@ impl GameState {
             .draw_grid(&hdc, self.board_width, self.board_height, &self.board_cells)?;
 
         // Play the appropriate sound effect based on win or loss
+        // TODO: Refactor this if-statement
         if win {
             if self.prefs.sound_enabled {
                 Sound::WinGame.play(&hwnd.hinstance());
@@ -711,9 +712,7 @@ impl GameState {
                 if game_idx < self.prefs.best_times.len()
                     && self.secs_elapsed < self.prefs.best_times[game_idx]
                 {
-                    {
-                        self.prefs.best_times[game_idx] = self.secs_elapsed;
-                    }
+                    self.prefs.best_times[game_idx] = self.secs_elapsed;
 
                     if hwnd.as_opt().is_some() {
                         // TODO: Don't use PostMessage to do what could just be a function call
@@ -905,7 +904,7 @@ impl GameState {
     /// # Returns
     /// - `true` - If the coordinate is within range, not visited, and not guessed as a bomb.
     /// - `false` - If any of the conditions are not met.
-    fn in_range_step(&mut self, x: usize, y: usize) -> bool {
+    fn in_range_step(&self, x: usize, y: usize) -> bool {
         self.in_range(x, y)
             && !self.board_cells[x][y].visited
             && self.board_cells[x][y].block_type != BlockCell::BombUp
