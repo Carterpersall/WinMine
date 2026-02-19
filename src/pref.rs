@@ -66,6 +66,8 @@ pub const MINWIDTH: u32 = 9;
 pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 /// Difficulty presets exposed throughout the game.
+///
+/// TODO: Does this need to exist?
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub enum GameType {
@@ -232,7 +234,7 @@ impl Pref {
         // Attempt to read the string value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(Some(key_name)) {
             Ok(RegistryValue::Sz(value) | RegistryValue::ExpandSz(value)) => value,
-            _ => DEFAULT_PLAYER_NAME.to_string(),
+            _ => DEFAULT_PLAYER_NAME.to_owned(),
         }
     }
 

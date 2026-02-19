@@ -347,8 +347,8 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |msg: WndMsg| {
                 if msg.wparam == NEW_RECORD_DLG {
-                    EnterDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
-                    BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
+                    EnterDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)?;
+                    BestDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)?;
                     return Ok(0);
                 }
                 Ok(0)
@@ -363,15 +363,16 @@ impl WinMineMainWindow {
                         // TODO: This code is duplicated in the `ResourceId::Sound` menu command handler.
                         //       Refactor to eliminate duplication.
                         let sound_enabled = self2.state.read().prefs.sound_enabled;
-                        let new_sound = match sound_enabled {
-                            true => {
-                                Sound::reset();
-                                false
-                            }
-                            false => Sound::reset(),
+                        self2.state.write().prefs.sound_enabled = if sound_enabled {
+                            // Stop any currently playing sounds and disable sound
+                            Sound::reset();
+                            false
+                        } else {
+                            // Enable sound if the sound system is responsive
+                            Sound::reset()
                         };
-                        self2.state.write().prefs.sound_enabled = new_sound;
 
+                        // Update the menu bar to reflect the new sound state
                         self2.set_menu_bar()?;
                     }
                     code if code == VK::SHIFT => GameState::handle_xyzzys_shift(),
@@ -606,7 +607,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 // Show the preferences dialog
-                PrefDialog::new(self2.state.clone()).show_modal(&self2.wnd)?;
+                PrefDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)?;
 
                 if self2.state.read().prefs.game_type == GameType::Other {
                     // If a custom game was configured, start it
@@ -621,14 +622,16 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move || {
                 let sound_enabled = self2.state.read().prefs.sound_enabled;
-                let new_sound = match sound_enabled {
-                    true => {
-                        Sound::reset();
-                        false
-                    }
-                    false => Sound::reset(),
+                self2.state.write().prefs.sound_enabled = if sound_enabled {
+                    // Stop any currently playing sounds and disable sound
+                    Sound::reset();
+                    false
+                } else {
+                    // Enable sound if the sound system is responsive
+                    Sound::reset()
                 };
-                self2.state.write().prefs.sound_enabled = new_sound;
+
+                // Update the menu bar to reflect the new sound state
                 self2.set_menu_bar()?;
                 Ok(())
             }
@@ -671,7 +674,7 @@ impl WinMineMainWindow {
 
         self.wnd.on().wm_command_acc_menu(ResourceId::Best, {
             let self2 = self.clone();
-            move || BestDialog::new(self2.state.clone()).show_modal(&self2.wnd)
+            move || BestDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)
         });
 
         self.wnd.on().wm_command_acc_menu(ResourceId::HelpSubmenu, {
@@ -776,18 +779,17 @@ impl PrefDialog {
         });
 
         self.dlg.on().wm_command(DLGID::OK, BN::CLICKED, {
-            let dlg = self.dlg.clone();
-            let state = self.state.clone();
+            let self2 = self.clone();
             move || -> AnyResult<()> {
                 // Retrieve and validate user input from the dialog controls
-                let height = get_dlg_int(dlg.hwnd(), ResourceId::HeightEdit, MINHEIGHT, 24)?;
-                let width = get_dlg_int(dlg.hwnd(), ResourceId::WidthEdit, MINWIDTH, 30)?;
+                let height = get_dlg_int(self2.dlg.hwnd(), ResourceId::HeightEdit, MINHEIGHT, 24)?;
+                let width = get_dlg_int(self2.dlg.hwnd(), ResourceId::WidthEdit, MINWIDTH, 30)?;
                 let max_mines = min(999, (height - 1) * (width - 1));
-                let mines = get_dlg_int(dlg.hwnd(), ResourceId::MinesEdit, 10, max_mines)?;
+                let mines = get_dlg_int(self2.dlg.hwnd(), ResourceId::MinesEdit, 10, max_mines)?;
 
                 // Update preferences with the new settings
                 {
-                    let mut state = state.write();
+                    let mut state = self2.state.write();
                     state.prefs.height = height as usize;
                     state.prefs.width = width as usize;
                     state.prefs.mines = mines as i16;
@@ -795,7 +797,7 @@ impl PrefDialog {
                 }
 
                 // Close the dialog
-                dlg.hwnd().EndDialog(1)?;
+                self2.dlg.hwnd().EndDialog(1)?;
                 Ok(())
             }
         });
@@ -843,6 +845,8 @@ struct BestDialog {
 
 impl BestDialog {
     /// Creates a new `BestDialog` instance and sets up event handlers.
+    /// # Arguments
+    /// - `state`: The shared game state to access best times and names.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(ResourceId::BestDlg as u16);
         let new_self = Self { dlg, state };
@@ -949,9 +953,9 @@ impl BestDialog {
                         state.prefs.best_times[GameType::Expert as usize] = 999;
 
                         // Set the three best names to the default values
-                        state.prefs.beginner_name = DEFAULT_PLAYER_NAME.to_string();
-                        state.prefs.inter_name = DEFAULT_PLAYER_NAME.to_string();
-                        state.prefs.expert_name = DEFAULT_PLAYER_NAME.to_string();
+                        state.prefs.beginner_name = DEFAULT_PLAYER_NAME.to_owned();
+                        state.prefs.inter_name = DEFAULT_PLAYER_NAME.to_owned();
+                        state.prefs.expert_name = DEFAULT_PLAYER_NAME.to_owned();
                     };
 
                     self2.set_best_dialog(
@@ -1008,6 +1012,8 @@ struct EnterDialog {
 
 impl EnterDialog {
     /// Creates a new `EnterDialog` instance and sets up event handlers.
+    /// # Arguments
+    /// - `state`: A reference-counted pointer to the shared game state.
     fn new(state: Rc<StateLock<GameState>>) -> Self {
         let dlg = gui::WindowModal::new_dlg(ResourceId::EnterDlg as u16);
         let new_self = Self { dlg, state };

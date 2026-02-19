@@ -148,6 +148,7 @@ impl From<ResourceId> for u16 {
     /// - `res_id` - The `ResourceId` to convert.
     /// # Returns
     /// - The `u16` representation of the `ResourceId`.
+    #[inline]
     fn from(res_id: ResourceId) -> Self {
         res_id as u16
     }
