@@ -4,7 +4,6 @@
 use core::cmp::{max, min};
 use core::mem::replace;
 use core::ops::Deref as _;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use bitflags::bitflags;
 use winsafe::co::{MK, WM};
@@ -156,7 +155,22 @@ bitflags! {
     }
 }
 
+/// The current state of the in-game timer.
+///
+/// TODO: Should an impl be created that handles this state machine?
+#[derive(Eq, PartialEq)]
+enum TimerState {
+    /// The timer is not running.
+    Stopped,
+    /// The timer is running and should be updated every second.
+    Running,
+    /// The timer is paused and should not be updated until resumed.
+    Paused,
+}
+
 /// Represents the current state of the game.
+///
+/// TODO: Review all public values and determine if they need to be public.
 pub struct GameState {
     /// Graphics state containing bitmaps and rendering logic.
     pub grafix: GrafixState,
@@ -212,8 +226,10 @@ pub struct GameState {
     pub total_bombs: i16,
     /// Total number of visited boxes needed to win
     pub boxes_to_win: u16,
-    /// Indicates whether the game timer is running
-    pub timer_running: bool,
+    /// Indicates the current state of the in-game timer (running, paused, or stopped).
+    ///
+    /// TODO: Should the timer state and logic be moved to a separate struct or module?
+    timer_state: TimerState,
 }
 
 impl GameState {
@@ -247,15 +263,10 @@ impl GameState {
             }; MAX_Y_BLKS]; MAX_X_BLKS],
             total_bombs: 0,
             boxes_to_win: 0,
-            timer_running: false,
+            timer_state: TimerState::Stopped,
         }
     }
 }
-
-/// Previous timer running state used to detect changes
-///
-/// TODO: Get rid of this somehow.
-static F_OLD_TIMER_STATUS: AtomicBool = AtomicBool::new(false);
 
 impl GameState {
     /// Check if the given coordinates are within the valid range of the board.
@@ -397,7 +408,7 @@ impl GameState {
                 // If the number of visits and elapsed seconds are both zero, the game has not started yet
                 if self.boxes_visited == 0 && self.secs_elapsed == 0 {
                     // Play the tick sound, display the initial time, and start the timer
-                    self.timer_running = true;
+                    self.timer_state = TimerState::Running;
                     self.do_timer(hwnd)?;
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
                 }
@@ -652,7 +663,7 @@ impl GameState {
     /// - `Ok(())` - If the game over state was successfully handled.
     /// - `Err` - If an error occurred while drawing the board.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
-        self.timer_running = false;
+        self.timer_state = TimerState::Stopped;
         let hdc = hwnd.GetDC()?;
 
         // Update the button face to show win or loss
@@ -937,7 +948,7 @@ impl GameState {
     /// - `Ok(())` - If the timer was successfully updated.
     /// - `Err` - If an error occurred while updating the display.
     pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        if self.timer_running && self.secs_elapsed < 999 {
+        if self.timer_state == TimerState::Running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
             self.grafix
                 .draw_timer(hwnd.GetDC()?.deref(), self.secs_elapsed)?;
@@ -977,7 +988,7 @@ impl WinMineMainWindow {
         // Reset the board to a blank state
         state.clear_field();
         state.btn_face_state = ButtonSprite::Happy;
-        state.timer_running = false;
+        state.timer_state = TimerState::Stopped;
 
         // Randomly place bombs on the board until the total number of bombs matches the number specified in preferences
         state.total_bombs = state.prefs.mines;
@@ -1115,20 +1126,23 @@ impl GameState {
     pub fn pause_game(&mut self) {
         Sound::reset();
 
-        if !self.game_status.contains(StatusFlag::Pause) {
-            F_OLD_TIMER_STATUS.store(self.timer_running, Ordering::Relaxed);
-        }
-        if self.game_status.contains(StatusFlag::Play) {
-            self.timer_running = false;
+        if !self.game_status.contains(StatusFlag::Pause)
+            && self.game_status.contains(StatusFlag::Play)
+        {
+            if self.timer_state == TimerState::Running {
+                self.timer_state = TimerState::Paused;
+            } else {
+                self.timer_state = TimerState::Stopped;
+            }
         }
 
         self.game_status.insert(StatusFlag::Pause);
     }
 
-    /// Resume the game by restoring the timer state and clearing the pause flag.
+    /// Resume the game by restoring the timer state and clearing the pause flag from the game status.
     pub fn resume_game(&mut self) {
-        if self.game_status.contains(StatusFlag::Play) {
-            self.timer_running = F_OLD_TIMER_STATUS.load(Ordering::Relaxed);
+        if self.game_status.contains(StatusFlag::Play) && self.timer_state == TimerState::Paused {
+            self.timer_state = TimerState::Running;
         }
         self.game_status.remove(StatusFlag::Pause);
     }
