@@ -18,6 +18,8 @@ windows-sys = { version = "0.61.2", features = [
 	"Win32_Data_HtmlHelp",
 ] }
 bitflags = "2.11.0"
+strum = "0.28"
+strum_macros = "0.28"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"

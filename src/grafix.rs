@@ -2,7 +2,9 @@
 //! scaling, and rendering of game elements.
 
 use core::mem::size_of;
+use core::ops::Index;
 
+use strum_macros::VariantArray;
 use windows_sys::Win32::Graphics::Gdi::{
     BITMAPINFO as WinBITMAPINFO, GDI_ERROR, GetLayout, SetDIBitsToDevice, SetLayout,
 };
@@ -16,7 +18,7 @@ use winsafe::{
 
 use crate::globals::BASE_DPI;
 use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
-use crate::util::ResourceId;
+use crate::util::{ResourceId, impl_index_enum};
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -124,11 +126,12 @@ impl WindowDimensions {
 
 /// Number of cell sprites packed into the block bitmap sheet.
 const I_BLK_MAX: usize = 16;
+
 /// Number of digits stored in the LED bitmap sheet.
 const I_LED_MAX: usize = 12;
 /// Face button sprites available in the bitmap sheet.
 #[repr(i32)]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
 pub enum ButtonSprite {
     Happy = 0,
     Caution = 1,
@@ -139,8 +142,15 @@ pub enum ButtonSprite {
 /// Number of face button sprites.
 const BUTTON_SPRITE_COUNT: usize = 5;
 
+// Implement indexing for the button sprite cache array, allowing access by `ButtonSprite` enum variants.
+impl_index_enum!(
+    ButtonSprite,
+    [Option<CachedBitmapGuard>; BUTTON_SPRITE_COUNT]
+);
+
 /// LED digit sprites used in the bomb counter and timer.
 #[repr(u8)]
+#[derive(Clone, Copy, VariantArray)]
 enum LEDSprite {
     /// Digit 0
     Zero = 0,
@@ -198,6 +208,9 @@ impl From<i16> for LEDSprite {
         LEDSprite::from(value.unsigned_abs())
     }
 }
+
+// Implement indexing for the LED digit cache array, allowing access by `LEDSprite` enum variants.
+impl_index_enum!(LEDSprite, [Option<CachedBitmapGuard>; I_LED_MAX]);
 
 /// Border styles for drawing beveled borders.
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -385,11 +398,9 @@ impl GrafixState {
     /// - `Err` - If drawing the LED digit failed.
     fn draw_led(&self, hdc: &HDC, x: i32, led_index: LEDSprite) -> AnyResult<()> {
         // LEDs are cached into compatible bitmaps so we can scale them with StretchBlt.
-        let src = self
-            .mem_led_cache
-            .get(led_index as usize)
-            .and_then(Option::as_ref)
-            .ok_or("LED bitmap not loaded or index out of range")?;
+        let src = self.mem_led_cache[led_index]
+            .as_ref()
+            .ok_or("LED bitmap not loaded")?;
 
         hdc.SetStretchBltMode(STRETCH_MODE::COLORONCOLOR)?;
         hdc.StretchBlt(
@@ -505,16 +516,10 @@ impl GrafixState {
         let dst_h = self.dims.button.cy;
         let x = (dx_window - dst_w) / 2;
 
-        let idx = sprite as usize;
-        if idx >= BUTTON_SPRITE_COUNT {
-            return Ok(());
-        }
-
-        let src = self
-            .mem_button_cache
-            .get(idx)
-            .and_then(Option::as_ref)
-            .ok_or_else(|| format!("Button bitmap not loaded or index {idx} out of range"))?;
+        let src = self.mem_button_cache[sprite]
+            .as_ref()
+            // TODO: Create a custom error type for errors like this instead of using a string message.
+            .ok_or("Button bitmap not loaded")?;
 
         hdc.BitBlt(
             POINT::with(x, self.dims.top_led),
@@ -1140,9 +1145,8 @@ impl GrafixState {
         y: usize,
         board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> Option<&HDC> {
-        self.mem_blk_cache
-            .get(board[x][y].block_type as usize)
-            .and_then(Option::as_ref)
+        self.mem_blk_cache[board[x][y].block_type as usize]
+            .as_ref()
             .map(CachedBitmapGuard::hdc)
     }
 }

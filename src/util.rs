@@ -8,6 +8,71 @@ use winsafe::{AnyResult, HWND, IdPos, prelude::*};
 use crate::pref::GameType;
 use crate::winmine::WinMineMainWindow;
 
+/// Macro to implement the `Index` trait for an array type, allowing it to be indexed by an enum type.
+///
+/// # Arguments
+/// - `$enum_type` - The enum type to index by.
+/// - `$array_type` - The array type to index into.
+/// - `$lt` - Optional lifetime parameters for the array type.
+/// # Safety
+/// This macro includes a compile-time check to ensure that all variants of the enum type can be safely used as indices into the array type.
+/// If any enum variant exceeds the array length, a compile-time assertion will fail, preventing unsafe indexing.
+macro_rules! impl_index_enum {
+    // Internal implementation of the macro, handling both cases of lifetime parameters.
+    (@impl $enum_type:ty, $array_type:ty, ($($lt:lifetime)*)) => {
+        impl<$($lt),*> Index<$enum_type> for $array_type {
+            type Output = <$array_type as Index<usize>>::Output;
+
+            /// Index into the array using an enum variant, with a compile-time check to ensure safety.
+            /// # Arguments
+            /// - `idx` - The enum variant to index by.
+            /// # Returns
+            /// - A reference to the array element corresponding to the enum variant.
+            #[inline]
+            fn index(&self, idx: $enum_type) -> &Self::Output {
+                // Perform a compile-time check to ensure that the enum variants do not exceed the array length
+                const _: () = {
+                    // Calculate the length of the array type by dividing its total size by the size of its element type
+                    // This calculation must be done because `<$array_type>::len()` is not a const function and cannot be used in a const context
+                    let array_len = core::mem::size_of::<$array_type>() / core::mem::size_of::<<$array_type as Index<usize>>::Output>();
+
+                    // Calculate the maximum enum variant value by iterating through the variants of the enum type
+                    // TODO: Should negative enum variants be supported?
+                    let enum_max = {
+                        // The `strum` crate's `VariantArray` trait provides a `VARIANTS` associated constant, which is an array of the enum variants
+                        use strum::VariantArray as _;
+
+                        let mut max = 0;
+                        let mut i = 0;
+                        while i < <$enum_type>::VARIANTS.len() {
+                            let val = <$enum_type>::VARIANTS[i] as usize;
+                            if val > max {
+                                max = val;
+                            }
+                            i += 1;
+                        }
+                        max
+                    };
+                    assert!(enum_max < array_len, "Some enum variant exceeds the array length");
+                };
+
+                // Index into the array using the enum variant as an index
+                &self[idx as usize]
+            }
+        }
+    };
+
+    // Entry point for when the array type has lifetime parameters
+    ($enum_type:ty, for<$lt:lifetime> $array_type:ty) => {
+        impl_index_enum!(@impl $enum_type, $array_type, ($lt));
+    };
+    // Entry point for when the array type does not have lifetime parameters
+    ($enum_type:ty, $array_type:ty) => {
+        impl_index_enum!(@impl $enum_type, $array_type, ());
+    };
+}
+pub(crate) use impl_index_enum;
+
 /// Identifiers for resources used in the application, such as dialogs, menu items, and help contexts.
 #[derive(Copy, Clone)]
 pub enum ResourceId {

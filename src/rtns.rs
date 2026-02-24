@@ -20,6 +20,8 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 /// Encoded board values used to track each tile state.
 ///
 /// These values are used to get the visual representation of each cell, in reverse order.
+///
+/// TODO: Should this be in grafix instead?
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum BlockCell {
     /// A blank cell with no adjacent bombs.
@@ -57,6 +59,8 @@ pub enum BlockCell {
     /// A border cell surrounding the playable area, used to simplify bounds checking.
     ///
     /// TODO: I don't think that this is needed, remove it.
+    /// TODO: Once this is removed, implement `Index` for `BlockCell` to allow direct indexing
+    ///       into the bitmap cache without needing to convert to usize first.
     Border = 16,
 }
 
