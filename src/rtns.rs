@@ -53,9 +53,7 @@ pub enum BlockCell {
     /// The raised version of the guess (?) mark.
     GuessUp = 13,
     /// A flagged cell.
-    ///
-    /// TODO: Should this be renamed to FlagUp or MarkUp to avoid confusion?
-    BombUp = 14,
+    Flagged = 14,
     /// A blank cell in the raised state.
     BlankUp = 15,
     /// A border cell surrounding the playable area, used to simplify bounds checking.
@@ -88,7 +86,7 @@ impl From<u8> for BlockCell {
             11 => BlockCell::Wrong,
             12 => BlockCell::Explode,
             13 => BlockCell::GuessUp,
-            14 => BlockCell::BombUp,
+            14 => BlockCell::Flagged,
             15 => BlockCell::BlankUp,
             16 => BlockCell::Border,
             _ => BlockCell::Blank,
@@ -320,7 +318,7 @@ impl GameState {
         let mut count = 0;
         for y in (y_center - 1)..=(y_center + 1) {
             for x in (x_center - 1)..=(x_center + 1) {
-                if self.board_cells[x][y].block_type == BlockCell::BombUp {
+                if self.board_cells[x][y].block_type == BlockCell::Flagged {
                     count += 1;
                 }
             }
@@ -431,7 +429,7 @@ impl GameState {
                 } else if self.in_range(self.cursor_x, self.cursor_y)
                     && !self.board_cells[self.cursor_x][self.cursor_y].visited
                     && self.board_cells[self.cursor_x][self.cursor_y].block_type
-                        != BlockCell::BombUp
+                        != BlockCell::Flagged
                 {
                     // Handle a click on a single square
                     self.step_square(hwnd, self.cursor_x, self.cursor_y)?;
@@ -508,7 +506,7 @@ impl GameState {
 
                 // If currently flagged
                 let hdc = hwnd.GetDC()?;
-                let block = if self.board_cells[x][y].block_type == BlockCell::BombUp {
+                let block = if self.board_cells[x][y].block_type == BlockCell::Flagged {
                     // Increment the bomb count
                     self.bombs_left += 1;
                     self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
@@ -527,7 +525,7 @@ impl GameState {
                     // Currently blank; change to flagged and decrement bomb count
                     self.bombs_left -= 1;
                     self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
-                    BlockCell::BombUp
+                    BlockCell::Flagged
                 };
 
                 // Update the block type and redraw the square
@@ -535,7 +533,7 @@ impl GameState {
                 self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
 
                 // If the user has flagged the last bomb, they have won
-                if self.board_cells[x][y].block_type == BlockCell::BombUp && self.check_win() {
+                if self.board_cells[x][y].block_type == BlockCell::Flagged && self.check_win() {
                     self.game_over(hwnd, true)?;
                 }
             }
@@ -615,7 +613,9 @@ impl GameState {
         y: usize,
     ) -> AnyResult<()> {
         let blk = self.board_cells[x][y];
-        if blk.visited || blk.block_type == BlockCell::Border || blk.block_type == BlockCell::BombUp
+        if blk.visited
+            || blk.block_type == BlockCell::Border
+            || blk.block_type == BlockCell::Flagged
         {
             // Already visited, out of range, or marked as a bomb; do nothing
             return Ok(());
@@ -732,16 +732,16 @@ impl GameState {
                     && self.board_cells[x][y].block_type != BlockCell::Explode
                 {
                     if self.board_cells[x][y].bomb {
-                        if self.board_cells[x][y].block_type != BlockCell::BombUp {
+                        if self.board_cells[x][y].block_type != BlockCell::Flagged {
                             // If a bomb cell was not marked, reveal it
                             let cell = if win {
-                                BlockCell::BombUp
+                                BlockCell::Flagged
                             } else {
                                 BlockCell::BombDown
                             };
                             self.board_cells[x][y].block_type = cell;
                         }
-                    } else if self.board_cells[x][y].block_type == BlockCell::BombUp {
+                    } else if self.board_cells[x][y].block_type == BlockCell::Flagged {
                         // If a non-bomb cell was marked as a bomb, show it as incorrect
                         self.board_cells[x][y].block_type = BlockCell::Wrong;
                     }
@@ -856,7 +856,7 @@ impl GameState {
         for y in (y_center - 1)..=(y_center + 1) {
             for x in (x_center - 1)..=(x_center + 1) {
                 // Skip flagged squares
-                if self.board_cells[x][y].block_type == BlockCell::BombUp {
+                if self.board_cells[x][y].block_type == BlockCell::Flagged {
                     continue;
                 }
 
@@ -1088,7 +1088,7 @@ impl GameState {
             // Check if the new cursor position is in range, not yet visited, and not flagged as a bomb
             if self.in_range(x_new, y_new)
                 && !self.board_cells[x_new][y_new].visited
-                && self.board_cells[x_new][y_new].block_type != BlockCell::BombUp
+                && self.board_cells[x_new][y_new].block_type != BlockCell::Flagged
             {
                 // Depress the new box visually
                 self.invert_box(x_new, y_new);
