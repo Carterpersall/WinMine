@@ -329,9 +329,10 @@ impl GrafixState {
         y: usize,
         board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> AnyResult<()> {
-        let Some(src) = self.block_dc(x, y, board) else {
-            return Ok(());
-        };
+        let src = self.mem_blk_cache[board[x][y].block_type as usize]
+            .as_ref()
+            .map(CachedBitmapGuard::hdc)
+            .ok_or("Block bitmap not loaded")?;
 
         let dst_w = self.dims.block.cx;
         let dst_h = self.dims.block.cy;
@@ -358,6 +359,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the grid was drawn successfully.
     /// - `Err` - If `BitBlt` failed for any block.
+    #[allow(clippy::needless_range_loop)]
     pub fn draw_grid(
         &self,
         hdc: &HDC,
@@ -369,18 +371,23 @@ impl GrafixState {
         let dst_h = self.dims.block.cy;
 
         let mut dy = self.dims.grid_offset;
+        // TODO: If the board is ever changed to a vector, we can change this to an iterator and avoid the need for indexing and the clippy warning.
         for y in 1..=height {
             let mut dx = self.dims.left_space;
             for x in 1..=width {
-                if let Some(src) = self.block_dc(x, y, board) {
-                    hdc.BitBlt(
-                        POINT::with(dx, dy),
-                        SIZE::with(dst_w, dst_h),
-                        src,
-                        POINT::new(),
-                        ROP::SRCCOPY,
-                    )?;
-                }
+                let src = self.mem_blk_cache[board[x][y].block_type as usize]
+                    .as_ref()
+                    .map(CachedBitmapGuard::hdc)
+                    .ok_or("Block bitmap not loaded")?;
+
+                hdc.BitBlt(
+                    POINT::with(dx, dy),
+                    SIZE::with(dst_w, dst_h),
+                    src,
+                    POINT::new(),
+                    ROP::SRCCOPY,
+                )?;
+
                 dx += dst_w;
             }
             dy += dst_h;
@@ -1127,26 +1134,5 @@ impl GrafixState {
         }
         let stride = ((bits + 31) >> 5) << 2;
         (y * stride) as usize
-    }
-
-    /// Retrieve the cached compatible DC for the block at the given board coordinates.
-    ///
-    /// TODO: Should this function exist?
-    /// # Arguments
-    /// - `x` - X coordinate on the board
-    /// - `y` - Y coordinate on the board
-    /// - `board` - Slice representing the board state
-    /// # Returns
-    /// - `Some(&HDC)` - The compatible DC containing the block sprite
-    /// - `None` - If the block type is out of range or if the cached DC is not available
-    fn block_dc(
-        &self,
-        x: usize,
-        y: usize,
-        board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
-    ) -> Option<&HDC> {
-        self.mem_blk_cache[board[x][y].block_type as usize]
-            .as_ref()
-            .map(CachedBitmapGuard::hdc)
     }
 }

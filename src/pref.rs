@@ -1,8 +1,6 @@
 //! Preference management for the Minesweeper game, including reading and writing
 //! settings to the Windows registry.
 
-use core::ops::Index;
-
 use strum_macros::VariantArray;
 use winsafe::co::{GDC, KEY, REG_OPTION};
 use winsafe::{
@@ -11,7 +9,6 @@ use winsafe::{
 
 use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::sound::Sound;
-use crate::util::impl_index_enum;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub const CCH_NAME_MAX: usize = 32;
@@ -61,8 +58,36 @@ pub enum PrefKey {
     AlreadyPlayed = 17,
 }
 
-// Implement indexing for PrefKey to get the corresponding preference string from PREF_STRINGS.
-impl_index_enum!(PrefKey, for<'a> [&'static str; 18]);
+impl PrefKey {
+    /// Get the preference key as a string slice that corresponds to the registry value name.
+    /// # Returns
+    /// - `Some(&'static str)` - The string slice corresponding to the preference key.
+    /// # Notes
+    /// - The returned string slice is used as the value name when reading and writing preferences to the registry.
+    /// - `Some` is always returned to allow for easier passing of the return value to registry functions, which expect an `Option<&str>`.
+    pub const fn string(self) -> Option<&'static str> {
+        Some(match self {
+            PrefKey::Difficulty => "Difficulty",
+            PrefKey::Mines => "Mines",
+            PrefKey::Height => "Height",
+            PrefKey::Width => "Width",
+            PrefKey::Xpos => "Xpos",
+            PrefKey::Ypos => "Ypos",
+            PrefKey::Sound => "Sound",
+            PrefKey::Mark => "Mark",
+            //PrefKey::Menu => "Menu",
+            //PrefKey::Tick => "Tick",
+            PrefKey::Color => "Color",
+            PrefKey::Time1 => "Time1",
+            PrefKey::Name1 => "Name1",
+            PrefKey::Time2 => "Time2",
+            PrefKey::Name2 => "Name2",
+            PrefKey::Time3 => "Time3",
+            PrefKey::Name3 => "Name3",
+            PrefKey::AlreadyPlayed => "AlreadyPlayed",
+        })
+    }
+}
 
 /// Minimum board height allowed by the game.
 pub const MINHEIGHT: u32 = 9;
@@ -146,30 +171,6 @@ impl From<u32> for GameType {
     }
 }
 
-/// Strings corresponding to each preference key for registry access.
-///
-/// The order matches the `PrefKey` enum.
-const PREF_STRINGS: [&str; 18] = [
-    "Difficulty",
-    "mines",
-    "Height",
-    "Width",
-    "Xpos",
-    "Ypos",
-    "Sound",
-    "Mark",
-    "Menu",
-    "Tick",
-    "Color",
-    "Time1",
-    "Name1",
-    "Time2",
-    "Name2",
-    "Time3",
-    "Name3",
-    "AlreadyPlayed",
-];
-
 /// Structure containing all user preferences.
 #[derive(Default)]
 pub struct Pref {
@@ -215,12 +216,12 @@ impl Pref {
     /// - `Err` - If the preference key is invalid or if the registry value is not a DWORD
     pub fn read_int(handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
         // Get the name of the preference key
-        let key_name = PREF_STRINGS[key];
+        let key_name = key.string();
 
         // Attempt to read the DWORD value from the registry, returning the default if it fails
-        match handle.RegQueryValueEx(Some(PREF_STRINGS[key]))? {
+        match handle.RegQueryValueEx(key_name)? {
             RegistryValue::Dword(val) => Ok(val),
-            val => Err(format!("Preference key {key_name} is not a DWORD: {val:?}").into()),
+            val => Err(format!("Preference key {key_name:?} is not a DWORD: {val:?}").into()),
         }
     }
 
@@ -234,7 +235,7 @@ impl Pref {
     /// - `String` - The retrieved string, or the default name on failure
     fn read_sz(handle: &HKEY, key: PrefKey) -> String {
         // Attempt to read the string value from the registry, returning the default if it fails
-        match handle.RegQueryValueEx(Some(PREF_STRINGS[key])) {
+        match handle.RegQueryValueEx(key.string()) {
             Ok(RegistryValue::Sz(value) | RegistryValue::ExpandSz(value)) => value,
             _ => DEFAULT_PLAYER_NAME.to_owned(),
         }
@@ -321,7 +322,7 @@ impl Pref {
     /// - `Err` - If there was an error writing to the registry
     pub fn write_preferences(&self) -> AnyResult<()> {
         // Create or open the preferences registry key with write access
-        let (key_guard, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
+        let (hkey, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
             SZ_WINMINE_REG_STR,
             None,
             REG_OPTION::default(),
@@ -333,67 +334,40 @@ impl Pref {
         };
 
         // Save all preferences to the registry
-        Self::write(
-            &key_guard,
-            PrefKey::Difficulty,
-            Dword(self.game_type as u32),
-        )?;
-        Self::write(&key_guard, PrefKey::Height, Dword(self.height as u32))?;
-        Self::write(&key_guard, PrefKey::Width, Dword(self.width as u32))?;
-        Self::write(&key_guard, PrefKey::Mines, Dword(self.mines as u32))?;
-        Self::write(
-            &key_guard,
-            PrefKey::Mark,
-            Dword(u32::from(self.mark_enabled)),
-        )?;
-        Self::write(&key_guard, PrefKey::AlreadyPlayed, Dword(1))?;
+        hkey.RegSetValueEx(PrefKey::Difficulty.string(), Dword(self.game_type as u32))?;
+        hkey.RegSetValueEx(PrefKey::Height.string(), Dword(self.height as u32))?;
+        hkey.RegSetValueEx(PrefKey::Width.string(), Dword(self.width as u32))?;
+        hkey.RegSetValueEx(PrefKey::Mines.string(), Dword(self.mines as u32))?;
+        hkey.RegSetValueEx(PrefKey::Mark.string(), Dword(u32::from(self.mark_enabled)))?;
+        hkey.RegSetValueEx(PrefKey::AlreadyPlayed.string(), Dword(1))?;
 
-        Self::write(&key_guard, PrefKey::Color, Dword(u32::from(self.color)))?;
-        Self::write(
-            &key_guard,
-            PrefKey::Sound,
+        hkey.RegSetValueEx(PrefKey::Color.string(), Dword(u32::from(self.color)))?;
+        hkey.RegSetValueEx(
+            PrefKey::Sound.string(),
             if self.sound_enabled {
                 Dword(3)
             } else {
                 Dword(2)
             },
         )?;
-        Self::write(&key_guard, PrefKey::Xpos, Dword(self.wnd_pos.x as u32))?;
-        Self::write(&key_guard, PrefKey::Ypos, Dword(self.wnd_pos.y as u32))?;
-        Self::write(
-            &key_guard,
-            PrefKey::Time1,
+        hkey.RegSetValueEx(PrefKey::Xpos.string(), Dword(self.wnd_pos.x as u32))?;
+        hkey.RegSetValueEx(PrefKey::Ypos.string(), Dword(self.wnd_pos.y as u32))?;
+        hkey.RegSetValueEx(
+            PrefKey::Time1.string(),
             Dword(self.best_times[GameType::Begin as usize] as u32),
         )?;
-        Self::write(
-            &key_guard,
-            PrefKey::Time2,
+        hkey.RegSetValueEx(
+            PrefKey::Time2.string(),
             Dword(self.best_times[GameType::Inter as usize] as u32),
         )?;
-        Self::write(
-            &key_guard,
-            PrefKey::Time3,
+        hkey.RegSetValueEx(
+            PrefKey::Time3.string(),
             Dword(self.best_times[GameType::Expert as usize] as u32),
         )?;
 
-        Self::write(&key_guard, PrefKey::Name1, Sz(self.beginner_name.clone()))?;
-        Self::write(&key_guard, PrefKey::Name2, Sz(self.inter_name.clone()))?;
-        Self::write(&key_guard, PrefKey::Name3, Sz(self.expert_name.clone()))?;
+        hkey.RegSetValueEx(PrefKey::Name1.string(), Sz(self.beginner_name.clone()))?;
+        hkey.RegSetValueEx(PrefKey::Name2.string(), Sz(self.inter_name.clone()))?;
+        hkey.RegSetValueEx(PrefKey::Name3.string(), Sz(self.expert_name.clone()))?;
         Ok(())
-    }
-
-    /// Write a preference to the registry.
-    ///
-    /// TODO: Does this function need to exist?
-    /// # Arguments
-    /// - `handle` - Open registry key handle
-    /// - `key` - Preference key to write
-    /// - `val` - Registry value to store
-    /// # Returns
-    /// - `Ok(())` - If the value was successfully written to the registry
-    /// - `Err` - If there was an error writing to the registry
-    fn write(handle: &HKEY, key: PrefKey, val: RegistryValue) -> SysResult<()> {
-        // Store the value in the registry
-        handle.RegSetValueEx(Some(PREF_STRINGS[key]), val)
     }
 }
