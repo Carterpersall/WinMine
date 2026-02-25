@@ -53,6 +53,8 @@ pub enum BlockCell {
     /// The raised version of the guess (?) mark.
     GuessUp = 13,
     /// A flagged cell.
+    ///
+    /// TODO: Should this be renamed to FlagUp or MarkUp to avoid confusion?
     BombUp = 14,
     /// A blank cell in the raised state.
     BlankUp = 15,
@@ -426,7 +428,11 @@ impl GameState {
                 // Determine whether to chord (select adjacent squares) or step (reveal a single square)
                 if self.chord_active {
                     self.step_block(hwnd, self.cursor_x, self.cursor_y)?;
-                } else if self.in_range_step(self.cursor_x, self.cursor_y) {
+                } else if self.in_range(self.cursor_x, self.cursor_y)
+                    && !self.board_cells[self.cursor_x][self.cursor_y].visited
+                    && self.board_cells[self.cursor_x][self.cursor_y].block_type
+                        != BlockCell::BombUp
+                {
                     // Handle a click on a single square
                     self.step_square(hwnd, self.cursor_x, self.cursor_y)?;
                 }
@@ -490,9 +496,48 @@ impl GameState {
                 self.begin_primary_button_drag(&hwnd.GetDC()?)?;
                 self.handle_mouse_move(hwnd, btn, point)?;
             } else {
-                // Regular right-click: make a guess
+                // Regular right-click: Cycle through blank -> flag -> question mark states depending on preferences
+
+                // Get the box coordinates from the mouse position
                 let (x, y) = self.box_from_point(point);
-                self.make_guess(hwnd, x, y)?;
+
+                // Return if the square is out of range or already visited.
+                if !self.in_range(x, y) || self.board_cells[x][y].visited {
+                    return Ok(());
+                }
+
+                // If currently flagged
+                let hdc = hwnd.GetDC()?;
+                let block = if self.board_cells[x][y].block_type == BlockCell::BombUp {
+                    // Increment the bomb count
+                    self.bombs_left += 1;
+                    self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
+
+                    // If marks are allowed, change to question mark; otherwise, change to blank
+                    if self.prefs.mark_enabled {
+                        BlockCell::GuessUp
+                    } else {
+                        BlockCell::BlankUp
+                    }
+                } else if self.board_cells[x][y].block_type == BlockCell::GuessUp {
+                    // If currently marked with a question mark, change to blank
+                    // No need to update the bomb count since the guess mark doesn't affect it
+                    BlockCell::BlankUp
+                } else {
+                    // Currently blank; change to flagged and decrement bomb count
+                    self.bombs_left -= 1;
+                    self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
+                    BlockCell::BombUp
+                };
+
+                // Update the block type and redraw the square
+                self.board_cells[x][y].block_type = block;
+                self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
+
+                // If the user has flagged the last bomb, they have won
+                if self.board_cells[x][y].block_type == BlockCell::BombUp && self.check_win() {
+                    self.game_over(hwnd, true)?;
+                }
             }
         }
         Ok(())
@@ -706,14 +751,13 @@ impl GameState {
         self.grafix
             .draw_grid(&hdc, self.board_width, self.board_height, &self.board_cells)?;
 
-        // Play the appropriate sound effect based on win or loss
-        // TODO: Refactor this if-statement
-        if win {
-            if self.prefs.sound_enabled {
+        // Play the appropriate sound effect based on win or loss, if sound is enabled
+        if self.prefs.sound_enabled {
+            if win {
                 Sound::WinGame.play(&hwnd.hinstance());
+            } else {
+                Sound::LoseGame.play(&hwnd.hinstance());
             }
-        } else if self.prefs.sound_enabled {
-            Sound::LoseGame.play(&hwnd.hinstance());
         }
         self.game_status = StatusFlag::GameOver;
 
@@ -835,62 +879,6 @@ impl GameState {
         Ok(())
     }
 
-    /// Handle a user guess (flag or question mark) on a square.
-    ///
-    /// TODO: Should this be merged into `handle_rbutton_down`?
-    /// # Arguments
-    /// - `hwnd` - Handle to the main window.
-    /// - `x` - The X coordinate of the square.
-    /// - `y` - The Y coordinate of the square.
-    /// # Returns
-    /// - `Ok(())` - If the guess was successfully processed.
-    /// - `Err` - If an error occurred while drawing the square.
-    pub fn make_guess(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
-        // Cycle through blank -> flag -> question mark states depending on preferences.
-
-        // Return if the square is out of range or already visited.
-        if !self.in_range(x, y) || self.board_cells[x][y].visited {
-            return Ok(());
-        }
-
-        let allow_marks = self.prefs.mark_enabled;
-
-        // If currently flagged
-        let hdc = hwnd.GetDC()?;
-        let block = if self.board_cells[x][y].block_type == BlockCell::BombUp {
-            // Increment the bomb count
-            self.bombs_left += 1;
-            self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
-
-            // If marks are allowed, change to question mark; otherwise, change to blank
-            if allow_marks {
-                BlockCell::GuessUp
-            } else {
-                BlockCell::BlankUp
-            }
-        } else if self.board_cells[x][y].block_type == BlockCell::GuessUp {
-            // If currently marked with a question mark, change to blank
-            // No need to update the bomb count since the guess mark doesn't affect it
-            BlockCell::BlankUp
-        } else {
-            // Currently blank; change to flagged and decrement bomb count
-            self.bombs_left -= 1;
-            self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
-            BlockCell::BombUp
-        };
-
-        // Update the block type and redraw the square
-        self.board_cells[x][y].block_type = block;
-        self.grafix.draw_block(&hdc, x, y, &self.board_cells)?;
-
-        // If the user has flagged the last bomb, they have won
-        if self.board_cells[x][y].block_type == BlockCell::BombUp && self.check_win() {
-            self.game_over(hwnd, true)?;
-        }
-
-        Ok(())
-    }
-
     /// Invert the visual state of a box to show it as pressed or released.
     /// - Boxes are pushed down while the left mouse button is pressed over them.
     /// - Boxes are restored to their raised state when the left mouse button is released or the cursor is no longer over them.
@@ -908,21 +896,6 @@ impl GameState {
             BlockCell::Blank => BlockCell::BlankUp,
             _ => blk,
         };
-    }
-
-    /// Check if a given coordinate is within range, not visited, and not guessed as a bomb.
-    ///
-    /// TODO: Does this function need to exist?
-    /// # Arguments
-    /// - `x` - The X coordinate.
-    /// - `y` - The Y coordinate.
-    /// # Returns
-    /// - `true` - If the coordinate is within range, not visited, and not guessed as a bomb.
-    /// - `false` - If any of the conditions are not met.
-    fn in_range_step(&self, x: usize, y: usize) -> bool {
-        self.in_range(x, y)
-            && !self.board_cells[x][y].visited
-            && self.board_cells[x][y].block_type != BlockCell::BombUp
     }
 
     /// Reset the game field to its initial blank state and rebuild the border.
@@ -1112,8 +1085,11 @@ impl GameState {
                 self.grafix
                     .draw_block(hdc, self.cursor_x, self.cursor_y, &self.board_cells)?;
             }
-            // Check if the new cursor position is in range and not yet visited
-            if self.in_range(x_new, y_new) && self.in_range_step(x_new, y_new) {
+            // Check if the new cursor position is in range, not yet visited, and not flagged as a bomb
+            if self.in_range(x_new, y_new)
+                && !self.board_cells[x_new][y_new].visited
+                && self.board_cells[x_new][y_new].block_type != BlockCell::BombUp
+            {
                 // Depress the new box visually
                 self.invert_box(x_new, y_new);
                 self.grafix

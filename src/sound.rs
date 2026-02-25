@@ -25,7 +25,8 @@ impl Sound {
     /// - `hinst` - The HINSTANCE of the current process, used to locate the sound resource.
     pub fn play(self, hinst: &HINSTANCE) {
         let resource_ptr = IdStr::Id(self as u16).as_ptr();
-        // Playback uses the async flag so the UI thread is never blocked.
+        // Playback uses the async flag so the UI thread is never blocked
+        // Failures are ignored since sound is a non-essential feature
         unsafe {
             PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
         }

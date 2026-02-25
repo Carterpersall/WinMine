@@ -226,8 +226,6 @@ impl Pref {
     }
 
     /// Read a string preference from the registry.
-    ///
-    /// TODO: Does this need to exist?
     /// # Arguments
     /// - `handle` - Open registry key handle
     /// - `key` - Preference key to read
