@@ -6,6 +6,7 @@ use core::mem::replace;
 use core::ops::Deref as _;
 
 use bitflags::bitflags;
+use strum_macros::VariantArray;
 use winsafe::co::{MK, WM};
 use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
@@ -22,7 +23,7 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 /// These values are used to get the visual representation of each cell, in reverse order.
 ///
 /// TODO: Should this be in grafix instead?
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
 pub enum BlockCell {
     /// A blank cell with no adjacent bombs.
     Blank = 0,
@@ -56,8 +57,6 @@ pub enum BlockCell {
     Flagged = 14,
     /// A blank cell in the raised state.
     BlankUp = 15,
-    // TODO: Implement `Index` for `BlockCell` to allow direct indexing
-    //       into the bitmap cache without needing to convert to usize first.
 }
 
 impl From<u8> for BlockCell {

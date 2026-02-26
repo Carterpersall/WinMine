@@ -252,6 +252,8 @@ impl<T> StateLock<T> {
 }
 
 /// Shared state of the linear congruential generator.
+///
+/// TODO: Move this into `GameState` or a dedicated RNG struct.
 static RNG_STATE: AtomicU32 = AtomicU32::new(0);
 
 /// Seed the RNG with the specified seed value.

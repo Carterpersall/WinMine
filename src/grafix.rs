@@ -17,7 +17,7 @@ use winsafe::{
 };
 
 use crate::globals::BASE_DPI;
-use crate::rtns::{BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
+use crate::rtns::{BlockCell, BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
 use crate::util::{ResourceId, impl_index_enum};
 
 /*
@@ -212,6 +212,9 @@ impl From<i16> for LEDSprite {
 // Implement indexing for the LED digit cache array, allowing access by `LEDSprite` enum variants.
 impl_index_enum!(LEDSprite, [Option<CachedBitmapGuard>; I_LED_MAX]);
 
+// Implement indexing for the block cell cache array, allowing access by `BlockCell` enum variants.
+impl_index_enum!(BlockCell, [Option<CachedBitmapGuard>; 16]);
+
 /// Border styles for drawing beveled borders.
 #[derive(Copy, Clone, Eq, PartialEq)]
 enum BorderStyle {
@@ -329,7 +332,7 @@ impl GrafixState {
         y: usize,
         board: &[[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     ) -> AnyResult<()> {
-        let src = self.mem_blk_cache[board[x][y].block_type as usize]
+        let src = self.mem_blk_cache[board[x][y].block_type]
             .as_ref()
             .map(CachedBitmapGuard::hdc)
             .ok_or("Block bitmap not loaded")?;
@@ -375,7 +378,7 @@ impl GrafixState {
         for y in 0..=height {
             let mut dx = self.dims.left_space;
             for x in 0..=width {
-                let src = self.mem_blk_cache[board[x][y].block_type as usize]
+                let src = self.mem_blk_cache[board[x][y].block_type]
                     .as_ref()
                     .map(CachedBitmapGuard::hdc)
                     .ok_or("Block bitmap not loaded")?;
