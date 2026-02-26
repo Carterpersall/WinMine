@@ -1,7 +1,7 @@
 //! Handlers for the core game logic and state management.
 //! This includes board representation, game status tracking, and related utilities.
 
-use core::cmp::{max, min};
+use core::cmp::min;
 use core::mem::replace;
 use core::ops::Deref as _;
 
@@ -56,12 +56,8 @@ pub enum BlockCell {
     Flagged = 14,
     /// A blank cell in the raised state.
     BlankUp = 15,
-    /// A border cell surrounding the playable area, used to simplify bounds checking.
-    ///
-    /// TODO: I don't think that this is needed, remove it.
-    /// TODO: Once this is removed, implement `Index` for `BlockCell` to allow direct indexing
-    ///       into the bitmap cache without needing to convert to usize first.
-    Border = 16,
+    // TODO: Implement `Index` for `BlockCell` to allow direct indexing
+    //       into the bitmap cache without needing to convert to usize first.
 }
 
 impl From<u8> for BlockCell {
@@ -88,7 +84,6 @@ impl From<u8> for BlockCell {
             13 => BlockCell::GuessUp,
             14 => BlockCell::Flagged,
             15 => BlockCell::BlankUp,
-            16 => BlockCell::Border,
             _ => BlockCell::Blank,
         }
     }
@@ -123,8 +118,8 @@ impl From<BlockCell> for BlockInfo {
 }
 
 /// Maximum number of board cells
-pub const MAX_X_BLKS: usize = 32;
-pub const MAX_Y_BLKS: usize = 27;
+pub const MAX_X_BLKS: usize = 30;
+pub const MAX_Y_BLKS: usize = 25;
 /// Upper bound on the flood-fill work queue used for empty regions.
 const I_STEP_MAX: usize = 100;
 
@@ -182,9 +177,9 @@ pub struct GameState {
     pub prefs: Pref,
     /// Aggregated status flags defining the current game state.
     pub game_status: StatusFlag,
-    /// Current board width in cells (excluding border)
+    /// Zero-indexed board width in cells
     pub board_width: usize,
-    /// Current board height in cells (excluding border)
+    /// Zero-indexed board height in cells
     pub board_height: usize,
     /// Current button face sprite
     pub btn_face_state: ButtonSprite,
@@ -281,7 +276,7 @@ impl GameState {
     /// - `true` - If the coordinates are within the valid range of the board.
     /// - `false` - If the coordinates are out of range.
     pub const fn in_range(&self, x: usize, y: usize) -> bool {
-        x > 0 && y > 0 && x <= self.board_width && y <= self.board_height
+        x <= self.board_width && y <= self.board_height
     }
 
     /// Convert a set of coordinates in pixels to a box index on the board.
@@ -289,14 +284,16 @@ impl GameState {
     /// - `pos`: The POINT structure containing the x and y coordinates in pixels.
     /// # Returns
     /// - The corresponding box index.
+    ///
+    /// TODO: Should this return an Option or Result to handle out-of-range coordinates?
     pub const fn box_from_point(&self, pos: POINT) -> (usize, usize) {
         let cell = self.grafix.dims.block.cx;
         if cell <= 0 {
-            return (0, 0);
+            return (usize::MAX, usize::MAX);
         }
         (
-            ((pos.x - (self.grafix.dims.left_space - cell)) / cell) as usize,
-            ((pos.y - (self.grafix.dims.grid_offset - cell)) / cell) as usize,
+            ((pos.x - self.grafix.dims.left_space) / cell) as usize,
+            ((pos.y - self.grafix.dims.grid_offset) / cell) as usize,
         )
     }
 
@@ -316,8 +313,8 @@ impl GameState {
     /// - The number of adjacent marked squares (maximum 8).
     fn count_marks(&self, x_center: usize, y_center: usize) -> u8 {
         let mut count = 0;
-        for y in (y_center - 1)..=(y_center + 1) {
-            for x in (x_center - 1)..=(x_center + 1) {
+        for y in y_center.saturating_sub(1)..=min(y_center + 1, self.board_height) {
+            for x in x_center.saturating_sub(1)..=min(x_center + 1, self.board_width) {
                 if self.board_cells[x][y].block_type == BlockCell::Flagged {
                     count += 1;
                 }
@@ -448,6 +445,8 @@ impl GameState {
     }
 
     /// Handles mouse move events.
+    ///
+    /// TODO: This function handles more than just mouse movement, rename it accordingly.
     /// # Arguments
     /// - `hwnd`: Handle to the main window, used to get the device context and track the mouse if the game is not active.
     /// - `key`: The mouse buttons currently pressed.
@@ -604,6 +603,9 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the square was successfully processed.
     /// - `Err` - If an error occurred while drawing a square.
+    /// # Panics (Debug Only)
+    /// - If the square is a bomb, which should never happen since only empty squares should be enqueued for flood-fill processing.
+    ///   If this panic occurs, it indicates a bug in the flood-fill logic that is allowing bombs to be processed.
     fn step_xy(
         &mut self,
         hdc: &ReleaseDCGuard,
@@ -613,20 +615,26 @@ impl GameState {
         y: usize,
     ) -> AnyResult<()> {
         let blk = self.board_cells[x][y];
-        if blk.visited
-            || blk.block_type == BlockCell::Border
-            || blk.block_type == BlockCell::Flagged
-        {
+        if blk.visited || blk.block_type == BlockCell::Flagged {
             // Already visited, out of range, or marked as a bomb; do nothing
             return Ok(());
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            // Flood-fill processed squares should never be bombs.
+            // If this assertion fails, it indicates a bug in the flood-fill logic that is allowing bombs to be processed.
+            if blk.bomb {
+                panic!("Attempted to flood-fill a bomb at ({}, {})", x, y);
+            }
         }
 
         self.boxes_visited += 1;
 
         // Count the number of adjacent bombs
         let mut bombs = 0;
-        for y_n in (y - 1)..=(y + 1) {
-            for x_n in (x - 1)..=(x + 1) {
+        for y_n in y.saturating_sub(1)..=min(y + 1, self.board_height) {
+            for x_n in x.saturating_sub(1)..=min(x + 1, self.board_width) {
                 if self.board_cells[x_n][y_n].bomb {
                     bombs += 1;
                 }
@@ -654,6 +662,8 @@ impl GameState {
     }
 
     /// Flood-fill contiguous empty squares starting from (x, y).
+    ///
+    /// TODO: Should this function be renamed?
     /// # Arguments
     /// - `hdc` - The device context to draw on.
     /// - `x` - X coordinate of the starting square
@@ -678,22 +688,16 @@ impl GameState {
             // For each square in queue, check the 8 surrounding squares, and enqueue any that have no adjacent bombs
             let (sx, sy) = queue[head];
 
-            // Top row
-            let mut ty = sy - 1;
-            self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
-            self.step_xy(hdc, &mut queue, &mut tail, sx, ty)?;
-            self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
-
-            // Middle row
-            ty += 1;
-            self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
-            self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
-
-            // Bottom row
-            ty += 1;
-            self.step_xy(hdc, &mut queue, &mut tail, sx - 1, ty)?;
-            self.step_xy(hdc, &mut queue, &mut tail, sx, ty)?;
-            self.step_xy(hdc, &mut queue, &mut tail, sx + 1, ty)?;
+            // Iterate over the 3x3 area around the current square, ensuring we don't go out of bounds or process the center square again
+            for ty in sy.saturating_sub(1)..=min(sy + 1, self.board_height) {
+                for tx in sx.saturating_sub(1)..=min(sx + 1, self.board_width) {
+                    if (tx, ty) == (sx, sy) {
+                        // Skip the center square
+                        continue;
+                    }
+                    self.step_xy(hdc, &mut queue, &mut tail, tx, ty)?;
+                }
+            }
 
             head += 1;
             if head == I_STEP_MAX {
@@ -725,8 +729,8 @@ impl GameState {
         self.grafix.draw_button(&hdc, state)?;
 
         // Show all of the bombs and mark incorrect guesses
-        for y in 1..=self.board_height {
-            for x in 1..=self.board_width {
+        for y in 0..=self.board_height {
+            for x in 0..=self.board_width {
                 // If the cell is not visited is not the exploded bomb cell
                 if !self.board_cells[x][y].visited
                     && self.board_cells[x][y].block_type != BlockCell::Explode
@@ -806,8 +810,8 @@ impl GameState {
             let visits = self.boxes_visited;
             if visits == 0 {
                 // Ensure that the first clicked square is never a bomb
-                for y_t in 1..self.board_height {
-                    for x_t in 1..self.board_width {
+                for y_t in 0..=self.board_height {
+                    for x_t in 0..=self.board_width {
                         if !self.board_cells[x_t][y_t].bomb {
                             self.board_cells[x][y].bomb = false;
                             self.board_cells[x_t][y_t].bomb = true;
@@ -853,8 +857,8 @@ impl GameState {
 
         // If the conditions of a chord operation are met, reveal adjacent squares
         let mut lose = false;
-        for y in (y_center - 1)..=(y_center + 1) {
-            for x in (x_center - 1)..=(x_center + 1) {
+        for y in y_center.saturating_sub(1)..=min(y_center + 1, self.board_height) {
+            for x in x_center.saturating_sub(1)..=min(x_center + 1, self.board_width) {
                 // Skip flagged squares
                 if self.board_cells[x][y].block_type == BlockCell::Flagged {
                     continue;
@@ -904,18 +908,6 @@ impl GameState {
             .iter_mut()
             .flatten()
             .for_each(|b| *b = BlockInfo::from(BlockCell::BlankUp));
-
-        let x_max = self.board_width;
-        let y_max = self.board_height;
-
-        for x in 0..=(x_max + 1) {
-            self.board_cells[x][0].block_type = BlockCell::Border;
-            self.board_cells[x][y_max + 1].block_type = BlockCell::Border;
-        }
-        for y in 0..=(y_max + 1) {
-            self.board_cells[0][y].block_type = BlockCell::Border;
-            self.board_cells[x_max + 1][y].block_type = BlockCell::Border;
-        }
     }
 
     /// Handle the per-second game timer tick.
@@ -949,8 +941,8 @@ impl WinMineMainWindow {
     /// - `Err` - If an error occurred while resizing or updating the display.
     pub fn start_game(&self) -> AnyResult<()> {
         let mut state = self.state.write();
-        let x_prev = state.board_width;
-        let y_prev = state.board_height;
+        let x_prev = state.board_width + 1;
+        let y_prev = state.board_height + 1;
 
         let f_adjust = if state.prefs.width != x_prev || state.prefs.height != y_prev {
             AdjustFlag::ResizeAndRedraw
@@ -958,9 +950,10 @@ impl WinMineMainWindow {
             AdjustFlag::Redraw
         };
 
-        // Update the board dimensions based on the current preferences
-        state.board_width = state.prefs.width;
-        state.board_height = state.prefs.height;
+        // Update the board dimensions based on the current preferences.
+        // 1 is subtracted from each dimension to make it zero-indexed.
+        state.board_width = state.prefs.width - 1;
+        state.board_height = state.prefs.height - 1;
 
         // Reset the board to a blank state
         state.clear_field();
@@ -975,8 +968,8 @@ impl WinMineMainWindow {
             let mut y;
             loop {
                 // Select a random position on the board
-                x = rnd(state.board_width as u32) as usize + 1;
-                y = rnd(state.board_height as u32) as usize + 1;
+                x = rnd(state.prefs.width as u32) as usize;
+                y = rnd(state.prefs.height as u32) as usize;
                 // If there is not already a bomb at that position, place a bomb there
                 if !state.board_cells[x][y].bomb {
                     break;
@@ -990,7 +983,7 @@ impl WinMineMainWindow {
         state.bombs_left = state.prefs.mines;
         state.boxes_visited = 0;
         state.boxes_to_win =
-            (state.board_width * state.board_height) as u16 - state.prefs.mines as u16;
+            (state.prefs.width * state.prefs.height) as u16 - state.prefs.mines as u16;
         state.game_status = StatusFlag::Play;
 
         state
@@ -1038,9 +1031,9 @@ impl GameState {
             // If the old position is valid, pop up boxes in the previous area
             if valid_old {
                 // Determine the 3x3 area around the old cursor position
-                let y_old_min = max(self.cursor_y - 1, 1);
+                let y_old_min = self.cursor_y.saturating_sub(1);
                 let y_old_max = min(self.cursor_y + 1, y_max);
-                let x_old_min = max(self.cursor_x - 1, 1);
+                let x_old_min = self.cursor_x.saturating_sub(1);
                 let x_old_max = min(self.cursor_x + 1, x_max);
                 // Iterate over the old 3x3 area from left to right, top to bottom
                 for y in y_old_min..=y_old_max {
@@ -1058,9 +1051,9 @@ impl GameState {
             // If the new position is valid, push down boxes in the new area
             if valid_new {
                 // Determine the 3x3 area around the new cursor position
-                let y_cur_min = max(y_new - 1, 1);
+                let y_cur_min = y_new.saturating_sub(1);
                 let y_cur_max = min(y_new + 1, y_max);
-                let x_cur_min = max(x_new - 1, 1);
+                let x_cur_min = x_new.saturating_sub(1);
                 let x_cur_max = min(x_new + 1, x_max);
                 // Iterate over the new 3x3 area from left to right, top to bottom
                 for y in y_cur_min..=y_cur_max {

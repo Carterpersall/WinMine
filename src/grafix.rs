@@ -336,8 +336,8 @@ impl GrafixState {
 
         let dst_w = self.dims.block.cx;
         let dst_h = self.dims.block.cy;
-        let dst_x = (x as i32 * dst_w) + (self.dims.left_space - dst_w);
-        let dst_y = (y as i32 * dst_h) + (self.dims.grid_offset - dst_h);
+        let dst_x = (x as i32 * dst_w) + self.dims.left_space;
+        let dst_y = (y as i32 * dst_h) + self.dims.grid_offset;
 
         // Blocks are cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         hdc.BitBlt(
@@ -372,9 +372,9 @@ impl GrafixState {
 
         let mut dy = self.dims.grid_offset;
         // TODO: If the board is ever changed to a vector, we can change this to an iterator and avoid the need for indexing and the clippy warning.
-        for y in 1..=height {
+        for y in 0..=height {
             let mut dx = self.dims.left_space;
-            for x in 1..=width {
+            for x in 0..=width {
                 let src = self.mem_blk_cache[board[x][y].block_type as usize]
                     .as_ref()
                     .map(CachedBitmapGuard::hdc)

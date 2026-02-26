@@ -165,10 +165,10 @@ impl WinMineMainWindow {
         // Calculate desired window size based on board dimensions and DPI scaling
         let (dx_window, dy_window) = {
             let state = self.state.read();
-            let dx_window = state.grafix.dims.block.cx * state.board_width as i32
+            let dx_window = state.grafix.dims.block.cx * state.prefs.width as i32
                 + state.grafix.dims.left_space
                 + state.grafix.dims.right_space;
-            let dy_window = state.grafix.dims.block.cy * state.board_height as i32
+            let dy_window = state.grafix.dims.block.cy * state.prefs.height as i32
                 + state.grafix.dims.grid_offset
                 + state.grafix.dims.bottom_space;
             (dx_window, dy_window)
