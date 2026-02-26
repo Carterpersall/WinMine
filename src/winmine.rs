@@ -9,9 +9,8 @@ use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
 use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
-    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, GetTickCount64, HBRUSH, HINSTANCE,
-    INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, LOWORD, POINT, PtInRect, RECT,
-    SIZE, gui, prelude::*,
+    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, INITCOMMONCONTROLSEX,
+    IdIdiStr, IdStr, InitCommonControlsEx, POINT, PtInRect, RECT, SIZE, gui, prelude::*,
 };
 
 use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
@@ -20,7 +19,7 @@ use crate::help::Help;
 use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
-use crate::util::{ResourceId, StateLock, get_dlg_int, seed_rng};
+use crate::util::{ResourceId, StateLock, get_dlg_int};
 
 /// `WM_APP` request code posted to the main window when a new best time is
 /// recorded.
@@ -58,10 +57,6 @@ impl WinMineMainWindow {
     /// - `Ok(())` - If the application ran successfully and exited without errors.
     /// - `Err` - If there was an error during app execution.
     pub fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
-        // Seed the RNG using the low 16 bits of the current tick count
-        let ticks = LOWORD(GetTickCount64() as u32);
-        seed_rng(ticks);
-
         // Initialize common controls
         let mut icc = INITCOMMONCONTROLSEX::default();
         icc.icc = ICC::ANIMATE_CLASS

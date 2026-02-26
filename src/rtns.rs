@@ -15,7 +15,7 @@ use winsafe::{AnyResult, HWND, POINT, PtInRect, RECT, prelude::*};
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
 use crate::sound::Sound;
-use crate::util::rnd;
+use crate::util::Rng;
 use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 
 /// Encoded board values used to track each tile state.
@@ -228,6 +228,8 @@ pub struct GameState {
     ///
     /// TODO: Should the timer state and logic be moved to a separate struct or module?
     timer_state: TimerState,
+    /// Random number generator used for bomb placement.
+    rng: Rng,
 }
 
 impl GameState {
@@ -262,6 +264,7 @@ impl GameState {
             total_bombs: 0,
             boxes_to_win: 0,
             timer_state: TimerState::Stopped,
+            rng: Rng::seed_rng(),
         }
     }
 }
@@ -967,8 +970,10 @@ impl WinMineMainWindow {
             let mut y;
             loop {
                 // Select a random position on the board
-                x = rnd(state.prefs.width as u32) as usize;
-                y = rnd(state.prefs.height as u32) as usize;
+                let width = state.prefs.width as u32;
+                let height = state.prefs.height as u32;
+                x = state.rng.rnd(width) as usize;
+                y = state.rng.rnd(height) as usize;
                 // If there is not already a bomb at that position, place a bomb there
                 if !state.board_cells[x][y].bomb {
                     break;

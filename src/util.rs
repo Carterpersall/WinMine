@@ -1,9 +1,8 @@
 //! Utility functions and helpers used across the application.
 
-use core::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use winsafe::{AnyResult, HWND, IdPos, prelude::*};
+use winsafe::{AnyResult, GetTickCount64, HWND, IdPos, LOWORD, prelude::*};
 
 use crate::pref::GameType;
 use crate::winmine::WinMineMainWindow;
@@ -251,67 +250,69 @@ impl<T> StateLock<T> {
     }
 }
 
-/// Shared state of the linear congruential generator.
-///
-/// TODO: Move this into `GameState` or a dedicated RNG struct.
-static RNG_STATE: AtomicU32 = AtomicU32::new(0);
-
-/// Seed the RNG with the specified seed value.
-/// # Arguments
-/// - `seed` - The seed value to initialize the RNG with.
-/// # Notes
-/// This function replicates the functionality of the C standard library's `srand()` function.
-pub fn seed_rng(seed: u16) {
-    // Initialize the shared RNG state to the given seed value
-    RNG_STATE.store(seed as u32, Ordering::Relaxed);
+/// A simple linear congruential generator (LCG) for pseudo-random number generation,
+/// replicating the behavior of the C standard library's `rand()` function.
+pub struct Rng {
+    /// The current state of the RNG, which is updated with each call to generate a new random number.
+    state: u32,
 }
 
-/// Generate the next pseudo-random number using a linear congruential generator.
-/// # Returns
-/// - The next pseudo-random number.
-/// # Notes
-/// A linear congruential generator (LCG) is a simple algorithm for generating a sequence of pseudo-random numbers.
-///
-/// The formula used is:
-///
-/// X<sub>{n+1}</sub> = (a * X<sub>n</sub> + c) mod m
-///
-/// Where:
-/// - X is the sequence of pseudo-random values
-/// - a is the multiplier (`RNG_MULTIPLIER`)
-/// - c is the increment (`RNG_INCREMENT`)
-/// - m is the modulus (2<sup>32</sup> for `u32` arithmetic)
-///
-/// This formula is the same used in Windows' `rand()` function.
-///
-/// TODO: Consider using using Rust's built-in RNG facilities
-fn rand() -> u32 {
-    /// Multiplier used by the linear congruential generator that produces the app's RNG values.
-    const RNG_MULTIPLIER: u32 = 214_013;
-    /// Increment used by the linear congruential generator.
-    const RNG_INCREMENT: u32 = 2_531_011;
-
-    let mut current = RNG_STATE.load(Ordering::Relaxed);
-    // TODO: Loops are bad. Look into doing this a different way.
-    loop {
-        // Compute the next RNG state using LCG formula
-        let next = current
-            .wrapping_mul(RNG_MULTIPLIER)
-            .wrapping_add(RNG_INCREMENT);
-        match RNG_STATE.compare_exchange(current, next, Ordering::Relaxed, Ordering::Relaxed) {
-            Ok(_) => return (next >> 16) & 0x7FFF,
-            Err(actual) => current = actual,
+impl Rng {
+    /// Initialize the RNG state with a given seed value.
+    /// # Arguments
+    /// - `seed` - The seed value to initialize the RNG with.
+    /// # Notes
+    /// This function replicates the functionality of the C standard library's `srand()` function
+    /// along with the initial seeding behavior used in the original Minesweeper game.
+    pub fn seed_rng() -> Self {
+        // Initialize the shared RNG state to the given seed value
+        Self {
+            state: LOWORD(GetTickCount64() as u32) as u32,
         }
     }
-}
 
-/// Return a pseudo-random number in the [0, `rnd_max`) range
-/// # Arguments
-/// - `rnd_max` - Upper bound (exclusive) for the random number
-/// # Returns
-/// - A pseudo-random number in the [0, `rnd_max`) range
-pub fn rnd(rnd_max: u32) -> u32 {
-    rand() % rnd_max
+    /// Generate the next pseudo-random number using a linear congruential generator.
+    /// # Returns
+    /// - The next pseudo-random number.
+    /// # Notes
+    /// A linear congruential generator (LCG) is a simple algorithm for generating a sequence of pseudo-random numbers.
+    ///
+    /// The formula used is:
+    ///
+    /// X<sub>{n+1}</sub> = (a * X<sub>n</sub> + c) mod m
+    ///
+    /// Where:
+    /// - X is the sequence of pseudo-random values
+    /// - a is the multiplier (`RNG_MULTIPLIER`)
+    /// - c is the increment (`RNG_INCREMENT`)
+    /// - m is the modulus (2<sup>32</sup> for `u32` arithmetic)
+    ///
+    /// This formula is the same used in Windows' `rand()` function.
+    ///
+    /// TODO: Consider using using Rust's built-in RNG facilities
+    const fn rand(&mut self) -> u32 {
+        /// Multiplier used by the linear congruential generator that produces the app's RNG values.
+        const RNG_MULTIPLIER: u32 = 214_013;
+        /// Increment used by the linear congruential generator.
+        const RNG_INCREMENT: u32 = 2_531_011;
+
+        // Compute the next RNG state using LCG formula
+        let next = self
+            .state
+            .wrapping_mul(RNG_MULTIPLIER)
+            .wrapping_add(RNG_INCREMENT);
+        self.state = next;
+        (next >> 16) & 0x7FFF
+    }
+
+    /// Return a pseudo-random number in the [0, `rnd_max`) range
+    /// # Arguments
+    /// - `rnd_max` - Upper bound (exclusive) for the random number
+    /// # Returns
+    /// - A pseudo-random number in the [0, `rnd_max`) range
+    pub const fn rnd(&mut self, rnd_max: u32) -> u32 {
+        self.rand() % rnd_max
+    }
 }
 
 impl WinMineMainWindow {
