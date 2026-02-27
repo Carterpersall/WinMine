@@ -222,20 +222,20 @@ impl From<ResourceId> for u16 {
 }
 
 /// A wrapper around `RwLock` that handles poisoning by returning the inner data.
-pub struct StateLock<T>(RwLock<T>);
+pub(crate) struct StateLock<T>(RwLock<T>);
 
 impl<T> StateLock<T> {
     /// Create a new `StateLock` wrapping the given value.
     /// # Arguments
     /// - `value` - The value to wrap in the `RwLock`.
-    pub const fn new(value: T) -> Self {
+    pub(crate) const fn new(value: T) -> Self {
         Self(RwLock::new(value))
     }
 
     /// Get a read lock on the inner value, handling poisoning.
     /// # Returns
     /// - A `RwLockReadGuard` for the inner value
-    pub fn read(&self) -> RwLockReadGuard<'_, T> {
+    pub(crate) fn read(&self) -> RwLockReadGuard<'_, T> {
         match self.0.read() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -245,7 +245,7 @@ impl<T> StateLock<T> {
     /// Get a write lock on the inner value, handling poisoning.
     /// # Returns
     /// - A `RwLockWriteGuard` for the inner value
-    pub fn write(&self) -> RwLockWriteGuard<'_, T> {
+    pub(crate) fn write(&self) -> RwLockWriteGuard<'_, T> {
         match self.0.write() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
@@ -255,7 +255,7 @@ impl<T> StateLock<T> {
 
 /// A simple linear congruential generator (LCG) for pseudo-random number generation,
 /// replicating the behavior of the C standard library's `rand()` function.
-pub struct Rng {
+pub(crate) struct Rng {
     /// The current state of the RNG, which is updated with each call to generate a new random number.
     state: u32,
 }
@@ -267,7 +267,7 @@ impl Rng {
     /// # Notes
     /// This function replicates the functionality of the C standard library's `srand()` function
     /// along with the initial seeding behavior used in the original Minesweeper game.
-    pub fn seed_rng() -> Self {
+    pub(crate) fn seed_rng() -> Self {
         // Initialize the shared RNG state to the given seed value
         Self {
             state: LOWORD(GetTickCount64() as u32) as u32,
@@ -313,7 +313,7 @@ impl Rng {
     /// - `rnd_max` - Upper bound (exclusive) for the random number
     /// # Returns
     /// - A pseudo-random number in the [0, `rnd_max`) range
-    pub const fn rnd(&mut self, rnd_max: u32) -> u32 {
+    pub(crate) const fn rnd(&mut self, rnd_max: u32) -> u32 {
         self.rand() % rnd_max
     }
 }
@@ -323,7 +323,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// - `Ok(())` - If the menu bar was successfully updated
     /// - `Err` - If there was an error retrieving the menu handle or updating the menu items
-    pub fn set_menu_bar(&self) -> AnyResult<()> {
+    pub(crate) fn set_menu_bar(&self) -> AnyResult<()> {
         // Persist the menu visibility preference, refresh accelerator state, and resize the window.
         let (game_type, color, mark, sound) = {
             let state = self.state.read();
@@ -375,7 +375,12 @@ impl WinMineMainWindow {
 /// # Returns
 /// - `Ok(u32)` - The clamped integer value from the dialog item.
 /// - `Err` - If there was an error retrieving or parsing the value.
-pub fn get_dlg_int(h_dlg: &HWND, dlg_id: ResourceId, num_lo: u32, num_hi: u32) -> AnyResult<u32> {
+pub(crate) fn get_dlg_int(
+    h_dlg: &HWND,
+    dlg_id: ResourceId,
+    num_lo: u32,
+    num_hi: u32,
+) -> AnyResult<u32> {
     h_dlg
         // Get a handle to the dialog item
         .GetDlgItem(dlg_id as u16)

@@ -27,7 +27,7 @@ impl GameState {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles
     /// the cheat code state by XORing the counter with 20 (0b10100).
-    pub fn handle_xyzzys_shift() {
+    pub(crate) fn handle_xyzzys_shift() {
         if I_XYZZY.load(Ordering::Relaxed) >= CCH_XYZZY {
             I_XYZZY.fetch_xor(20, Ordering::Relaxed);
         }
@@ -39,7 +39,7 @@ impl GameState {
     /// If the sequence is broken, the counter is reset.
     /// # Arguments
     /// - `w_param` - The WPARAM from the keydown message, containing the virtual key code
-    pub fn handle_xyzzys_default_key(key: VK) {
+    pub(crate) fn handle_xyzzys_default_key(key: VK) {
         let current = I_XYZZY.load(Ordering::Relaxed);
         if current < CCH_XYZZY {
             let expected = XYZZY_SEQUENCE[current];
@@ -64,7 +64,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse move was handled successfully
     /// - `Err` - If there was an error during handling
-    pub fn handle_xyzzys_mouse(&mut self, key: MK, point: POINT) -> AnyResult<()> {
+    pub(crate) fn handle_xyzzys_mouse(&mut self, key: MK, point: POINT) -> AnyResult<()> {
         // Check if the Control key is held down.
         let control_down = key.has(MK::CONTROL);
 

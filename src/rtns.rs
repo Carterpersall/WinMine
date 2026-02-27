@@ -90,7 +90,7 @@ impl From<u8> for BlockCell {
 
 /// Struct representing information about a single block on the board.
 #[derive(Copy, Clone, Eq, PartialEq)]
-pub struct BlockInfo {
+pub(crate) struct BlockInfo {
     /// Indicates whether the block contains a bomb.
     pub bomb: bool,
     /// Indicates whether the block has been visited (revealed).
@@ -117,14 +117,14 @@ impl From<BlockCell> for BlockInfo {
 }
 
 /// Maximum number of horizontal board cells
-pub const MAX_X_BLKS: usize = 30;
+pub(crate) const MAX_X_BLKS: usize = 30;
 /// Maximum number of vertical board cells
-pub const MAX_Y_BLKS: usize = 25;
+pub(crate) const MAX_Y_BLKS: usize = 25;
 /// Upper bound on the flood-fill work queue used for empty regions.
 const I_STEP_MAX: usize = 100;
 
 /// Timer identifier used for the per-second gameplay timer.
-pub const ID_TIMER: usize = 1;
+pub(crate) const ID_TIMER: usize = 1;
 
 bitflags! {
     /// Packed flags indicating adjustments needed for the main window.
@@ -170,7 +170,7 @@ enum TimerState {
 /// Represents the current state of the game.
 ///
 /// TODO: Review all public values and determine if they need to be public.
-pub struct GameState {
+pub(crate) struct GameState {
     /// Graphics state containing bitmaps and rendering logic.
     pub grafix: GrafixState,
     /// Current user preferences.
@@ -235,7 +235,7 @@ pub struct GameState {
 
 impl GameState {
     /// Creates a new default `GameState`
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             grafix: GrafixState::default(),
             prefs: Pref {
@@ -278,7 +278,7 @@ impl GameState {
     /// # Returns
     /// - `true` - If the coordinates are within the valid range of the board.
     /// - `false` - If the coordinates are out of range.
-    pub const fn in_range(&self, x: usize, y: usize) -> bool {
+    pub(crate) const fn in_range(&self, x: usize, y: usize) -> bool {
         x <= self.board_width && y <= self.board_height
     }
 
@@ -289,7 +289,7 @@ impl GameState {
     /// - The corresponding box index.
     ///
     /// TODO: Should this return an Option or Result to handle out-of-range coordinates?
-    pub const fn box_from_point(&self, pos: POINT) -> (usize, usize) {
+    pub(crate) const fn box_from_point(&self, pos: POINT) -> (usize, usize) {
         let cell = self.grafix.dims.block.cx;
         if cell <= 0 {
             return (usize::MAX, usize::MAX);
@@ -334,7 +334,7 @@ impl GameState {
     /// - `Ok(true)` - If the click was on the button and handled.
     /// - `Ok(false)` - If the click was not on the button.
     /// - `Err` - If an error occurred while handling the click.
-    pub fn btn_click_handler(&mut self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<bool> {
+    fn btn_click_handler(&mut self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<bool> {
         let rc = {
             RECT {
                 left: (self.grafix.wnd_pos.x - self.grafix.dims.button.cx) / 2,
@@ -360,11 +360,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse move was handled.
     /// - `Err` - If an error occurred while handling the mouse move.
-    pub fn handle_face_button_mouse_move(
-        &self,
-        hdc: &ReleaseDCGuard,
-        point: POINT,
-    ) -> AnyResult<()> {
+    fn handle_face_button_mouse_move(&self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<()> {
         let rc = {
             RECT {
                 left: (self.grafix.wnd_pos.x - self.grafix.dims.button.cx) / 2,
@@ -390,7 +386,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the drag operation was successfully initiated and the button was drawn.
     /// - `Err` - If an error occurred while getting the device context.
-    pub fn begin_primary_button_drag(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<()> {
+    fn begin_primary_button_drag(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<()> {
         self.drag_active = true;
         self.cursor_x = usize::MAX - 1;
         self.cursor_y = usize::MAX - 1;
@@ -404,7 +400,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the drag operation was successfully finished and the button was drawn.
     /// - `Err` - If an error occurred while getting the device context or drawing the button.
-    pub fn finish_primary_button_drag(&mut self, hwnd: &HWND) -> AnyResult<()> {
+    pub(crate) fn finish_primary_button_drag(&mut self, hwnd: &HWND) -> AnyResult<()> {
         self.drag_active = false;
         if self.game_status.contains(StatusFlag::Play) {
             // Check if the cursor is within the valid range of the board
@@ -457,7 +453,12 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse move was handled successfully.
     /// - `Err` - If an error occurred while handling the mouse move or if getting the device context failed.
-    pub fn handle_mouse_move(&mut self, hwnd: &HWND, key: MK, point: POINT) -> AnyResult<()> {
+    pub(crate) fn handle_mouse_move(
+        &mut self,
+        hwnd: &HWND,
+        key: MK,
+        point: POINT,
+    ) -> AnyResult<()> {
         if self.btn_face_pressed {
             // If the face button is being clicked, handle mouse movement for that interaction
             self.handle_face_button_mouse_move(&hwnd.GetDC()?, point)?;
@@ -484,7 +485,12 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the right button down was handled successfully.
     /// - `Err` - If an error occurred.
-    pub fn handle_rbutton_down(&mut self, hwnd: &HWND, btn: MK, point: POINT) -> AnyResult<()> {
+    pub(crate) fn handle_rbutton_down(
+        &mut self,
+        hwnd: &HWND,
+        btn: MK,
+        point: POINT,
+    ) -> AnyResult<()> {
         // Ignore right-clicks if the next click is set to be ignored or if the game is not active
         if !replace(&mut self.ignore_next_click, false)
             && self.game_status.contains(StatusFlag::Play)
@@ -551,7 +557,12 @@ impl GameState {
     /// # Returns
     // - `Ok(())` - If the left button down was handled successfully.
     /// - `Err` - If an error occurred.
-    pub fn handle_lbutton_down(&mut self, hwnd: &HWND, vkey: MK, point: POINT) -> AnyResult<()> {
+    pub(crate) fn handle_lbutton_down(
+        &mut self,
+        hwnd: &HWND,
+        vkey: MK,
+        point: POINT,
+    ) -> AnyResult<()> {
         // If the next click should be ignored of if the click was on the button and was handled, do nothing else
         if !replace(&mut self.ignore_next_click, false)
             && !self.btn_click_handler(&hwnd.GetDC()?, point)?
@@ -576,7 +587,12 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the middle button down was handled successfully.
     /// - `Err` - If an error occurred.
-    pub fn handle_mbutton_down(&mut self, hwnd: &HWND, vkey: MK, point: POINT) -> AnyResult<()> {
+    pub(crate) fn handle_mbutton_down(
+        &mut self,
+        hwnd: &HWND,
+        vkey: MK,
+        point: POINT,
+    ) -> AnyResult<()> {
         // Ignore middle-clicks if the next click is to be ignored
         if !replace(&mut self.ignore_next_click, false) {
             if vkey.has(MK::MBUTTON) {
@@ -906,7 +922,7 @@ impl GameState {
     }
 
     /// Reset the game field to its initial blank state and rebuild the border.
-    pub fn clear_field(&mut self) {
+    pub(crate) fn clear_field(&mut self) {
         self.board_cells
             .iter_mut()
             .flatten()
@@ -919,7 +935,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the timer was successfully updated.
     /// - `Err` - If an error occurred while updating the display.
-    pub fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
+    pub(crate) fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer_state == TimerState::Running && self.secs_elapsed < 999 {
             self.secs_elapsed += 1;
             self.grafix
@@ -942,7 +958,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// - `Ok(())` - If the game was successfully started.
     /// - `Err` - If an error occurred while resizing or updating the display.
-    pub fn start_game(&self) -> AnyResult<()> {
+    pub(crate) fn start_game(&self) -> AnyResult<()> {
         let mut state = self.state.write();
         let x_prev = state.board_width + 1;
         let y_prev = state.board_height + 1;
@@ -1101,7 +1117,7 @@ impl GameState {
     }
 
     /// Pause the game by silencing audio, storing the timer state, and setting the pause flag.
-    pub fn pause_game(&mut self) {
+    pub(crate) fn pause_game(&mut self) {
         Sound::reset();
 
         if !self.game_status.contains(StatusFlag::Pause)
@@ -1118,7 +1134,7 @@ impl GameState {
     }
 
     /// Resume the game by restoring the timer state and clearing the pause flag from the game status.
-    pub fn resume_game(&mut self) {
+    pub(crate) fn resume_game(&mut self) {
         if self.game_status.contains(StatusFlag::Play) && self.timer_state == TimerState::Paused {
             self.timer_state = TimerState::Running;
         }

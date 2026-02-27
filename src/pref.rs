@@ -11,12 +11,12 @@ use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::sound::Sound;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
-pub const CCH_NAME_MAX: usize = 32;
+pub(crate) const CCH_NAME_MAX: usize = 32;
 
 /// Preference keys used to read and write settings from the registry.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
-pub enum PrefKey {
+pub(crate) enum PrefKey {
     /// Game difficulty preference.
     Difficulty = 0,
     /// Number of mines on the board.
@@ -65,7 +65,7 @@ impl PrefKey {
     /// # Notes
     /// - The returned string slice is used as the value name when reading and writing preferences to the registry.
     /// - `Some` is always returned to allow for easier passing of the return value to registry functions, which expect an `Option<&str>`.
-    pub const fn string(self) -> Option<&'static str> {
+    pub(crate) const fn string(self) -> Option<&'static str> {
         Some(match self {
             PrefKey::Difficulty => "Difficulty",
             PrefKey::Mines => "Mines",
@@ -90,19 +90,19 @@ impl PrefKey {
 }
 
 /// Minimum board height allowed by the game.
-pub const MINHEIGHT: u32 = 9;
+pub(crate) const MINHEIGHT: u32 = 9;
 /// Minimum board width allowed by the game.
-pub const MINWIDTH: u32 = 9;
+pub(crate) const MINWIDTH: u32 = 9;
 
 /// Registry key path used to persist preferences.
-pub const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
+pub(crate) const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 /// Difficulty presets exposed throughout the game.
 ///
 /// TODO: Does this need to exist?
 #[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
-pub enum GameType {
+pub(crate) enum GameType {
     /// Beginner level.
     #[default]
     Begin = 0,
@@ -127,7 +127,7 @@ impl GameType {
     /// # Returns
     /// - `Some((mines, height, width))` - The preset data for the given game type.
     /// - `None` - If the game type is custom.
-    pub const fn preset_data(self) -> Option<(i16, u32, u32)> {
+    pub(crate) const fn preset_data(self) -> Option<(i16, u32, u32)> {
         match self {
             GameType::Begin => Some(Self::LEVEL_DATA[0]),
             GameType::Inter => Some(Self::LEVEL_DATA[1]),
@@ -139,7 +139,7 @@ impl GameType {
     /// Returns the message string shown when the player achieves the fastest time for each difficulty.
     /// # Returns
     /// - The fastest time message string.
-    pub const fn fastest_time_msg(self) -> &'static str {
+    pub(crate) const fn fastest_time_msg(self) -> &'static str {
         match self {
             GameType::Begin => {
                 "You have the fastest time\rfor beginner level.\rPlease enter your name."
@@ -173,7 +173,7 @@ impl From<u32> for GameType {
 
 /// Structure containing all user preferences.
 #[derive(Default)]
-pub struct Pref {
+pub(crate) struct Pref {
     /// Current game difficulty (Beginner, Intermediate, Expert, Custom).
     pub game_type: GameType,
     /// Number of mines on the board.
@@ -214,7 +214,7 @@ impl Pref {
     /// # Returns
     /// - `Ok(u32)` - The retrieved integer value
     /// - `Err` - If the preference key is invalid or if the registry value is not a DWORD
-    pub fn read_int(handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
+    fn read_int(handle: &HKEY, key: PrefKey) -> AnyResult<u32> {
         // Get the name of the preference key
         let key_name = key.string();
 
@@ -247,7 +247,7 @@ impl Pref {
     /// - Preferences are clamped to valid ranges where applicable.
     /// - If an error occurs while reading some specific preference,
     ///   the default value for that preference will be used instead.
-    pub fn read_preferences(&mut self) -> SysResult<()> {
+    pub(crate) fn read_preferences(&mut self) -> SysResult<()> {
         /// Default board height used if not set in the registry.
         const DEFHEIGHT: u32 = 9;
         /// Default board width used if not set in the registry.
@@ -318,7 +318,7 @@ impl Pref {
     /// # Returns
     /// - `Ok(())` - If preferences were successfully written to the registry
     /// - `Err` - If there was an error writing to the registry
-    pub fn write_preferences(&self) -> AnyResult<()> {
+    pub(crate) fn write_preferences(&self) -> AnyResult<()> {
         // Create or open the preferences registry key with write access
         let (hkey, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
             SZ_WINMINE_REG_STR,

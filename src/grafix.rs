@@ -56,7 +56,7 @@ const DX_RIGHT_TIME_96: i32 = DX_RIGHT_SPACE_96 + 5;
 
 /// Current UI dimensions and offsets, scaled from the base 96-DPI values.
 #[derive(Default)]
-pub struct WindowDimensions {
+pub(crate) struct WindowDimensions {
     /// Current UI DPI, used for scaling dimensions and offsets.
     pub dpi: u32,
     /// Dimensions of a single board cell sprite.
@@ -94,7 +94,7 @@ impl WindowDimensions {
     /// - It takes a signed and an unsigned integer and returns a signed integer, while `MulDiv` operates on only signed integers.
     /// - It assumes that the denominator is always non-zero, which can be safely assumed in this context since `BASE_DPI` is a constant
     ///   and should never be zero.
-    pub const fn scale_dpi(&self, val: i32) -> i32 {
+    pub(crate) const fn scale_dpi(&self, val: i32) -> i32 {
         // Perform multiplication in u64 to prevent overflow
         let product = val as u64 * self.dpi as u64;
         // Perform division with rounding
@@ -104,7 +104,7 @@ impl WindowDimensions {
     /// Update the stored DPI and rescale all dimensions and offsets accordingly.
     /// # Arguments
     /// - `dpi` - The new UI DPI to apply.
-    pub const fn update_dpi(&mut self, dpi: u32) {
+    pub(crate) const fn update_dpi(&mut self, dpi: u32) {
         self.dpi = dpi;
         self.block.cx = self.scale_dpi(DX_BLK_96);
         self.block.cy = self.scale_dpi(DY_BLK_96);
@@ -274,7 +274,7 @@ impl Drop for CachedBitmapGuard {
 }
 
 /// Internal state tracking loaded graphics resources and cached DCs
-pub struct GrafixState {
+pub(crate) struct GrafixState {
     /// Current window position
     pub wnd_pos: POINT,
     /// Current UI dimensions and offsets, scaled from the base 96-DPI values.
@@ -324,7 +324,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the block was drawn successfully.
     /// - `Err` - If drawing the block failed.
-    pub fn draw_block(
+    pub(crate) fn draw_block(
         &self,
         hdc: &ReleaseDCGuard,
         x: usize,
@@ -362,7 +362,7 @@ impl GrafixState {
     /// - `Ok(())` - If the grid was drawn successfully.
     /// - `Err` - If `BitBlt` failed for any block.
     #[allow(clippy::needless_range_loop)]
-    pub fn draw_grid(
+    pub(crate) fn draw_grid(
         &self,
         hdc: &HDC,
         width: usize,
@@ -430,7 +430,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the bomb count was drawn successfully.
     /// - `Err` - If drawing the bomb count LEDs failed.
-    pub fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
+    pub(crate) fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
         // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
         let layout = unsafe { GetLayout(hdc.ptr()) };
         // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
@@ -471,7 +471,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the timer was drawn successfully.
     /// - `Err` - If drawing the timer LEDs failed.
-    pub fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
+    pub(crate) fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
         // The timer uses the same mirroring trick as the bomb counter.
         let layout = unsafe { GetLayout(hdc.ptr()) };
         let mirrored = layout != GDI_ERROR as u32 && (layout & LAYOUT::RTL.raw()) != 0;
@@ -518,7 +518,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the face button was drawn successfully.
     /// - `Err` - If drawing the face button failed.
-    pub fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
+    pub(crate) fn draw_button(&self, hdc: &HDC, sprite: ButtonSprite) -> AnyResult<()> {
         // The face button is cached pre-scaled (see `load_bitmaps_impl`) so we can do a 1:1 blit.
         let dx_window = self.wnd_pos.x;
         let dst_w = self.dims.button.cx;
@@ -861,7 +861,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the screen was drawn successfully
     /// - `Err` - If drawing any of the screen elements failed
-    pub fn draw_screen(&self, hdc: &HDC, state: &GameState) -> AnyResult<()> {
+    pub(crate) fn draw_screen(&self, hdc: &HDC, state: &GameState) -> AnyResult<()> {
         // 1. Draw background and borders
         self.draw_background(hdc)?;
         // 2. Draw bomb counter
@@ -888,7 +888,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the bitmaps were loaded and cached successfully
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
-    pub fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
+    pub(crate) fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
         let hinst = hwnd.hinstance();
         let (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BlocksBmp, color)?;
         let (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::LedBmp, color)?;

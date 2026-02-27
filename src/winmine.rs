@@ -26,11 +26,11 @@ use crate::util::{ResourceId, StateLock, get_dlg_int};
 ///
 /// The main UI thread handles this by showing the name-entry dialog, then the
 /// best-times dialog.
-pub const NEW_RECORD_DLG: usize = 1;
+pub(crate) const NEW_RECORD_DLG: usize = 1;
 
 /// Struct containing the main window with its event handlers and the shared state.
 #[derive(Clone)]
-pub struct WinMineMainWindow {
+pub(crate) struct WinMineMainWindow {
     /// The main window, containing the HWND and event callbacks
     pub wnd: gui::WindowMain,
     /// Shared state for the game
@@ -56,7 +56,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// - `Ok(())` - If the application ran successfully and exited without errors.
     /// - `Err` - If there was an error during app execution.
-    pub fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
+    pub(crate) fn run(hinst: &HINSTANCE) -> Result<(), Box<dyn core::error::Error>> {
         // Initialize common controls
         let mut icc = INITCOMMONCONTROLSEX::default();
         icc.icc = ICC::ANIMATE_CLASS
@@ -156,7 +156,7 @@ impl WinMineMainWindow {
     /// # Returns
     /// - `Ok(())` - If the window adjustment was successful.
     /// - `Err` - If an error occurred while adjusting the window.
-    pub fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
+    pub(crate) fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Calculate desired window size based on board dimensions and DPI scaling
         let (dx_window, dy_window) = {
             let state = self.state.read();

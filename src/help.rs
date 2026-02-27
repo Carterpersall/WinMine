@@ -16,7 +16,8 @@ use winsafe::{HELPINFO, HWND, co::HELPW};
 
 use crate::util::ResourceId;
 
-pub struct Help;
+/// Help handling for the Minesweeper game, including context-sensitive help and help file management.
+pub(crate) struct Help;
 
 impl Help {
     /// Help context ID mappings for dialogs
@@ -25,7 +26,7 @@ impl Help {
     /// # Notes
     /// - The arrays are in pairs of (control ID, help context ID).
     /// - The arrays end with two zeros to signal the end of the mapping.
-    pub const PREF_HELP_IDS: [u32; 14] = [
+    pub(crate) const PREF_HELP_IDS: [u32; 14] = [
         ResourceId::HeightEdit as u32,
         ResourceId::PrefEditHeight as u32,
         ResourceId::WidthEdit as u32,
@@ -48,7 +49,7 @@ impl Help {
     /// # Notes
     /// - The arrays are in pairs of (control ID, help context ID).
     /// - The arrays end with two zeros to signal the end of the mapping.
-    pub const BEST_HELP_IDS: [u32; 22] = [
+    pub(crate) const BEST_HELP_IDS: [u32; 22] = [
         ResourceId::ResetBtn as u32,
         ResourceId::BestBtnReset as u32,
         ResourceId::SText1 as u32,
@@ -109,7 +110,7 @@ impl Help {
     /// # Arguments
     /// - `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
     /// - `ids` - The array of help context IDs.
-    pub fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
+    pub(crate) fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
         // Get a pointer to the control that requested help, which may be a window handle or a menu handle
         let hwndcaller = match help.hItemHandle() {
             Hwnd(hwnd) => hwnd.ptr(),
@@ -129,7 +130,7 @@ impl Help {
     /// # Arguments
     /// - `hwnd` - The handle to the control.
     /// - `ids` - The array of help context IDs.
-    pub fn apply_help_to_control(hwnd: &HWND, ids: &[u32]) {
+    pub(crate) fn apply_help_to_control(hwnd: &HWND, ids: &[u32]) {
         unsafe {
             HtmlHelpW(
                 hwnd.ptr(),
@@ -152,7 +153,7 @@ impl Help {
     /// - For other commands, the help file is derived from the executable's path, replacing its extension with `.chm`.
     /// - The help file is expected to be located in the same directory as the executable.
     /// - The "help on help" feature currently relies on the presence of `NTHelp.chm` in the current working directory.
-    pub fn do_help(hwnd: &HWND, w_command: HELPW, l_param: HTML_HELP_COMMAND) {
+    pub(crate) fn do_help(hwnd: &HWND, w_command: HELPW, l_param: HTML_HELP_COMMAND) {
         // Buffer to hold the help file path
         let mut path = Self::get_help_path().clone();
 

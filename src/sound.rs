@@ -10,7 +10,7 @@ use crate::util::ResourceId;
 /// Logical UI tunes that map to embedded wave resources.
 ///
 /// TODO: Should the Sound enum exist?
-pub enum Sound {
+pub(crate) enum Sound {
     /// Short tick used for timer and click feedback.
     Tick = ResourceId::TuneTick as isize,
     /// Win jingle played after successfully clearing the board.
@@ -23,7 +23,7 @@ impl Sound {
     /// Play a specific UI tune using the sounds in the resource file
     /// # Arguments
     /// - `hinst` - The HINSTANCE of the current process, used to locate the sound resource.
-    pub fn play(self, hinst: &HINSTANCE) {
+    pub(crate) fn play(self, hinst: &HINSTANCE) {
         let resource_ptr = IdStr::Id(self as u16).as_ptr();
         // Playback uses the async flag so the UI thread is never blocked
         // Failures are ignored since sound is a non-essential feature
@@ -36,7 +36,7 @@ impl Sound {
     /// # Returns
     /// - `true` - If the sound API successfully stopped all sounds, indicating that sounds can be played without issue.
     /// - `false` - If the sound API failed to stop sounds, indicating a potential issue with the sound system.
-    pub fn reset() -> bool {
+    pub(crate) fn reset() -> bool {
         // Passing NULL tells PlaySound to purge the current queue.
         unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
     }

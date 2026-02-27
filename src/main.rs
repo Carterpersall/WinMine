@@ -38,7 +38,7 @@
 #![warn(redundant_imports)]
 #![warn(redundant_lifetimes)]
 #![warn(unnameable_types)]
-//#![warn(unreachable_pub)]
+#![warn(unreachable_pub)]
 #![warn(unused_import_braces)]
 #![warn(unused_qualifications)]
 //#![warn(unused_results)]
