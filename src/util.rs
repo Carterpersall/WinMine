@@ -74,24 +74,24 @@ pub(crate) use impl_index_enum;
 
 /// Identifiers for resources used in the application, such as dialogs, menu items, and help contexts.
 #[derive(Copy, Clone)]
-pub enum ResourceId {
-    /// Value representing no resource, used as a sentinel in arrays of resource IDs.
-    None = 0,
-
+pub(crate) enum ResourceId {
     /* MINE Resources */
     /// Main application icon.
     Icon = 100,
     /// Bitmap resource for colored blocks.
     BlocksBmp = 410,
     /// Bitmap resource for black-and-white blocks.
+    #[expect(unused)]
     BWBlocksBmp = 411,
     /// Bitmap resource for colored LED display.
     LedBmp = 420,
     /// Bitmap resource for black-and-white LED display.
+    #[expect(unused)]
     BWLedBmp = 421,
     /// Bitmap resource for colored buttons.
     ButtonBmp = 430,
     /// Bitmap resource for black-and-white buttons.
+    #[expect(unused)]
     BWButtonBmp = 431,
     /// Sound resource for tick sound.
     TuneTick = 432,
@@ -106,6 +106,7 @@ pub enum ResourceId {
     /// OK button in preferences dialog.
     OkBtn = 101,
     /// Cancel button in preferences dialog.
+    #[expect(unused)]
     CancelBtn = 109,
     /// Text label for mines in preferences dialog.
     MinesText = 111,
@@ -120,6 +121,7 @@ pub enum ResourceId {
     /// Edit control for number of mines.
     MinesEdit = 143,
     /// Text label for custom settings.
+    #[expect(unused)]
     CustomText = 151,
 
     /* Enter Name Dialog */
@@ -166,6 +168,7 @@ pub enum ResourceId {
     Exit = 512,
 
     /// Skill level submenu.
+    #[expect(unused)]
     SkillSubmenu = 520,
     /// Beginner level menu item.
     Begin = 521,

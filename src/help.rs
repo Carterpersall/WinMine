@@ -4,7 +4,6 @@
 //! - `HtmlHelp` leaks a `DC` whenever the popup help menu is displayed and leaks a `HBRUSH`
 //!   when opening the help window. This is likely a bug in the Win32 API itself.
 
-use core::ffi::c_void;
 use std::os::windows::ffi::OsStrExt as _;
 use std::sync::LazyLock;
 
@@ -12,6 +11,7 @@ use windows_sys::Win32::Data::HtmlHelp::{
     HH_TP_HELP_CONTEXTMENU, HH_TP_HELP_WM_HELP, HTML_HELP_COMMAND, HtmlHelpW,
 };
 
+use winsafe::HwndHmenu::{Hmenu, Hwnd};
 use winsafe::{HELPINFO, HWND, co::HELPW};
 
 use crate::util::ResourceId;
@@ -110,12 +110,17 @@ impl Help {
     /// - `l_param` - The LPARAM containing a pointer to the HELPINFO structure.
     /// - `ids` - The array of help context IDs.
     pub fn apply_help_from_info(help: &HELPINFO, ids: &[u32]) {
+        // Get a pointer to the control that requested help, which may be a window handle or a menu handle
+        let hwndcaller = match help.hItemHandle() {
+            Hwnd(hwnd) => hwnd.ptr(),
+            Hmenu(hmenu) => hmenu.ptr(),
+        };
         unsafe {
             HtmlHelpW(
-                help.hItemHandle().as_isize() as *mut c_void,
+                hwndcaller,
                 Self::get_help_path().as_ptr(),
                 HH_TP_HELP_WM_HELP as u32,
-                ids.as_ptr() as usize,
+                ids.as_ptr().addr(),
             );
         }
     }
@@ -130,7 +135,7 @@ impl Help {
                 hwnd.ptr(),
                 Self::get_help_path().as_ptr(),
                 HH_TP_HELP_CONTEXTMENU as u32,
-                ids.as_ptr() as usize,
+                ids.as_ptr().addr(),
             );
         }
     }

@@ -24,7 +24,7 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 ///
 /// TODO: Should this be in grafix instead?
 #[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
-pub enum BlockCell {
+pub(crate) enum BlockCell {
     /// A blank cell with no adjacent bombs.
     Blank = 0,
     /// A cell with 1 adjacent bomb.
@@ -116,8 +116,9 @@ impl From<BlockCell> for BlockInfo {
     }
 }
 
-/// Maximum number of board cells
+/// Maximum number of horizontal board cells
 pub const MAX_X_BLKS: usize = 30;
+/// Maximum number of vertical board cells
 pub const MAX_Y_BLKS: usize = 25;
 /// Upper bound on the flood-fill work queue used for empty regions.
 const I_STEP_MAX: usize = 100;
@@ -1012,7 +1013,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse tracking was successfully handled and the board was updated.
     /// - `Err` - If an error occurred while drawing the board or if getting the device context failed.
-    pub fn track_mouse(
+    pub(crate) fn track_mouse(
         &mut self,
         hdc: &ReleaseDCGuard,
         x_new: usize,

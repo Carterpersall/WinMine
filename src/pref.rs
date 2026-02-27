@@ -220,7 +220,7 @@ impl Pref {
 
         // Attempt to read the DWORD value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(key_name)? {
-            RegistryValue::Dword(val) => Ok(val),
+            Dword(val) => Ok(val),
             val => Err(format!("Preference key {key_name:?} is not a DWORD: {val:?}").into()),
         }
     }
@@ -234,7 +234,7 @@ impl Pref {
     fn read_sz(handle: &HKEY, key: PrefKey) -> String {
         // Attempt to read the string value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(key.string()) {
-            Ok(RegistryValue::Sz(value) | RegistryValue::ExpandSz(value)) => value,
+            Ok(Sz(value) | RegistryValue::ExpandSz(value)) => value,
             _ => DEFAULT_PLAYER_NAME.to_owned(),
         }
     }

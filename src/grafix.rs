@@ -1,7 +1,6 @@
 //! Graphics handling for the Minesweeper game, including bitmap loading,
 //! scaling, and rendering of game elements.
 
-use core::mem::size_of;
 use core::ops::Index;
 
 use strum_macros::VariantArray;
@@ -132,7 +131,7 @@ const I_LED_MAX: usize = 12;
 /// Face button sprites available in the bitmap sheet.
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
-pub enum ButtonSprite {
+pub(crate) enum ButtonSprite {
     Happy = 0,
     Caution = 1,
     Lose = 2,
@@ -1073,6 +1072,7 @@ impl GrafixState {
         id: ResourceId,
         color_on: bool,
     ) -> AnyResult<(HRSRC, HRSRCMEM)> {
+        // TODO: Use `ResourceId` instead of offsetting the IDs based on color mode
         let offset = !color_on as u16;
         let resource_id = (id as u16) + offset;
         // Colorless devices load the grayscale resource IDs immediately following the color ones.

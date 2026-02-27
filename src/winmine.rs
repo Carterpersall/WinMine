@@ -259,7 +259,7 @@ impl WinMineMainWindow {
     fn events(&self) {
         self.wnd.on().wm_create({
             let self2 = self.clone();
-            move |_create| -> winsafe::AnyResult<i32> {
+            move |_create| -> AnyResult<i32> {
                 // Sync global DPI state to the actual monitor DPI where the window was created.
                 let mut dpi = self2.wnd.hwnd().GetDpiForWindow();
                 if dpi == 0 {
@@ -722,6 +722,7 @@ impl WinMineMainWindow {
 struct PrefDialog {
     /// The modal dialog window
     dlg: gui::WindowModal,
+    /// The game state, shared from the main window to read and write preferences
     state: Rc<StateLock<GameState>>,
 }
 
