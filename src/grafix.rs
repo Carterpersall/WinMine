@@ -890,9 +890,16 @@ impl GrafixState {
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
     pub(crate) fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
         let hinst = hwnd.hinstance();
-        let (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BlocksBmp, color)?;
-        let (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::LedBmp, color)?;
-        let (res_btn, h_btn) = Self::load_bitmap_resource(&hinst, ResourceId::ButtonBmp, color)?;
+        let (res_blks, h_blks, res_led, h_led, res_btn, h_btn);
+        if color {
+            (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BlocksBmp)?;
+            (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::LedBmp)?;
+            (res_btn, h_btn) = Self::load_bitmap_resource(&hinst, ResourceId::ButtonBmp)?;
+        } else {
+            (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BWBlocksBmp)?;
+            (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::BWLedBmp)?;
+            (res_btn, h_btn) = Self::load_bitmap_resource(&hinst, ResourceId::BWButtonBmp)?;
+        }
 
         let dib_blks = hinst.LockResource(&res_blks, &h_blks)?;
         let dib_led = hinst.LockResource(&res_led, &h_led)?;
@@ -1062,21 +1069,14 @@ impl GrafixState {
 
     /// Load a bitmap resource from the application resources.
     /// # Arguments
+    /// - `hinst` - The instance handle of the application, used to access the resources.
     /// - `id` - The bitmap resource ID to load.
-    /// - `color_on` - Whether color mode is enabled.
     /// # Returns
     /// - `Ok((HRSRC, HRSRCMEM))` - The located resource and loaded resource memory handles.
     /// - `Err` - If finding or loading the resource fails.
-    fn load_bitmap_resource(
-        hinst: &HINSTANCE,
-        id: ResourceId,
-        color_on: bool,
-    ) -> AnyResult<(HRSRC, HRSRCMEM)> {
-        // TODO: Use `ResourceId` instead of offsetting the IDs based on color mode
-        let offset = !color_on as u16;
-        let resource_id = (id as u16) + offset;
-        // Colorless devices load the grayscale resource IDs immediately following the color ones.
-        let res_info = hinst.FindResource(IdStr::Id(resource_id), RtStr::Rt(RT::BITMAP))?;
+    fn load_bitmap_resource(hinst: &HINSTANCE, id: ResourceId) -> AnyResult<(HRSRC, HRSRCMEM)> {
+        // The bitmap resources are stored in the application resources as DIBs (Device Independent Bitmaps).
+        let res_info = hinst.FindResource(IdStr::Id(id as u16), RtStr::Rt(RT::BITMAP))?;
         let res_loaded = hinst.LoadResource(&res_info)?;
         Ok((res_info, res_loaded))
     }
