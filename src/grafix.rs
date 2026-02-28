@@ -94,7 +94,7 @@ impl WindowDimensions {
     /// - It takes a signed and an unsigned integer and returns a signed integer, while `MulDiv` operates on only signed integers.
     /// - It assumes that the denominator is always non-zero, which can be safely assumed in this context since `BASE_DPI` is a constant
     ///   and should never be zero.
-    pub(crate) const fn scale_dpi(&self, val: i32) -> i32 {
+    const fn scale_dpi(&self, val: i32) -> i32 {
         // Perform multiplication in u64 to prevent overflow
         let product = val as u64 * self.dpi as u64;
         // Perform division with rounding

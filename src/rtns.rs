@@ -196,7 +196,7 @@ pub(crate) struct GameState {
     /// Number of visited boxes (revealed non-bomb cells).
     ///
     /// Note: Maximum value is 2<sup>16</sup>, or a 256 x 256 board with no bombs.
-    pub boxes_visited: u16,
+    boxes_visited: u16,
     /// Current cursor x position in board coordinates
     pub cursor_x: usize,
     /// Current cursor y position in board coordinates
@@ -216,15 +216,15 @@ pub(crate) struct GameState {
     /// - Both left and right buttons are held down, and the middle button is not held down
     /// - Only the middle button is held down
     /// - Shift is held _then_ left button is held down
-    pub chord_active: bool,
+    chord_active: bool,
     /// Indicates whether a drag operation is currently active
     drag_active: bool,
     /// 2D Array representing the state of each cell on the board
     pub board_cells: [[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     /// Initial number of bombs at the start of the game
-    pub total_bombs: i16,
+    total_bombs: i16,
     /// Total number of visited boxes needed to win
-    pub boxes_to_win: u16,
+    boxes_to_win: u16,
     /// Indicates the current state of the in-game timer (running, paused, or stopped).
     ///
     /// TODO: Should the timer state and logic be moved to a separate struct or module?
@@ -1032,12 +1032,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse tracking was successfully handled and the board was updated.
     /// - `Err` - If an error occurred while drawing the board or if getting the device context failed.
-    pub(crate) fn track_mouse(
-        &mut self,
-        hdc: &ReleaseDCGuard,
-        x_new: usize,
-        y_new: usize,
-    ) -> AnyResult<()> {
+    fn track_mouse(&mut self, hdc: &ReleaseDCGuard, x_new: usize, y_new: usize) -> AnyResult<()> {
         // No change in position; nothing to do
         if x_new == self.cursor_x && y_new == self.cursor_y {
             return Ok(());

@@ -364,6 +364,8 @@ impl WinMineMainWindow {
 }
 
 /// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
+///
+/// TODO: This is only used in the preferences dialog, move it there.
 /// # Arguments
 /// - `h_dlg` - Handle to the dialog window.
 /// - `dlg_id` - Resource ID of the dialog item.

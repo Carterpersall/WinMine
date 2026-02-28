@@ -16,7 +16,7 @@ pub(crate) const CCH_NAME_MAX: usize = 32;
 /// Preference keys used to read and write settings from the registry.
 #[repr(u8)]
 #[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
-pub(crate) enum PrefKey {
+enum PrefKey {
     /// Game difficulty preference.
     Difficulty = 0,
     /// Number of mines on the board.
@@ -65,7 +65,7 @@ impl PrefKey {
     /// # Notes
     /// - The returned string slice is used as the value name when reading and writing preferences to the registry.
     /// - `Some` is always returned to allow for easier passing of the return value to registry functions, which expect an `Option<&str>`.
-    pub(crate) const fn string(self) -> Option<&'static str> {
+    const fn string(self) -> Option<&'static str> {
         Some(match self {
             PrefKey::Difficulty => "Difficulty",
             PrefKey::Mines => "Mines",
@@ -95,12 +95,9 @@ pub(crate) const MINHEIGHT: u32 = 9;
 pub(crate) const MINWIDTH: u32 = 9;
 
 /// Registry key path used to persist preferences.
-pub(crate) const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
+const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
 
 /// Difficulty presets exposed throughout the game.
-///
-/// TODO: Does this need to exist?
-#[repr(u16)]
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
 pub(crate) enum GameType {
     /// Beginner level.
