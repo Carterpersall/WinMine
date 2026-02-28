@@ -559,43 +559,53 @@ impl WinMineMainWindow {
             }
         });
 
-        // Function to be shared between difficulty menu commands
-        let difficulty_command = {
+        self.wnd.on().wm_command_acc_menu(ResourceId::Begin, {
             let self2 = self.clone();
-            move |command: ResourceId| {
-                let game = match command {
-                    ResourceId::Begin => GameType::Begin,
-                    ResourceId::Inter => GameType::Inter,
-                    ResourceId::Expert => GameType::Expert,
-                    _ => GameType::Other,
-                };
-
+            move || {
+                const BEGIN_PRESET: (i16, u32, u32) = (10, MINHEIGHT, MINWIDTH);
                 {
                     let mut state = self2.state.write();
-                    if let Some(data) = game.preset_data() {
-                        state.prefs.game_type = game;
-                        state.prefs.mines = data.0;
-                        state.prefs.height = data.1 as usize;
-                        state.prefs.width = data.2 as usize;
-                    }
+                    state.prefs.game_type = GameType::Begin;
+                    state.prefs.mines = BEGIN_PRESET.0;
+                    state.prefs.height = BEGIN_PRESET.1 as usize;
+                    state.prefs.width = BEGIN_PRESET.2 as usize;
                 }
                 self2.set_menu_bar()?;
                 self2.start_game()?;
                 Ok(())
             }
-        };
-
-        self.wnd.on().wm_command_acc_menu(ResourceId::Begin, {
-            let difficulty_command = difficulty_command.clone();
-            move || difficulty_command.clone()(ResourceId::Begin)
         });
         self.wnd.on().wm_command_acc_menu(ResourceId::Inter, {
-            let difficulty_command = difficulty_command.clone();
-            move || difficulty_command.clone()(ResourceId::Inter)
+            let self2 = self.clone();
+            move || {
+                const INTER_PRESET: (i16, u32, u32) = (40, 16, 16);
+                {
+                    let mut state = self2.state.write();
+                    state.prefs.game_type = GameType::Inter;
+                    state.prefs.mines = INTER_PRESET.0;
+                    state.prefs.height = INTER_PRESET.1 as usize;
+                    state.prefs.width = INTER_PRESET.2 as usize;
+                }
+                self2.set_menu_bar()?;
+                self2.start_game()?;
+                Ok(())
+            }
         });
         self.wnd.on().wm_command_acc_menu(ResourceId::Expert, {
-            let difficulty_command = difficulty_command.clone();
-            move || difficulty_command.clone()(ResourceId::Expert)
+            let self2 = self.clone();
+            move || {
+                const EXPERT_PRESET: (i16, u32, u32) = (99, 16, 30);
+                {
+                    let mut state = self2.state.write();
+                    state.prefs.game_type = GameType::Expert;
+                    state.prefs.mines = EXPERT_PRESET.0;
+                    state.prefs.height = EXPERT_PRESET.1 as usize;
+                    state.prefs.width = EXPERT_PRESET.2 as usize;
+                }
+                self2.set_menu_bar()?;
+                self2.start_game()?;
+                Ok(())
+            }
         });
 
         self.wnd.on().wm_command_acc_menu(ResourceId::Custom, {
@@ -922,9 +932,9 @@ impl BestDialog {
             move |_| -> AnyResult<bool> {
                 let state = self2.state.read();
                 self2.set_best_dialog(
-                    state.prefs.best_times[GameType::Begin as usize],
-                    state.prefs.best_times[GameType::Inter as usize],
-                    state.prefs.best_times[GameType::Expert as usize],
+                    state.prefs.beginner_time,
+                    state.prefs.inter_time,
+                    state.prefs.expert_time,
                     &state.prefs.beginner_name,
                     &state.prefs.inter_name,
                     &state.prefs.expert_name,
@@ -944,9 +954,9 @@ impl BestDialog {
                         let mut state = self2.state.write();
 
                         // Set all best times to 999 seconds
-                        state.prefs.best_times[GameType::Begin as usize] = 999;
-                        state.prefs.best_times[GameType::Inter as usize] = 999;
-                        state.prefs.best_times[GameType::Expert as usize] = 999;
+                        state.prefs.beginner_time = 999;
+                        state.prefs.inter_time = 999;
+                        state.prefs.expert_time = 999;
 
                         // Set the three best names to the default values
                         state.prefs.beginner_name = DEFAULT_PLAYER_NAME.to_owned();

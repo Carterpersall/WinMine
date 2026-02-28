@@ -115,27 +115,6 @@ pub(crate) enum GameType {
 }
 
 impl GameType {
-    /// Mines, height, and width tuples for the preset difficulty levels.
-    ///
-    /// TODO: Look into whether this can be improved.
-    const LEVEL_DATA: [(i16, u32, u32); 3] =
-        [(10, MINHEIGHT, MINWIDTH), (40, 16, 16), (99, 16, 30)];
-
-    /// Returns the preset data for a given game type, or None for custom games.
-    /// # Arguments
-    /// - `game`: The game type to get preset data for.
-    /// # Returns
-    /// - `Some((mines, height, width))` - The preset data for the given game type.
-    /// - `None` - If the game type is custom.
-    pub(crate) const fn preset_data(self) -> Option<(i16, u32, u32)> {
-        match self {
-            GameType::Begin => Some(Self::LEVEL_DATA[0]),
-            GameType::Inter => Some(Self::LEVEL_DATA[1]),
-            GameType::Expert => Some(Self::LEVEL_DATA[2]),
-            GameType::Other => None,
-        }
-    }
-
     /// Returns the message string shown when the player achieves the fastest time for each difficulty.
     /// # Returns
     /// - The fastest time message string.
@@ -194,16 +173,18 @@ pub(crate) struct Pref {
     pub mark_enabled: bool,
     /// Whether to use color assets.
     pub color: bool,
-    /// Best times for each difficulty level.
-    ///
-    /// TODO: Make this a struct or split into separate fields.
-    pub best_times: [u16; 3],
     /// Player name for Beginner level.
     pub beginner_name: String,
+    /// Best time for the Beginner level.
+    pub beginner_time: u16,
     /// Player name for Intermediate level.
     pub inter_name: String,
+    /// Best time for the Intermediate level.
+    pub inter_time: u16,
     /// Player name for Expert level.
     pub expert_name: String,
+    /// Best time for the Expert level.
+    pub expert_time: u16,
 }
 
 impl Pref {
@@ -288,13 +269,13 @@ impl Pref {
         self.mark_enabled = Self::read_int(&key_guard, PrefKey::Mark).unwrap_or(1) != 0;
 
         // Get best times and player names for each difficulty level
-        self.best_times[GameType::Begin as usize] = Self::read_int(&key_guard, PrefKey::Time1)
+        self.beginner_time = Self::read_int(&key_guard, PrefKey::Time1)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.best_times[GameType::Inter as usize] = Self::read_int(&key_guard, PrefKey::Time2)
+        self.inter_time = Self::read_int(&key_guard, PrefKey::Time2)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.best_times[GameType::Expert as usize] = Self::read_int(&key_guard, PrefKey::Time3)
+        self.expert_time = Self::read_int(&key_guard, PrefKey::Time3)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
         self.beginner_name = Self::read_sz(&key_guard, PrefKey::Name1);
@@ -350,18 +331,9 @@ impl Pref {
         )?;
         hkey.RegSetValueEx(PrefKey::Xpos.string(), Dword(self.wnd_pos.x as u32))?;
         hkey.RegSetValueEx(PrefKey::Ypos.string(), Dword(self.wnd_pos.y as u32))?;
-        hkey.RegSetValueEx(
-            PrefKey::Time1.string(),
-            Dword(self.best_times[GameType::Begin as usize] as u32),
-        )?;
-        hkey.RegSetValueEx(
-            PrefKey::Time2.string(),
-            Dword(self.best_times[GameType::Inter as usize] as u32),
-        )?;
-        hkey.RegSetValueEx(
-            PrefKey::Time3.string(),
-            Dword(self.best_times[GameType::Expert as usize] as u32),
-        )?;
+        hkey.RegSetValueEx(PrefKey::Time1.string(), Dword(self.beginner_time as u32))?;
+        hkey.RegSetValueEx(PrefKey::Time2.string(), Dword(self.inter_time as u32))?;
+        hkey.RegSetValueEx(PrefKey::Time3.string(), Dword(self.expert_time as u32))?;
 
         hkey.RegSetValueEx(PrefKey::Name1.string(), Sz(self.beginner_name.clone()))?;
         hkey.RegSetValueEx(PrefKey::Name2.string(), Sz(self.inter_name.clone()))?;

@@ -788,20 +788,23 @@ impl GameState {
         if win {
             self.bombs_left = 0;
 
-            // Skip recording the win if the game type is "Other", since there is no associated best time for that mode
-            if self.prefs.game_type != GameType::Other {
-                let game_idx = self.prefs.game_type as usize;
-                if game_idx < self.prefs.best_times.len()
-                    && self.secs_elapsed < self.prefs.best_times[game_idx]
-                {
-                    self.prefs.best_times[game_idx] = self.secs_elapsed;
+            // If this win is a new personal best, update the best time and show the new record dialog
+            if match self.prefs.game_type {
+                GameType::Begin => self.secs_elapsed < self.prefs.beginner_time,
+                GameType::Inter => self.secs_elapsed < self.prefs.inter_time,
+                GameType::Expert => self.secs_elapsed < self.prefs.expert_time,
+                GameType::Other => false,
+            } {
+                match self.prefs.game_type {
+                    GameType::Begin => self.prefs.beginner_time = self.secs_elapsed,
+                    GameType::Inter => self.prefs.inter_time = self.secs_elapsed,
+                    GameType::Expert => self.prefs.expert_time = self.secs_elapsed,
+                    GameType::Other => unreachable!(),
+                }
 
-                    if hwnd.as_opt().is_some() {
-                        // TODO: Don't use PostMessage to do what could just be a function call
-                        unsafe {
-                            let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
-                        }
-                    }
+                // TODO: Don't use PostMessage to do what could just be a function call
+                unsafe {
+                    let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
                 }
             }
         }
