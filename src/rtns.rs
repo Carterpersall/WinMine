@@ -168,8 +168,6 @@ enum TimerState {
 }
 
 /// Represents the current state of the game.
-///
-/// TODO: Review all public values and determine if they need to be public.
 pub(crate) struct GameState {
     /// Graphics state containing bitmaps and rendering logic.
     pub grafix: GrafixState,

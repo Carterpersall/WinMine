@@ -355,17 +355,8 @@ impl WinMineMainWindow {
             move |key| {
                 match key.vkey_code {
                     code if code == VK::F4 => {
-                        // TODO: This code is duplicated in the `ResourceId::Sound` menu command handler.
-                        //       Refactor to eliminate duplication.
-                        let sound_enabled = self2.state.read().prefs.sound_enabled;
-                        self2.state.write().prefs.sound_enabled = if sound_enabled {
-                            // Stop any currently playing sounds and disable sound
-                            Sound::reset();
-                            false
-                        } else {
-                            // Enable sound if the sound system is responsive
-                            Sound::reset()
-                        };
+                        // Toggle sound on/off when F4 is pressed
+                        Sound::toggle(&mut self2.state.write().prefs.sound_enabled);
 
                         // Update the menu bar to reflect the new sound state
                         self2.set_menu_bar()?;
@@ -626,15 +617,8 @@ impl WinMineMainWindow {
         self.wnd.on().wm_command_acc_menu(ResourceId::Sound, {
             let self2 = self.clone();
             move || {
-                let sound_enabled = self2.state.read().prefs.sound_enabled;
-                self2.state.write().prefs.sound_enabled = if sound_enabled {
-                    // Stop any currently playing sounds and disable sound
-                    Sound::reset();
-                    false
-                } else {
-                    // Enable sound if the sound system is responsive
-                    Sound::reset()
-                };
+                // Toggle the sound systme on or off based on the current state
+                Sound::toggle(&mut self2.state.write().prefs.sound_enabled);
 
                 // Update the menu bar to reflect the new sound state
                 self2.set_menu_bar()?;

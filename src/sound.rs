@@ -40,4 +40,19 @@ impl Sound {
         // Passing NULL tells PlaySound to purge the current queue.
         unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
     }
+
+    /// Toggle the sound enabled state in the preferences and reset the sound system.
+    /// If sound is being disabled, this will stop any currently playing sounds.
+    /// # Arguments
+    /// - `sound_enabled` - A mutable reference to the current sound enabled state in the preferences.
+    pub(crate) fn toggle(sound_enabled: &mut bool) {
+        *sound_enabled = if *sound_enabled {
+            // Stop any currently playing sounds and disable sound
+            Self::reset();
+            false
+        } else {
+            // Enable sound if the sound system is responsive
+            Self::reset()
+        };
+    }
 }
