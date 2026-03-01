@@ -153,16 +153,71 @@ bitflags! {
 }
 
 /// The current state of the in-game timer.
-///
-/// TODO: Should an impl be created that handles this state machine?
-#[derive(Eq, PartialEq)]
+#[derive(Eq, PartialEq, Default)]
 enum TimerState {
     /// The timer is not running.
+    #[default]
     Stopped,
     /// The timer is running and should be updated every second.
     Running,
     /// The timer is paused and should not be updated until resumed.
     Paused,
+}
+
+/// Struct representing the current state of the in-game timer, including elapsed time and timer state.
+#[derive(Default)]
+pub(crate) struct Timer {
+    /// The current state of the timer (running, paused, or stopped).
+    state: TimerState,
+    /// Current elapsed time in seconds.
+    ///
+    /// The timer should never exceed 999 seconds, so u16 is sufficient.
+    pub elapsed: u16,
+}
+
+impl Timer {
+    /// Starts the timer by setting its state to `Running`.
+    const fn start(&mut self) {
+        self.state = TimerState::Running;
+    }
+
+    /// Pauses the timer if it is currently running.
+    fn pause(&mut self) {
+        if self.state == TimerState::Running {
+            self.state = TimerState::Paused;
+        }
+    }
+
+    /// Resumes the timer if it is currently paused.
+    fn resume(&mut self) {
+        if self.state == TimerState::Paused {
+            self.state = TimerState::Running;
+        }
+    }
+
+    /// Stops the timer.
+    const fn stop(&mut self) {
+        self.state = TimerState::Stopped;
+    }
+
+    /// Increments the timer by one second if it is currently running and has not reached the maximum of 999 seconds.
+    /// # Returns
+    /// - `true` - If the timer was incremented.
+    /// - `false` - If the timer was not incremented (either because it is not running or because it has reached the maximum).
+    fn tick(&mut self) -> bool {
+        if self.state == TimerState::Running && self.elapsed < 999 {
+            self.elapsed += 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Stops the timer and resets the elapsed time to zero.
+    const fn reset(&mut self) {
+        self.stop();
+        self.elapsed = 0;
+    }
 }
 
 /// Represents the current state of the game.
@@ -185,10 +240,6 @@ pub(crate) struct GameState {
     ///
     /// Note: The bomb count can go negative if the user marks more squares than there are bombs.
     pub bombs_left: i16,
-    /// Current elapsed time in seconds.
-    ///
-    /// The timer should never exceed 999 seconds, so u16 is sufficient.
-    pub secs_elapsed: u16,
     /// Number of visited boxes (revealed non-bomb cells).
     ///
     /// Note: Maximum value is 2<sup>16</sup>, or a 256 x 256 board with no bombs.
@@ -221,10 +272,8 @@ pub(crate) struct GameState {
     total_bombs: i16,
     /// Total number of visited boxes needed to win
     boxes_to_win: u16,
-    /// Indicates the current state of the in-game timer (running, paused, or stopped).
-    ///
-    /// TODO: Should the timer state and logic be moved to a separate struct or module?
-    timer_state: TimerState,
+    /// Current state of the in-game timer, which tracks elapsed time and whether the timer is running, paused, or stopped.
+    pub timer: Timer,
     /// Random number generator used for bomb placement.
     rng: Rng,
 }
@@ -246,7 +295,6 @@ impl GameState {
             btn_face_state: ButtonSprite::Happy,
             btn_face_pressed: false,
             bombs_left: 0,
-            secs_elapsed: 0,
             boxes_visited: 0,
             cursor_x: 0,
             cursor_y: 0,
@@ -260,7 +308,7 @@ impl GameState {
             }; MAX_Y_BLKS]; MAX_X_BLKS],
             total_bombs: 0,
             boxes_to_win: 0,
-            timer_state: TimerState::Stopped,
+            timer: Timer::default(),
             rng: Rng::seed_rng(),
         }
     }
@@ -409,9 +457,9 @@ impl GameState {
             // Check if the cursor is within the valid range of the board
             if self.in_range(self.cursor_x, self.cursor_y) {
                 // If the number of visits and elapsed seconds are both zero, the game has not started yet
-                if self.boxes_visited == 0 && self.secs_elapsed == 0 {
+                if self.boxes_visited == 0 && self.timer.elapsed == 0 {
                     // Play the tick sound, display the initial time, and start the timer
-                    self.timer_state = TimerState::Running;
+                    self.timer.start();
                     self.do_timer(hwnd)?;
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
                 }
@@ -473,7 +521,7 @@ impl GameState {
             } else {
                 self.finish_primary_button_drag(hwnd)?;
             }
-        } else if self.secs_elapsed > 0 {
+        } else if self.timer.elapsed > 0 {
             // If the user is not dragging but the game is active, track the mouse position for the XYZZY cheat code
             self.handle_xyzzys_mouse(key, point)?;
         }
@@ -738,7 +786,7 @@ impl GameState {
     /// - `Ok(())` - If the game over state was successfully handled.
     /// - `Err` - If an error occurred while drawing the board.
     fn game_over(&mut self, hwnd: &HWND, win: bool) -> AnyResult<()> {
-        self.timer_state = TimerState::Stopped;
+        self.timer.stop();
         let hdc = hwnd.GetDC()?;
 
         // Update the button face to show win or loss
@@ -793,15 +841,15 @@ impl GameState {
 
             // If this win is a new personal best, update the best time and show the new record dialog
             if match self.prefs.game_type {
-                GameType::Begin => self.secs_elapsed < self.prefs.beginner_time,
-                GameType::Inter => self.secs_elapsed < self.prefs.inter_time,
-                GameType::Expert => self.secs_elapsed < self.prefs.expert_time,
+                GameType::Begin => self.timer.elapsed < self.prefs.beginner_time,
+                GameType::Inter => self.timer.elapsed < self.prefs.inter_time,
+                GameType::Expert => self.timer.elapsed < self.prefs.expert_time,
                 GameType::Other => false,
             } {
                 match self.prefs.game_type {
-                    GameType::Begin => self.prefs.beginner_time = self.secs_elapsed,
-                    GameType::Inter => self.prefs.inter_time = self.secs_elapsed,
-                    GameType::Expert => self.prefs.expert_time = self.secs_elapsed,
+                    GameType::Begin => self.prefs.beginner_time = self.timer.elapsed,
+                    GameType::Inter => self.prefs.inter_time = self.timer.elapsed,
+                    GameType::Expert => self.prefs.expert_time = self.timer.elapsed,
                     GameType::Other => unreachable!(),
                 }
 
@@ -942,10 +990,9 @@ impl GameState {
     /// - `Ok(())` - If the timer was successfully updated.
     /// - `Err` - If an error occurred while updating the display.
     pub(crate) fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
-        if self.timer_state == TimerState::Running && self.secs_elapsed < 999 {
-            self.secs_elapsed += 1;
+        if self.timer.tick() {
             self.grafix
-                .draw_timer(hwnd.GetDC()?.deref(), self.secs_elapsed)?;
+                .draw_timer(hwnd.GetDC()?.deref(), self.timer.elapsed)?;
             if self.prefs.sound_enabled {
                 Sound::Tick.play(&hwnd.hinstance());
             }
@@ -983,7 +1030,7 @@ impl WinMineMainWindow {
         // Reset the board to a blank state
         state.clear_field();
         state.btn_face_state = ButtonSprite::Happy;
-        state.timer_state = TimerState::Stopped;
+        state.timer.reset();
 
         // Randomly place bombs on the board until the total number of bombs matches the number specified in preferences
         state.total_bombs = state.prefs.mines;
@@ -1006,7 +1053,6 @@ impl WinMineMainWindow {
             bombs -= 1;
         }
 
-        state.secs_elapsed = 0;
         state.bombs_left = state.prefs.mines;
         state.boxes_visited = 0;
         state.boxes_to_win =
@@ -1124,11 +1170,7 @@ impl GameState {
         if !self.game_status.contains(StatusFlag::Pause)
             && self.game_status.contains(StatusFlag::Play)
         {
-            if self.timer_state == TimerState::Running {
-                self.timer_state = TimerState::Paused;
-            } else {
-                self.timer_state = TimerState::Stopped;
-            }
+            self.timer.pause();
         }
 
         self.game_status.insert(StatusFlag::Pause);
@@ -1136,8 +1178,8 @@ impl GameState {
 
     /// Resume the game by restoring the timer state and clearing the pause flag from the game status.
     pub(crate) fn resume_game(&mut self) {
-        if self.game_status.contains(StatusFlag::Play) && self.timer_state == TimerState::Paused {
-            self.timer_state = TimerState::Running;
+        if self.game_status.contains(StatusFlag::Play) {
+            self.timer.resume();
         }
         self.game_status.remove(StatusFlag::Pause);
     }

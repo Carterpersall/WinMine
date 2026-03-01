@@ -855,6 +855,9 @@ impl GrafixState {
     }
 
     /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
+    ///
+    /// TODO: Should this be in `GameState`? It only uses `GrafixState` functions,
+    ///       but uses `GameState` values.
     /// # Arguments
     /// - `hdc` - The device context to draw on.
     /// - `state` - The current game state containing board and UI information.
@@ -869,7 +872,7 @@ impl GrafixState {
         // 3. Draw face button
         self.draw_button(hdc, state.btn_face_state)?;
         // 4. Draw timer
-        self.draw_timer(hdc, state.secs_elapsed)?;
+        self.draw_timer(hdc, state.timer.elapsed)?;
         // 5. Draw minefield grid
         self.draw_grid(
             hdc,
