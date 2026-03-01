@@ -16,7 +16,7 @@ use winsafe::{
 };
 
 use crate::globals::BASE_DPI;
-use crate::rtns::{BlockCell, BlockInfo, GameState, MAX_X_BLKS, MAX_Y_BLKS};
+use crate::rtns::{BlockCell, BlockInfo, MAX_X_BLKS, MAX_Y_BLKS};
 use crate::util::{ResourceId, impl_index_enum};
 
 /*
@@ -772,7 +772,7 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the background was drawn successfully
     /// - `Err` - If drawing any of the background borders failed
-    fn draw_background(&self, hdc: &HDC) -> AnyResult<()> {
+    pub(crate) fn draw_background(&self, hdc: &HDC) -> AnyResult<()> {
         let dx_window = self.wnd_pos.x;
         let dy_window = self.wnd_pos.y;
 
@@ -851,36 +851,6 @@ impl GrafixState {
             b1,
             BorderStyle::Flat,
         )?;
-        Ok(())
-    }
-
-    /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
-    ///
-    /// TODO: Should this be in `GameState`? It only uses `GrafixState` functions,
-    ///       but uses `GameState` values.
-    /// # Arguments
-    /// - `hdc` - The device context to draw on.
-    /// - `state` - The current game state containing board and UI information.
-    /// # Returns
-    /// - `Ok(())` - If the screen was drawn successfully
-    /// - `Err` - If drawing any of the screen elements failed
-    pub(crate) fn draw_screen(&self, hdc: &HDC, state: &GameState) -> AnyResult<()> {
-        // 1. Draw background and borders
-        self.draw_background(hdc)?;
-        // 2. Draw bomb counter
-        self.draw_bomb_count(hdc, state.bombs_left)?;
-        // 3. Draw face button
-        self.draw_button(hdc, state.btn_face_state)?;
-        // 4. Draw timer
-        self.draw_timer(hdc, state.timer.elapsed)?;
-        // 5. Draw minefield grid
-        self.draw_grid(
-            hdc,
-            state.board_width,
-            state.board_height,
-            &state.board_cells,
-        )?;
-
         Ok(())
     }
 

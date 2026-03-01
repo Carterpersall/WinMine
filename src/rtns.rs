@@ -10,7 +10,7 @@ use strum_macros::VariantArray;
 use winsafe::co::{MK, WM};
 use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HWND, POINT, PtInRect, RECT, prelude::*};
+use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT, prelude::*};
 
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
@@ -1182,5 +1182,27 @@ impl GameState {
             self.timer.resume();
         }
         self.game_status.remove(StatusFlag::Pause);
+    }
+
+    /// Draw the entire screen (background, counters, button, timer, grid) onto the provided device context.
+    /// # Arguments
+    /// - `hdc` - The device context to draw on.
+    /// # Returns
+    /// - `Ok(())` - If the screen was drawn successfully
+    /// - `Err` - If drawing any of the screen elements failed
+    pub(crate) fn draw_screen(&self, hdc: &HDC) -> AnyResult<()> {
+        // 1. Draw background and borders
+        self.grafix.draw_background(hdc)?;
+        // 2. Draw bomb counter
+        self.grafix.draw_bomb_count(hdc, self.bombs_left)?;
+        // 3. Draw face button
+        self.grafix.draw_button(hdc, self.btn_face_state)?;
+        // 4. Draw timer
+        self.grafix.draw_timer(hdc, self.timer.elapsed)?;
+        // 5. Draw minefield grid
+        self.grafix
+            .draw_grid(hdc, self.board_width, self.board_height, &self.board_cells)?;
+
+        Ok(())
     }
 }
