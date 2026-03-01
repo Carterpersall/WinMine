@@ -19,7 +19,7 @@ use crate::help::Help;
 use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
-use crate::util::{ResourceId, StateLock, get_dlg_int};
+use crate::util::{ResourceId, StateLock};
 
 /// `WM_APP` request code posted to the main window when a new best time is
 /// recorded.
@@ -771,11 +771,29 @@ impl PrefDialog {
         self.dlg.on().wm_command(DLGID::OK, BN::CLICKED, {
             let self2 = self.clone();
             move || -> AnyResult<()> {
+                let hwnd = self2.dlg.hwnd();
                 // Retrieve and validate user input from the dialog controls
-                let height = get_dlg_int(self2.dlg.hwnd(), ResourceId::HeightEdit, MINHEIGHT, 24)?;
-                let width = get_dlg_int(self2.dlg.hwnd(), ResourceId::WidthEdit, MINWIDTH, 30)?;
+                // TODO: Create some constants for the max/min values
+                let height = hwnd
+                    // Get a handle to the dialog item
+                    .GetDlgItem(ResourceId::HeightEdit as u16)
+                    // Retrieve the integer value from the dialog item
+                    .and_then(|dlg| dlg.GetWindowText())?
+                    // Parse the retrieved text into an `u32`
+                    .parse::<u32>()?
+                    // Clamp the parsed value to be within the valid range
+                    .clamp(MINHEIGHT, 24);
+                let width = hwnd
+                    .GetDlgItem(ResourceId::WidthEdit as u16)
+                    .and_then(|dlg| dlg.GetWindowText())?
+                    .parse::<u32>()?
+                    .clamp(MINWIDTH, 30);
                 let max_mines = min(999, (height - 1) * (width - 1));
-                let mines = get_dlg_int(self2.dlg.hwnd(), ResourceId::MinesEdit, 10, max_mines)?;
+                let mines = hwnd
+                    .GetDlgItem(ResourceId::MinesEdit as u16)
+                    .and_then(|dlg| dlg.GetWindowText())?
+                    .parse::<u32>()?
+                    .clamp(10, max_mines);
 
                 // Update preferences with the new settings
                 {

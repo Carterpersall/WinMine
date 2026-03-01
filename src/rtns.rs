@@ -21,8 +21,6 @@ use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
 /// Encoded board values used to track each tile state.
 ///
 /// These values are used to get the visual representation of each cell, in reverse order.
-///
-/// TODO: Should this be in grafix instead?
 #[derive(Copy, Clone, Eq, PartialEq, VariantArray)]
 pub(crate) enum BlockCell {
     /// A blank cell with no adjacent bombs.
@@ -285,12 +283,19 @@ impl GameState {
     /// - `pos`: The POINT structure containing the x and y coordinates in pixels.
     /// # Returns
     /// - The corresponding box index.
-    ///
-    /// TODO: Should this return an Option or Result to handle out-of-range coordinates?
+    /// # Panics
+    /// - In debug mode, this function will panic if the cell width is zero or negative, which would indicate an invalid game state.
+    /// - In release mode, the function assumes that the cell width is valid and does not perform these checks for performance reasons.
+    ///   If the cell width is zero in release mode, this will result in a division by zero and a panic.
     pub(crate) const fn box_from_point(&self, pos: POINT) -> (usize, usize) {
         let cell = self.grafix.dims.block.cx;
-        if cell <= 0 {
-            return (usize::MAX, usize::MAX);
+        #[cfg(debug_assertions)]
+        {
+            if cell == 0 {
+                panic!("Cell width is zero, this indicates an invalid game state.");
+            } else if cell < 0 {
+                panic!("Cell width is negative, invalid game state.");
+            }
         }
         (
             ((pos.x - self.grafix.dims.left_space) / cell) as usize,

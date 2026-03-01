@@ -2,7 +2,7 @@
 
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use winsafe::{AnyResult, GetTickCount64, HWND, IdPos, LOWORD, prelude::*};
+use winsafe::{AnyResult, GetTickCount64, IdPos, LOWORD, prelude::*};
 
 use crate::pref::GameType;
 use crate::winmine::WinMineMainWindow;
@@ -28,6 +28,7 @@ macro_rules! impl_index_enum {
             /// # Returns
             /// - A reference to the array element corresponding to the enum variant.
             #[inline]
+            #[allow(unused_comparisons)]
             fn index(&self, idx: $enum_type) -> &Self::Output {
                 // Perform a compile-time check to ensure that the enum variants do not exceed the array length
                 const _: () = {
@@ -36,23 +37,27 @@ macro_rules! impl_index_enum {
                     let array_len = core::mem::size_of::<$array_type>() / core::mem::size_of::<<$array_type as Index<usize>>::Output>();
 
                     // Calculate the maximum enum variant value by iterating through the variants of the enum type
-                    // TODO: Should negative enum variants be supported?
-                    let enum_max = {
+                    let (enum_max, enum_min) = {
                         // The `strum` crate's `VariantArray` trait provides a `VARIANTS` associated constant, which is an array of the enum variants
                         use strum::VariantArray as _;
 
                         let mut max = 0;
+                        let mut min = 0;
                         let mut i = 0;
                         while i < <$enum_type>::VARIANTS.len() {
                             let val = <$enum_type>::VARIANTS[i] as usize;
                             if val > max {
                                 max = val;
                             }
+                            if val < min {
+                                min = val;
+                            }
                             i += 1;
                         }
-                        max
+                        (max, min)
                     };
                     assert!(enum_max < array_len, "Some enum variant exceeds the array length");
+                    assert!(enum_min >= 0, "Negative enum variants are not supported");
                 };
 
                 // Index into the array using the enum variant as an index
@@ -361,34 +366,4 @@ impl WinMineMainWindow {
 
         Ok(())
     }
-}
-
-/// Retrieve an integer value from a dialog item, clamping it within the specified bounds.
-///
-/// TODO: This is only used in the preferences dialog, move it there.
-/// # Arguments
-/// - `h_dlg` - Handle to the dialog window.
-/// - `dlg_id` - Resource ID of the dialog item.
-/// - `num_lo` - Minimum allowed value.
-/// - `num_hi` - Maximum allowed value.
-/// # Returns
-/// - `Ok(u32)` - The clamped integer value from the dialog item.
-/// - `Err` - If there was an error retrieving or parsing the value.
-pub(crate) fn get_dlg_int(
-    h_dlg: &HWND,
-    dlg_id: ResourceId,
-    num_lo: u32,
-    num_hi: u32,
-) -> AnyResult<u32> {
-    h_dlg
-        // Get a handle to the dialog item
-        .GetDlgItem(dlg_id as u16)
-        // Retrieve the integer value from the dialog item
-        .and_then(|dlg| dlg.GetWindowText())
-        // If there is an error, convert it into a form that can be propagated down the chain
-        .map_err(Into::into)
-        // Parse the retrieved text into a u32
-        .and_then(|text| text.parse::<u32>().map_err(Into::into))
-        // Clamp the parsed value within the specified bounds
-        .map(|value| value.clamp(num_lo, num_hi))
 }

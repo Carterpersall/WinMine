@@ -8,8 +8,6 @@ use winsafe::{HINSTANCE, IdStr};
 use crate::util::ResourceId;
 
 /// Logical UI tunes that map to embedded wave resources.
-///
-/// TODO: Should the Sound enum exist?
 pub(crate) enum Sound {
     /// Short tick used for timer and click feedback.
     Tick = ResourceId::TuneTick as isize,
