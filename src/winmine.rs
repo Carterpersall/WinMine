@@ -16,7 +16,9 @@ use winsafe::{
 use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
 use crate::grafix::ButtonSprite;
 use crate::help::Help;
-use crate::pref::{CCH_NAME_MAX, GameType, MINHEIGHT, MINWIDTH};
+use crate::pref::{
+    CCH_NAME_MAX, GameType, MAXHEIGHT, MAXMINES, MAXWIDTH, MINHEIGHT, MINMINES, MINWIDTH,
+};
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
 use crate::util::{ResourceId, StateLock};
@@ -768,7 +770,6 @@ impl PrefDialog {
             move || -> AnyResult<()> {
                 let hwnd = self2.dlg.hwnd();
                 // Retrieve and validate user input from the dialog controls
-                // TODO: Create some constants for the max/min values
                 let height = hwnd
                     // Get a handle to the dialog item
                     .GetDlgItem(ResourceId::HeightEdit as u16)
@@ -777,18 +778,18 @@ impl PrefDialog {
                     // Parse the retrieved text into an `u32`
                     .parse::<u32>()?
                     // Clamp the parsed value to be within the valid range
-                    .clamp(MINHEIGHT, 24);
+                    .clamp(MINHEIGHT, MAXHEIGHT);
                 let width = hwnd
                     .GetDlgItem(ResourceId::WidthEdit as u16)
                     .and_then(|dlg| dlg.GetWindowText())?
                     .parse::<u32>()?
-                    .clamp(MINWIDTH, 30);
-                let max_mines = min(999, (height - 1) * (width - 1));
+                    .clamp(MINWIDTH, MAXWIDTH);
+                let max_mines = min(MAXMINES, (height - 1) * (width - 1));
                 let mines = hwnd
                     .GetDlgItem(ResourceId::MinesEdit as u16)
                     .and_then(|dlg| dlg.GetWindowText())?
                     .parse::<u32>()?
-                    .clamp(10, max_mines);
+                    .clamp(MINMINES, max_mines);
 
                 // Update preferences with the new settings
                 {

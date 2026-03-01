@@ -91,8 +91,16 @@ impl PrefKey {
 
 /// Minimum board height allowed by the game.
 pub(crate) const MINHEIGHT: u32 = 9;
+/// Maximum board height allowed by the game.
+pub(crate) const MAXHEIGHT: u32 = 24;
 /// Minimum board width allowed by the game.
 pub(crate) const MINWIDTH: u32 = 9;
+/// Maximum board width allowed by the game.
+pub(crate) const MAXWIDTH: u32 = 30;
+/// Minimum number of mines allowed on the board.
+pub(crate) const MINMINES: u32 = 10;
+/// Maximum number of mines allowed on the board.
+pub(crate) const MAXMINES: u32 = 999;
 
 /// Registry key path used to persist preferences.
 const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
@@ -243,12 +251,12 @@ impl Pref {
         // Get the height of the board
         self.height = Self::read_int(&key_guard, PrefKey::Height)
             .unwrap_or(DEFHEIGHT)
-            .clamp(MINHEIGHT, 25) as usize;
+            .clamp(MINHEIGHT, MAXHEIGHT) as usize;
 
         // Get the width of the board
         self.width = Self::read_int(&key_guard, PrefKey::Width)
             .unwrap_or(DEFWIDTH)
-            .clamp(MINWIDTH, 30) as usize;
+            .clamp(MINWIDTH, MAXWIDTH) as usize;
 
         // Get the game difficulty
         self.game_type =
@@ -256,7 +264,7 @@ impl Pref {
         // Get the number of mines on the board and the window position
         self.mines = Self::read_int(&key_guard, PrefKey::Mines)
             .unwrap_or(10)
-            .clamp(10, 999) as i16;
+            .clamp(MINMINES, MAXMINES) as i16;
         self.wnd_pos = POINT {
             x: Self::read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32,
             y: Self::read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32,
