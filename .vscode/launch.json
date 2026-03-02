@@ -11,6 +11,17 @@
             "preLaunchTask": "cargo build",
             "stopAtEntry": false,
             "console": "integratedTerminal"
+        },
+        {
+            "name": "WinMine (Release)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}\\target\\release\\winmine.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "cargo build --release",
+            "stopAtEntry": false,
+            "console": "integratedTerminal"
         }
     ]
 }

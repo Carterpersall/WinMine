@@ -452,6 +452,11 @@ impl GameState {
     /// - `Ok(())` - If the drag operation was successfully finished and the button was drawn.
     /// - `Err` - If an error occurred while getting the device context or drawing the button.
     pub(crate) fn finish_primary_button_drag(&mut self, hwnd: &HWND) -> AnyResult<()> {
+        // If the next click is set to be ignored, reset the flag and return without doing anything else
+        if replace(&mut self.ignore_next_click, false) {
+            return Ok(());
+        }
+
         self.drag_active = false;
         if self.game_status.contains(StatusFlag::Play) {
             // Check if the cursor is within the valid range of the board
@@ -495,8 +500,6 @@ impl GameState {
     }
 
     /// Handles mouse move events.
-    ///
-    /// TODO: This function handles more than just mouse movement, rename it accordingly.
     /// # Arguments
     /// - `hwnd`: Handle to the main window, used to get the device context and track the mouse if the game is not active.
     /// - `key`: The mouse buttons currently pressed.
@@ -615,9 +618,7 @@ impl GameState {
         point: POINT,
     ) -> AnyResult<()> {
         // If the next click should be ignored of if the click was on the button and was handled, do nothing else
-        if !replace(&mut self.ignore_next_click, false)
-            && !self.btn_click_handler(&hwnd.GetDC()?, point)?
-        {
+        if !self.ignore_next_click && !self.btn_click_handler(&hwnd.GetDC()?, point)? {
             if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
                 // If the right button or the shift key is also down, start a chord operation
                 self.chord_active = true;
@@ -851,7 +852,7 @@ impl GameState {
                     GameType::Other => unreachable!(),
                 }
 
-                // TODO: Don't use PostMessage to do what could just be a function call
+                // Show the new record dialog to enter the player's name for the high score list
                 unsafe {
                     let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
                 }
@@ -862,12 +863,6 @@ impl GameState {
     }
 
     /// Handle a user click on a single square.
-    ///
-    /// TODO: This function and `step_block` have a lot of overlap and could potentially be merged
-    ///       into a single function that handles both regular clicks and chord operations, since
-    ///       a chord is just a click with extra conditions.
-    ///       Also, they are both only used in `do_button_1_up`, so they could potentially be merged
-    ///       into that function as well.
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// - `x` - The X coordinate of the clicked square.

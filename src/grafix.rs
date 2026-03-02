@@ -373,7 +373,6 @@ impl GrafixState {
         let dst_h = self.dims.block.cy;
 
         let mut dy = self.dims.grid_offset;
-        // TODO: If the board is ever changed to a vector, we can change this to an iterator and avoid the need for indexing and the clippy warning.
         for y in 0..=height {
             let mut dx = self.dims.left_space;
             for x in 0..=width {
