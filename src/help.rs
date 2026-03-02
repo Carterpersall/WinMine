@@ -74,27 +74,34 @@ impl Help {
         0,
     ];
 
-    /// Gets the help file path based on the current executable's path.
+    /// Gets the help file path as a wide string suitable for passing to the Win32 API.
     /// # Returns
     /// - The help file path as a `Vec<u16>`.
     /// # Notes
-    /// - The help file is expected to be in the same directory as the executable, and be named `(executable name).chm`.
-    /// - The maximum path length for the executable is 245 characters. Any value exceeding this causes help to malfunction.
+    /// - The help file is integrated into the executable as a byte array and extracted to the temp directory at runtime.
+    /// - The maximum path length for the help file is 245 characters. Any value exceeding this causes help to malfunction.
     /// - This function only computes the path once and caches it for future calls,
-    ///   which means that changes to the executable's path during runtime will not be reflected.
+    ///   which means that changes to the help file's path during runtime will not be reflected.
     fn get_help_path() -> &'static Vec<u16> {
+        static EMBEDDED_CHM: &[u8] = include_bytes!("../help/winmine.chm");
         static HELP_PATH: LazyLock<Vec<u16>> = LazyLock::new(|| {
-            // Get the current executable path
-            let Ok(mut path) = std::env::current_exe() else {
-                eprintln!("Failed to get current executable path");
-                return "winmine.chm\0".encode_utf16().collect();
-            };
-            // Change the extension to .chm
-            path.set_extension("chm");
+            // Get the path to %TEMP%\winmine.chm and check if it already exists
+            let mut path = std::env::temp_dir();
+            path.push("winmine.chm");
+            if !path.exists() {
+                // If the file doesn't exist, write the embedded CHM data to the temp directory
+                // Note: Errors are logged but not propagated since help is a non-essential feature and may fail due to a variety of reasons
+                std::fs::write(&path, EMBEDDED_CHM)
+                    .map_err(|e| {
+                        eprintln!("Failed to write embedded help file to temp directory: {e}")
+                    })
+                    .ok();
+            }
+
             // Ensure that the path is less than 245 characters
             if path.as_os_str().len() > 245 {
                 eprintln!(
-                    "Executable path longer than 245 characters: {}",
+                    "Help file path longer than 245 characters: {}",
                     path.as_os_str().len()
                 );
             }
@@ -142,8 +149,6 @@ impl Help {
     }
 
     /// Display the Help dialog for the given command.
-    ///
-    /// TODO: Integrate help files directly into the executable
     /// # Arguments
     /// - `hwnd` - The handle to the parent window for the help dialog.
     /// - `w_command` - The help command (e.g., HELPONHELP).

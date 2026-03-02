@@ -672,8 +672,6 @@ impl GameState {
     }
 
     /// Enqueue a square for flood-fill processing if it is empty.
-    ///
-    /// TODO: Could this function be merged with `step_box` to avoid passing the queue around?
     /// # Arguments
     /// - `hdc` - The device context to draw on.
     /// - `queue` - The flood-fill work queue.

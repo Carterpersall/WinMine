@@ -293,8 +293,6 @@ impl Rng {
     /// - m is the modulus (2<sup>32</sup> for `u32` arithmetic)
     ///
     /// This formula is the same used in Windows' `rand()` function.
-    ///
-    /// TODO: Consider using using Rust's built-in RNG facilities
     const fn rand(&mut self) -> u32 {
         /// Multiplier used by the linear congruential generator that produces the app's RNG values.
         const RNG_MULTIPLIER: u32 = 214_013;

@@ -1083,7 +1083,7 @@ impl EnterDialog {
                     .hwnd()
                     .GetDlgItem(ResourceId::NameEdit as u16)
                     .and_then(|edit_hwnd| {
-                        // TODO: The only way to do this without unsafe is for this to be a `WinSafe` `Edit` control,
+                        // Note: The only way to do this without unsafe is for this to be a `WinSafe` `Edit` control,
                         //       which has the `limit_text` function.
                         unsafe {
                             edit_hwnd.SendMessage(SetLimitText {

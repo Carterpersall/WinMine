@@ -237,7 +237,6 @@ struct CachedBitmapGuard {
     prev_bitmap: HBITMAP,
 }
 
-// TODO: WinSafe's `SelectObjectGuard` does not expose the DC publicly, open an issue about it.
 impl CachedBitmapGuard {
     /// Create a new `CachedBitmapGuard` by selecting the provided bitmap into the provided DC.
     /// # Arguments
