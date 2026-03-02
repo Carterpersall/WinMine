@@ -119,7 +119,7 @@ pub(crate) const MAX_X_BLKS: usize = 30;
 /// Maximum number of vertical board cells
 pub(crate) const MAX_Y_BLKS: usize = 25;
 /// Upper bound on the flood-fill work queue used for empty regions.
-const I_STEP_MAX: usize = 100;
+const FLOOD_STEP_MAX: usize = 100;
 
 /// Timer identifier used for the per-second gameplay timer.
 pub(crate) const ID_TIMER: usize = 1;
@@ -359,13 +359,13 @@ impl GameState {
         self.boxes_visited == self.boxes_to_win
     }
 
-    /// Count the number of adjacent marked squares around the specified coordinates.
+    /// Count the number of adjacent flagged squares around the specified coordinates.
     /// # Arguments
     /// - `x_center` - The X coordinate of the center square.
     /// - `y_center` - The Y coordinate of the center square.
     /// # Returns
-    /// - The number of adjacent marked squares (maximum 8).
-    fn count_marks(&self, x_center: usize, y_center: usize) -> u8 {
+    /// - The number of adjacent flagged squares (maximum 8).
+    fn count_adjacent_flags(&self, x_center: usize, y_center: usize) -> u8 {
         let mut count = 0;
         for y in y_center.saturating_sub(1)..=min(y_center + 1, self.board_height) {
             for x in x_center.saturating_sub(1)..=min(x_center + 1, self.board_width) {
@@ -411,7 +411,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse move was handled.
     /// - `Err` - If an error occurred while handling the mouse move.
-    fn handle_face_button_mouse_move(&self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<()> {
+    fn handle_btn_mouse_drag(&self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<()> {
         let rc = {
             RECT {
                 left: (self.grafix.wnd_pos.x - self.grafix.dims.button.cx) / 2,
@@ -460,7 +460,7 @@ impl GameState {
                 if self.boxes_visited == 0 && self.timer.elapsed == 0 {
                     // Play the tick sound, display the initial time, and start the timer
                     self.timer.start();
-                    self.do_timer(hwnd)?;
+                    self.timer_tick(hwnd)?;
                     hwnd.SetTimer(ID_TIMER, 1000, None)?;
                 }
 
@@ -472,14 +472,14 @@ impl GameState {
 
                 // Determine whether to chord (select adjacent squares) or step (reveal a single square)
                 if self.chord_active {
-                    self.step_block(hwnd, self.cursor_x, self.cursor_y)?;
+                    self.handle_chord_click(hwnd, self.cursor_x, self.cursor_y)?;
                 } else if self.in_range(self.cursor_x, self.cursor_y)
                     && !self.board_cells[self.cursor_x][self.cursor_y].visited
                     && self.board_cells[self.cursor_x][self.cursor_y].block_type
                         != BlockCell::Flagged
                 {
                     // Handle a click on a single square
-                    self.step_square(hwnd, self.cursor_x, self.cursor_y)?;
+                    self.handle_cell_click(hwnd, self.cursor_x, self.cursor_y)?;
                 }
             }
 
@@ -487,7 +487,7 @@ impl GameState {
                 .draw_button(hwnd.GetDC()?.deref(), self.btn_face_state)?;
         } else {
             // If the game is not active, track the mouse on a location off the board to reset any drag states
-            self.track_mouse(&hwnd.GetDC()?, usize::MAX - 2, usize::MAX - 2)?;
+            self.handle_cell_drag(&hwnd.GetDC()?, usize::MAX - 2, usize::MAX - 2)?;
         }
         // If a chord operation was active, end it now
         self.chord_active = false;
@@ -512,12 +512,12 @@ impl GameState {
     ) -> AnyResult<()> {
         if self.btn_face_pressed {
             // If the face button is being clicked, handle mouse movement for that interaction
-            self.handle_face_button_mouse_move(&hwnd.GetDC()?, point)?;
+            self.handle_btn_mouse_drag(&hwnd.GetDC()?, point)?;
         } else if self.drag_active {
             // If the user is dragging, track the mouse position
             if self.game_status.contains(StatusFlag::Play) {
                 let (x_new, y_new) = self.box_from_point(point);
-                self.track_mouse(&hwnd.GetDC()?, x_new, y_new)?;
+                self.handle_cell_drag(&hwnd.GetDC()?, x_new, y_new)?;
             } else {
                 self.finish_primary_button_drag(hwnd)?;
             }
@@ -549,7 +549,7 @@ impl GameState {
             if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
                 // If the left and right buttons are both down, and the middle button is not down, start a chord operation
                 self.chord_active = true;
-                self.track_mouse(&hwnd.GetDC()?, usize::MAX - 3, usize::MAX - 3)?;
+                self.handle_cell_drag(&hwnd.GetDC()?, usize::MAX - 3, usize::MAX - 3)?;
                 self.begin_primary_button_drag(&hwnd.GetDC()?)?;
                 self.handle_mouse_move(hwnd, btn, point)?;
             } else {
@@ -676,10 +676,10 @@ impl GameState {
     /// # Panics (Debug Only)
     /// - If the square is a bomb, which should never happen since only empty squares should be enqueued for flood-fill processing.
     ///   If this panic occurs, it indicates a bug in the flood-fill logic that is allowing bombs to be processed.
-    fn step_xy(
+    fn flood_fill_step(
         &mut self,
         hdc: &ReleaseDCGuard,
-        queue: &mut [(usize, usize); I_STEP_MAX],
+        queue: &mut [(usize, usize); FLOOD_STEP_MAX],
         tail: &mut usize,
         x: usize,
         y: usize,
@@ -723,7 +723,7 @@ impl GameState {
         if bombs == 0 {
             queue[*tail] = (x, y);
             *tail += 1;
-            if *tail == I_STEP_MAX {
+            if *tail == FLOOD_STEP_MAX {
                 // Queue overflow, loop back to the start and overwrite old entries
                 *tail = 0;
             }
@@ -732,8 +732,6 @@ impl GameState {
     }
 
     /// Flood-fill contiguous empty squares starting from (x, y).
-    ///
-    /// TODO: Should this function be renamed?
     /// # Arguments
     /// - `hdc` - The device context to draw on.
     /// - `x` - X coordinate of the starting square
@@ -741,17 +739,17 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the flood-fill was successful.
     /// - `Err` - If an error occurred while drawing the board.
-    fn step_box(&mut self, hdc: &ReleaseDCGuard, x: usize, y: usize) -> AnyResult<()> {
+    fn flood_fill_cells(&mut self, hdc: &ReleaseDCGuard, x: usize, y: usize) -> AnyResult<()> {
         // Use a queue to perform a breadth-first flood-fill of empty squares.
         // The queue has a fixed maximum size, and if it overflows we loop back to the start and overwrite old entries.
-        let mut queue = [(0, 0); I_STEP_MAX];
+        let mut queue = [(0, 0); FLOOD_STEP_MAX];
         // `head` tracks the current index being processed
         let mut head = 0usize;
         // `tail` tracks the next open index for adding new squares to process
         let mut tail = 0usize;
 
         // Enqueue the initial square; if it is empty, this will kick off the flood-fill process
-        self.step_xy(hdc, &mut queue, &mut tail, x, y)?;
+        self.flood_fill_step(hdc, &mut queue, &mut tail, x, y)?;
 
         // Process squares in the queue until there are no more to process
         while head != tail {
@@ -765,12 +763,12 @@ impl GameState {
                         // Skip the center square
                         continue;
                     }
-                    self.step_xy(hdc, &mut queue, &mut tail, tx, ty)?;
+                    self.flood_fill_step(hdc, &mut queue, &mut tail, tx, ty)?;
                 }
             }
 
             head += 1;
-            if head == I_STEP_MAX {
+            if head == FLOOD_STEP_MAX {
                 // Queue overflow, loop back to the start
                 head = 0;
             }
@@ -877,7 +875,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the square was successfully processed.
     /// - `Err` - If an error occurred while drawing the square.
-    fn step_square(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
+    fn handle_cell_click(&mut self, hwnd: &HWND, x: usize, y: usize) -> AnyResult<()> {
         let hdc = hwnd.GetDC()?;
         if self.board_cells[x][y].bomb {
             let visits = self.boxes_visited;
@@ -888,7 +886,7 @@ impl GameState {
                         if !self.board_cells[x_t][y_t].bomb {
                             self.board_cells[x][y].bomb = false;
                             self.board_cells[x_t][y_t].bomb = true;
-                            self.step_box(&hdc, x, y)?;
+                            self.flood_fill_cells(&hdc, x, y)?;
                             return Ok(());
                         }
                     }
@@ -900,7 +898,7 @@ impl GameState {
             }
         } else {
             // If a non-bomb square was clicked, reveal it and check for a win
-            self.step_box(&hdc, x, y)?;
+            self.flood_fill_cells(&hdc, x, y)?;
             if self.check_win() {
                 self.game_over(hwnd, true)?;
             }
@@ -917,14 +915,19 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the chord operation was successful.
     /// - `Err` - If an error occurred while drawing the board.
-    fn step_block(&mut self, hwnd: &HWND, x_center: usize, y_center: usize) -> AnyResult<()> {
+    fn handle_chord_click(
+        &mut self,
+        hwnd: &HWND,
+        x_center: usize,
+        y_center: usize,
+    ) -> AnyResult<()> {
         let hdc = hwnd.GetDC()?;
 
         if !self.board_cells[x_center][y_center].visited
             || self.board_cells[x_center][y_center].block_type as u8
-                != self.count_marks(x_center, y_center)
+                != self.count_adjacent_flags(x_center, y_center)
         {
-            self.track_mouse(&hdc, usize::MAX - 2, usize::MAX - 2)?;
+            self.handle_cell_drag(&hdc, usize::MAX - 2, usize::MAX - 2)?;
             return Ok(());
         }
 
@@ -942,7 +945,7 @@ impl GameState {
                     lose = true;
                     self.board_cells[x][y].block_type = BlockCell::Explode;
                 } else {
-                    self.step_box(&hdc, x, y)?;
+                    self.flood_fill_cells(&hdc, x, y)?;
                 }
             }
         }
@@ -975,7 +978,7 @@ impl GameState {
         };
     }
 
-    /// Reset the game field to its initial blank state and rebuild the border.
+    /// Reset the game field to its initial blank state.
     pub(crate) fn clear_field(&mut self) {
         self.board_cells
             .iter_mut()
@@ -989,7 +992,7 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the timer was successfully updated.
     /// - `Err` - If an error occurred while updating the display.
-    pub(crate) fn do_timer(&mut self, hwnd: &HWND) -> AnyResult<()> {
+    pub(crate) fn timer_tick(&mut self, hwnd: &HWND) -> AnyResult<()> {
         if self.timer.tick() {
             self.grafix
                 .draw_timer(hwnd.GetDC()?.deref(), self.timer.elapsed)?;
@@ -1081,7 +1084,12 @@ impl GameState {
     /// # Returns
     /// - `Ok(())` - If the mouse tracking was successfully handled and the board was updated.
     /// - `Err` - If an error occurred while drawing the board or if getting the device context failed.
-    fn track_mouse(&mut self, hdc: &ReleaseDCGuard, x_new: usize, y_new: usize) -> AnyResult<()> {
+    fn handle_cell_drag(
+        &mut self,
+        hdc: &ReleaseDCGuard,
+        x_new: usize,
+        y_new: usize,
+    ) -> AnyResult<()> {
         // No change in position; nothing to do
         if x_new == self.cursor_x && y_new == self.cursor_y {
             return Ok(());

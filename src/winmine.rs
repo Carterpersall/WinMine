@@ -515,7 +515,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_timer(ID_TIMER, {
             let self2 = self.clone();
             move || {
-                self2.state.write().do_timer(self2.wnd.hwnd())?;
+                self2.state.write().timer_tick(self2.wnd.hwnd())?;
                 Ok(())
             }
         });

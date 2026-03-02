@@ -103,7 +103,7 @@ pub(crate) const MINMINES: u32 = 10;
 pub(crate) const MAXMINES: u32 = 999;
 
 /// Registry key path used to persist preferences.
-const SZ_WINMINE_REG_STR: &str = "Software\\Microsoft\\winmine";
+const WINMINE_REG_PATH: &str = "Software\\Microsoft\\winmine";
 
 /// Difficulty presets exposed throughout the game.
 #[derive(Copy, Clone, Eq, PartialEq, Default)]
@@ -241,7 +241,7 @@ impl Pref {
 
         // Create or open the preferences registry key with read access
         let (key_guard, _) = HKEY::CURRENT_USER.RegCreateKeyEx(
-            SZ_WINMINE_REG_STR,
+            WINMINE_REG_PATH,
             None,
             REG_OPTION::default(),
             KEY::READ,
@@ -307,7 +307,7 @@ impl Pref {
     pub(crate) fn write_preferences(&self) -> AnyResult<()> {
         // Create or open the preferences registry key with write access
         let (hkey, _) = match HKEY::CURRENT_USER.RegCreateKeyEx(
-            SZ_WINMINE_REG_STR,
+            WINMINE_REG_PATH,
             None,
             REG_OPTION::default(),
             KEY::WRITE,
