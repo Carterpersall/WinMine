@@ -363,8 +363,8 @@ impl WinMineMainWindow {
                         // Update the menu bar to reflect the new sound state
                         self2.set_menu_bar()?;
                     }
-                    code if code == VK::SHIFT => GameState::toggle_xyzzy(),
-                    _ => GameState::handle_xyzzys_input(key.vkey_code),
+                    code if code == VK::SHIFT => self2.state.write().toggle_xyzzy(),
+                    _ => self2.state.write().handle_xyzzys_input(key.vkey_code),
                 }
 
                 Ok(())

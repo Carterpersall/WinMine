@@ -23,7 +23,7 @@ impl GameState {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles
     /// the cheat code state by XORing the counter with 20 (0b10100).
-    pub(crate) fn toggle_xyzzy(&mut self) {
+    pub(crate) const fn toggle_xyzzy(&mut self) {
         if self.xyzzy_progress >= XYZZY_LENGTH {
             self.xyzzy_progress ^= 20;
         }
