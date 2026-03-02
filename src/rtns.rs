@@ -350,9 +350,12 @@ impl GameState {
                 panic!("Cell width is negative, invalid game state.");
             }
         }
+
+        // Calculate the box index by adjusting the pixel coordinates based on the grid's offset and dividing by the cell size.
+        // The `+ cell` and `- 1` offsets are needed as clicks at y-coordinates between 0..-20 would register as clicks on the first row of the board.
         (
-            ((pos.x - self.grafix.dims.left_space) / cell) as usize,
-            ((pos.y - self.grafix.dims.grid_offset) / cell) as usize,
+            (((pos.x - self.grafix.dims.left_space + cell) / cell) - 1) as usize,
+            (((pos.y - self.grafix.dims.grid_offset + cell) / cell) - 1) as usize,
         )
     }
 
@@ -444,6 +447,7 @@ impl GameState {
     /// - `Err` - If an error occurred while getting the device context.
     fn begin_primary_button_drag(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<()> {
         self.drag_active = true;
+        // Set the cursor position to a location off the board to prevent the previous click position from also registering
         self.cursor_x = usize::MAX - 1;
         self.cursor_y = usize::MAX - 1;
         self.grafix.draw_button(hdc, ButtonSprite::Caution)?;
