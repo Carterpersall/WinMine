@@ -266,6 +266,10 @@ pub(crate) struct GameState {
     chord_active: bool,
     /// Indicates whether a drag operation is currently active
     drag_active: bool,
+    /// Current progress of the XYZZY cheat code sequence.
+    ///
+    /// The value represents how many correct keys in a row have been entered, with the expected sequence being "XYZZY".
+    pub xyzzy_progress: usize,
     /// 2D Array representing the state of each cell on the board
     pub board_cells: [[BlockInfo; MAX_Y_BLKS]; MAX_X_BLKS],
     /// Initial number of bombs at the start of the game
@@ -301,6 +305,7 @@ impl GameState {
             ignore_next_click: false,
             chord_active: false,
             drag_active: false,
+            xyzzy_progress: 0,
             board_cells: [[BlockInfo {
                 bomb: false,
                 visited: false,

@@ -9,8 +9,6 @@
 //! code can be toggled on and off by pressing Shift or can
 //! be temporarily enabled by holding Ctrl.
 
-use core::sync::atomic::{AtomicUsize, Ordering};
-
 use winsafe::co::{MK, PS, VK};
 use winsafe::{AnyResult, COLORREF, HPEN, HWND, POINT};
 
@@ -18,10 +16,6 @@ use crate::rtns::GameState;
 
 /// Length of the XYZZY cheat code sequence.
 const XYZZY_LENGTH: usize = XYZZY_SEQUENCE.len();
-/// Atomic counter tracking the progress of the XYZZY cheat code entry.
-///
-/// TODO: Mutable statics are bad, move this into a shared struct.
-static XYZZY_PROGRESS: AtomicUsize = AtomicUsize::new(0);
 /// The expected sequence of virtual key codes for the XYZZY cheat code.
 const XYZZY_SEQUENCE: [VK; 5] = [VK::CHAR_X, VK::CHAR_Y, VK::CHAR_Z, VK::CHAR_Z, VK::CHAR_Y];
 
@@ -29,9 +23,9 @@ impl GameState {
     /// Handles the SHIFT key press for the XYZZY cheat code.
     /// If the cheat code has been fully entered, this function toggles
     /// the cheat code state by XORing the counter with 20 (0b10100).
-    pub(crate) fn toggle_xyzzy() {
-        if XYZZY_PROGRESS.load(Ordering::Relaxed) >= XYZZY_LENGTH {
-            XYZZY_PROGRESS.fetch_xor(20, Ordering::Relaxed);
+    pub(crate) fn toggle_xyzzy(&mut self) {
+        if self.xyzzy_progress >= XYZZY_LENGTH {
+            self.xyzzy_progress ^= 20;
         }
     }
 
@@ -41,14 +35,13 @@ impl GameState {
     /// If the sequence is broken, the counter is reset.
     /// # Arguments
     /// - `key` - The virtual key code from the key press event.
-    pub(crate) fn handle_xyzzys_input(key: VK) {
-        let current = XYZZY_PROGRESS.load(Ordering::Relaxed);
-        if current < XYZZY_LENGTH {
-            let expected = XYZZY_SEQUENCE[current];
+    pub(crate) fn handle_xyzzys_input(&mut self, key: VK) {
+        if self.xyzzy_progress < XYZZY_LENGTH {
+            let expected = XYZZY_SEQUENCE[self.xyzzy_progress];
             if expected == key {
-                XYZZY_PROGRESS.store(current + 1, Ordering::Relaxed);
+                self.xyzzy_progress += 1;
             } else {
-                XYZZY_PROGRESS.store(0, Ordering::Relaxed);
+                self.xyzzy_progress = 0;
             }
         }
     }
@@ -71,7 +64,7 @@ impl GameState {
         let control_down = key.has(MK::CONTROL);
 
         // Check if the XYZZY cheat code is active
-        let state = XYZZY_PROGRESS.load(Ordering::Relaxed);
+        let state = self.xyzzy_progress;
         if (state == XYZZY_LENGTH && control_down) || state > XYZZY_LENGTH {
             let (x_pos, y_pos) = self.box_from_point(point);
             self.cursor_x = x_pos;
