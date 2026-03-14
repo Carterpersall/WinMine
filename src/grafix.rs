@@ -916,11 +916,8 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
             {
-                let (bits_ptr, dib_info) =
-                    Self::dib_pointers(dib_blks, self.rg_dib_off[i], cb_blk)?;
-                Self::set_dib_bits_to_device(
-                    &hdc, &base_bmp, bits_ptr, cb_blk, dib_info, DY_BLK_96,
-                )?;
+                let (bits, dib_info) = Self::dib_pointers(dib_blks, self.rg_dib_off[i], cb_blk)?;
+                Self::set_dib_bits_to_device(&hdc, &base_bmp, bits, dib_info, DY_BLK_96)?;
             }
 
             let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
@@ -938,11 +935,8 @@ impl GrafixState {
             let dc_guard = hdc.CreateCompatibleDC()?;
             let bmp_guard = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?;
             {
-                let (bits_ptr, dib_info) =
-                    Self::dib_pointers(dib_led, self.rg_dib_led_off[i], cb_led)?;
-                Self::set_dib_bits_to_device(
-                    &hdc, &bmp_guard, bits_ptr, cb_led, dib_info, DY_LED_96,
-                )?;
+                let (bits, dib_info) = Self::dib_pointers(dib_led, self.rg_dib_led_off[i], cb_led)?;
+                Self::set_dib_bits_to_device(&hdc, &bmp_guard, bits, dib_info, DY_LED_96)?;
             }
             self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
         }
@@ -959,16 +953,9 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
             {
-                let (bits_ptr, dib_info) =
+                let (bits, dib_info) =
                     Self::dib_pointers(dib_button, self.rg_dib_button_off[i], cb_button)?;
-                Self::set_dib_bits_to_device(
-                    &hdc,
-                    &base_bmp,
-                    bits_ptr,
-                    cb_button,
-                    dib_info,
-                    DY_BUTTON_96,
-                )?;
+                Self::set_dib_bits_to_device(&hdc, &base_bmp, bits, dib_info, DY_BUTTON_96)?;
             }
 
             let final_bmp = if dst_btn_w != DX_BUTTON_96 || dst_btn_h != DY_BUTTON_96 {
@@ -1020,7 +1007,7 @@ impl GrafixState {
         resource: &[u8],
         pixel_offset: usize,
         pixel_len: usize,
-    ) -> AnyResult<(*const core::ffi::c_void, &BITMAPINFO)> {
+    ) -> AnyResult<(&[u8], &BITMAPINFO)> {
         // Validate that the resource is large enough to contain the BITMAPINFOHEADER
         if resource.len() < size_of::<BITMAPINFOHEADER>() {
             return Err("Bitmap resource is smaller than BITMAPINFOHEADER".into());
@@ -1042,9 +1029,9 @@ impl GrafixState {
             .into());
         }
 
-        let bits_ptr = unsafe { resource.as_ptr().add(pixel_offset) }.cast();
+        let bits_slice = &resource[pixel_offset..end];
         let dib_info_ptr = unsafe { &*resource.as_ptr().cast::<BITMAPINFO>() };
-        Ok((bits_ptr, dib_info_ptr))
+        Ok((bits_slice, dib_info_ptr))
     }
 
     /// Set DIB bits to the device context, replicating the functionality of `SetDIBitsToDevice`.
@@ -1068,16 +1055,11 @@ impl GrafixState {
     fn set_dib_bits_to_device(
         hdc: &HDC,
         hbm: &HBITMAP,
-        bits_ptr: *const core::ffi::c_void,
-        bits_len: usize,
+        bits: &[u8],
         bmi: &BITMAPINFO,
         num_scans: i32,
     ) -> AnyResult<i32> {
-        // Validate the the bits pointer is not null and the length is non-zero
-        if bits_ptr.is_null() {
-            return Err("Bitmap bits pointer is null".into());
-        }
-        if bits_len == 0 {
+        if bits.is_empty() {
             return Err("Bitmap bits buffer is empty".into());
         }
 
@@ -1109,16 +1091,14 @@ impl GrafixState {
             .checked_mul(src_height)
             .ok_or("Bitmap size overflow")?;
         // Validate that the provided buffer is large enough
-        if bits_len < required_len {
+        if bits.len() < required_len {
             return Err(format!(
                 "Bitmap bits buffer too small (have {}, need {})",
-                bits_len, required_len
+                bits.len(),
+                required_len,
             )
             .into());
         }
-
-        // Convert the raw bits pointer into a safe slice reference for easier access during conversion
-        let src_bits = unsafe { core::slice::from_raw_parts(bits_ptr.cast::<u8>(), bits_len) };
 
         // Quote from the documentation of BITMAPINFOHEADER:
         //   If biCompression equals BI_RGB and the bitmap uses 8 bpp or less, the bitmap has a color table immediately
@@ -1151,7 +1131,7 @@ impl GrafixState {
                 src_height - 1 - dst_y
             };
             // Get a slice reference to the current source scan line based on the calculated source Y coordinate and the stride (bytes per scan line)
-            let src_row = &src_bits[src_y * src_stride..(src_y + 1) * src_stride];
+            let src_row = &bits[src_y * src_stride..(src_y + 1) * src_stride];
 
             // Loop over each pixel in the source scan line and convert it to 32bpp BGRA format in the `converted` buffer
             for x in 0..src_width {
