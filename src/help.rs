@@ -93,7 +93,7 @@ impl Help {
                 // Note: Errors are logged but not propagated since help is a non-essential feature and may fail due to a variety of reasons
                 std::fs::write(&path, EMBEDDED_CHM)
                     .map_err(|e| {
-                        eprintln!("Failed to write embedded help file to temp directory: {e}")
+                        eprintln!("Failed to write embedded help file to temp directory: {e}");
                     })
                     .ok();
             }
