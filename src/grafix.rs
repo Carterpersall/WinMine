@@ -916,10 +916,13 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
             {
-                let (bits, bmi_header, bmi_colors) =
-                    Self::dib_pointers(dib_blks, self.rg_dib_off[i], cb_blk)?;
                 Self::set_dib_bits_to_device(
-                    &hdc, &base_bmp, bmi_header, bmi_colors, bits, DY_BLK_96,
+                    &hdc,
+                    &base_bmp,
+                    dib_blks,
+                    self.rg_dib_off[i],
+                    cb_blk,
+                    DY_BLK_96,
                 )?;
             }
 
@@ -938,10 +941,13 @@ impl GrafixState {
             let dc_guard = hdc.CreateCompatibleDC()?;
             let bmp_guard = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?;
             {
-                let (bits, bmi_header, bmi_colors) =
-                    Self::dib_pointers(dib_led, self.rg_dib_led_off[i], cb_led)?;
                 Self::set_dib_bits_to_device(
-                    &hdc, &bmp_guard, bmi_header, bmi_colors, bits, DY_LED_96,
+                    &hdc,
+                    &bmp_guard,
+                    dib_led,
+                    self.rg_dib_led_off[i],
+                    cb_led,
+                    DY_LED_96,
                 )?;
             }
             self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
@@ -959,14 +965,12 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
             {
-                let (bits, bmi_header, bmi_colors) =
-                    Self::dib_pointers(dib_button, self.rg_dib_button_off[i], cb_button)?;
                 Self::set_dib_bits_to_device(
                     &hdc,
                     &base_bmp,
-                    bmi_header,
-                    bmi_colors,
-                    bits,
+                    dib_button,
+                    self.rg_dib_button_off[i],
+                    cb_button,
                     DY_BUTTON_96,
                 )?;
             }
@@ -1118,11 +1122,13 @@ impl GrafixState {
     fn set_dib_bits_to_device(
         hdc: &HDC,
         hbm: &HBITMAP,
-        bmi_header: &BITMAPINFOHEADER,
-        palette: &[RGBQUAD],
-        bits: &[u8],
+        resource: &[u8],
+        pixel_offset: usize,
+        pixel_len: usize,
         num_scans: i32,
     ) -> AnyResult<i32> {
+        let (bits, bmi_header, palette) = Self::dib_pointers(resource, pixel_offset, pixel_len)?;
+
         if bits.is_empty() {
             return Err("Bitmap bits buffer is empty".into());
         }
