@@ -914,17 +914,15 @@ impl GrafixState {
 
             let base_bmp = hdc.CreateCompatibleBitmap(DX_BLK_96, DY_BLK_96)?;
 
-            // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
-            {
-                Self::set_dib_bits_to_device(
-                    &hdc,
-                    &base_bmp,
-                    dib_blks,
-                    self.rg_dib_off[i],
-                    cb_blk,
-                    DY_BLK_96,
-                )?;
-            }
+            // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC
+            Self::set_dib_bits_to_device(
+                &hdc,
+                &base_bmp,
+                dib_blks,
+                self.rg_dib_off[i],
+                cb_blk,
+                DY_BLK_96,
+            )?;
 
             let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
                 create_resampled_bitmap(&hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h)
@@ -940,16 +938,14 @@ impl GrafixState {
         for i in 0..I_LED_MAX {
             let dc_guard = hdc.CreateCompatibleDC()?;
             let bmp_guard = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?;
-            {
-                Self::set_dib_bits_to_device(
-                    &hdc,
-                    &bmp_guard,
-                    dib_led,
-                    self.rg_dib_led_off[i],
-                    cb_led,
-                    DY_LED_96,
-                )?;
-            }
+            Self::set_dib_bits_to_device(
+                &hdc,
+                &bmp_guard,
+                dib_led,
+                self.rg_dib_led_off[i],
+                cb_led,
+                DY_LED_96,
+            )?;
             self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
         }
 
@@ -964,16 +960,14 @@ impl GrafixState {
             let base_bmp = hdc.CreateCompatibleBitmap(DX_BUTTON_96, DY_BUTTON_96)?;
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
-            {
-                Self::set_dib_bits_to_device(
-                    &hdc,
-                    &base_bmp,
-                    dib_button,
-                    self.rg_dib_button_off[i],
-                    cb_button,
-                    DY_BUTTON_96,
-                )?;
-            }
+            Self::set_dib_bits_to_device(
+                &hdc,
+                &base_bmp,
+                dib_button,
+                self.rg_dib_button_off[i],
+                cb_button,
+                DY_BUTTON_96,
+            )?;
 
             let final_bmp = if dst_btn_w != DX_BUTTON_96 || dst_btn_h != DY_BUTTON_96 {
                 create_resampled_bitmap(
@@ -1009,17 +1003,17 @@ impl GrafixState {
         Ok((res_info, res_loaded))
     }
 
-    /// Compute validated pointers for `SetDIBitsToDevice` from a locked bitmap resource.
+    /// Compute validated values for `SetDIBitsToDevice` from a locked bitmap resource.
     /// # Arguments
     /// - `resource` - The locked bitmap resource data.
     /// - `pixel_offset` - The byte offset within the resource where the pixel data begins.
     /// - `pixel_len` - The length in bytes of the pixel data section.
     /// # Returns
-    /// - `Ok((bits, bmi_header, palette))` - A tuple containing a slice of the pixel bits, a reference to the BITMAPINFOHEADER, and a slice of the color palette (if present).
+    /// - `Ok((bits, bmi_header, palette))`:
+    ///     - `bits` - A slice of the raw pixel data for the bitmap, formatted according to the `BITMAPINFOHEADER` and palette.
+    ///     - `bmi_header` - A reference to the `BITMAPINFOHEADER` structure at the start of the resource, containing metadata about the bitmap format.
+    ///     - `palette` - A slice of `RGBQUAD` entries representing the color palette for indexed bitmaps, if applicable. This will be an empty slice for non-indexed bitmaps.
     /// - `Err` - If the resource data is invalid, such as being too small to contain the required headers, if the pixel data section is out of bounds, or if the color palette information is inconsistent.
-    /// # Notes
-    /// - The resource must begin with a `BITMAPINFOHEADER`, followed by packed image data.
-    /// - TODO: Review this function and its return values, with the new flexability from `set_dib_bits_to_device`.
     fn dib_pointers(
         resource: &[u8],
         pixel_offset: usize,
@@ -1030,7 +1024,8 @@ impl GrafixState {
             return Err("Bitmap resource is smaller than BITMAPINFOHEADER".into());
         }
 
-        // SAFETY: We just verified that the resource is large enough to contain a BITMAPINFOHEADER, and the header is at the start of the resource, so this cast is safe.
+        // SAFETY: We just verified that the resource is large enough to contain a BITMAPINFOHEADER
+        //         and the header is at the start of the resource, so this cast is safe.
         let bmi_bits = resource.as_ptr().cast::<BITMAPINFOHEADER>();
         let bmi_header = unsafe { &*bmi_bits };
 
@@ -1086,7 +1081,8 @@ impl GrafixState {
             &[][..] // &[RGBQUAD; 0]
         } else {
             // Convert a pointer to the palette into a safe slice reference (&[RGBQUAD; palette_len])
-            // SAFETY: We just verified that the resource is large enough to contain the palette, and the palette starts immediately after the BITMAPINFOHEADER, so this cast is safe.
+            // SAFETY: We just verified that the resource is large enough to contain the palette,
+            //         and the palette starts immediately after the BITMAPINFOHEADER, so this cast should be safe.
             unsafe {
                 core::slice::from_raw_parts(
                     resource[palette_offset..palette_end]
@@ -1105,7 +1101,9 @@ impl GrafixState {
     /// # Arguments
     /// - `hdc` - The device context to set the bits on.
     /// - `hbm` - A compatible bitmap to use as the destination for the bits
-    /// - `bmi_header` - The `BITMAPINFOHEADER` describing the format of the bitmap bits.
+    /// - `resource` - The locked bitmap resource data containing the BITMAPINFOHEADER, palette, and pixel bits.
+    /// - `pixel_offset` - The byte offset within the resource where the pixel data begins.
+    /// - `pixel_len` - The length in bytes of the pixel data section.
     /// - `palette` - The color palette (array of `RGBQUAD`) for indexed bitmaps, if applicable.
     /// - `bits` - The raw pixel data for the bitmap, formatted according to the `BITMAPINFOHEADER` and palette.
     /// - `start_scan` - The index of the first scan line to set.
