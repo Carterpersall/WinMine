@@ -108,9 +108,6 @@ impl WinMineMainWindow {
     /* Message Helper Functions */
 
     /// Handles smiley-face click completion when the left button is released.
-    ///
-    /// TODO: Move function into `GameState`.
-    ///       Moving this function is blocked by the function `start_game`
     /// # Arguments
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
@@ -146,11 +143,6 @@ impl WinMineMainWindow {
     /* Helper Functions */
 
     /// Adjusts the main window size and position based on the current board and menu state.
-    ///
-    /// TODO: Move this function into `GameState`.
-    ///       Moving this function is complicated by the fact that it needs to call `MoveWindow`,
-    ///       which sends a `WM_WINDOWPOSCHANGED` message to the main window,
-    ///       which needs to obtain a lock on the game state, always causing a deadlock.
     /// This function is called whenever the board or menu state changes to ensure
     /// that the main window is appropriately sized and positioned on the screen.
     /// # Arguments
@@ -355,6 +347,7 @@ impl WinMineMainWindow {
         self.wnd.on().wm_key_down({
             let self2 = self.clone();
             move |key| {
+                // TODO: Some more key bindings could be added here
                 match key.vkey_code {
                     code if code == VK::F4 => {
                         // Toggle sound on/off when F4 is pressed

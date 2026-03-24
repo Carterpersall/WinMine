@@ -869,6 +869,62 @@ impl GameState {
         Ok(())
     }
 
+    /// Start a new game by initializing the board, placing bombs, resetting the timer, and updating the display.
+    /// # Arguments
+    /// - `hdc` - Handle to the device context, used to draw the initial bomb count and any necessary redraws.
+    /// # Returns
+    /// - `Ok(AdjustFlag::ResizeAndRedraw)` - If the game was started and the board dimensions changed, indicating that the window should be resized and redrawn.
+    /// - `Ok(AdjustFlag::Redraw)` - If the game was started and the board dimensions did not change, indicating that the window should just be redrawn.
+    /// - `Err` - If an error occurred while drawing the bomb count.
+    fn start_game(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<AdjustFlag> {
+        let x_prev = self.board_width + 1;
+        let y_prev = self.board_height + 1;
+
+        // Update the board dimensions based on the current preferences.
+        // 1 is subtracted from each dimension to make it zero-indexed.
+        self.board_width = self.prefs.width - 1;
+        self.board_height = self.prefs.height - 1;
+
+        // Reset the board to a blank state
+        self.clear_field();
+        self.btn_face_state = ButtonSprite::Happy;
+        self.timer.reset();
+
+        // Randomly place bombs on the board until the total number of bombs matches the number specified in preferences
+        self.total_bombs = self.prefs.mines;
+        let mut bombs = self.prefs.mines;
+        while bombs > 0 {
+            let mut x;
+            let mut y;
+            loop {
+                // Select a random position on the board
+                let width = self.prefs.width as u32;
+                let height = self.prefs.height as u32;
+                x = self.rng.rnd(width) as usize;
+                y = self.rng.rnd(height) as usize;
+                // If there is not already a bomb at that position, place a bomb there
+                if !self.board_cells[x][y].bomb {
+                    break;
+                }
+            }
+            self.board_cells[x][y].bomb = true;
+            bombs -= 1;
+        }
+
+        self.bombs_left = self.prefs.mines;
+        self.boxes_visited = 0;
+        self.boxes_to_win = (self.prefs.width * self.prefs.height) as u16 - self.prefs.mines as u16;
+        self.game_status = StatusFlag::Play;
+
+        self.grafix.draw_bomb_count(hdc, self.prefs.mines)?;
+
+        if self.prefs.width != x_prev || self.prefs.height != y_prev {
+            Ok(AdjustFlag::ResizeAndRedraw)
+        } else {
+            Ok(AdjustFlag::Redraw)
+        }
+    }
+
     /// Handle a user click on a single square.
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
@@ -1009,67 +1065,14 @@ impl GameState {
 impl WinMineMainWindow {
     /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
     ///
-    /// TODO: Move this into `GameState`.
-    ///       Moving this into `GameState` is currently blocked by the function `adjust_window`.
+    /// TODO: Move this function back into winmine.rs
     /// # Arguments
     /// - `hwnd` - Handle to the main window.
     /// # Returns
     /// - `Ok(())` - If the game was successfully started.
     /// - `Err` - If an error occurred while resizing or updating the display.
     pub(crate) fn start_game(&self) -> AnyResult<()> {
-        let mut state = self.state.write();
-        let x_prev = state.board_width + 1;
-        let y_prev = state.board_height + 1;
-
-        let f_adjust = if state.prefs.width != x_prev || state.prefs.height != y_prev {
-            AdjustFlag::ResizeAndRedraw
-        } else {
-            AdjustFlag::Redraw
-        };
-
-        // Update the board dimensions based on the current preferences.
-        // 1 is subtracted from each dimension to make it zero-indexed.
-        state.board_width = state.prefs.width - 1;
-        state.board_height = state.prefs.height - 1;
-
-        // Reset the board to a blank state
-        state.clear_field();
-        state.btn_face_state = ButtonSprite::Happy;
-        state.timer.reset();
-
-        // Randomly place bombs on the board until the total number of bombs matches the number specified in preferences
-        state.total_bombs = state.prefs.mines;
-        let mut bombs = state.prefs.mines;
-        while bombs > 0 {
-            let mut x;
-            let mut y;
-            loop {
-                // Select a random position on the board
-                let width = state.prefs.width as u32;
-                let height = state.prefs.height as u32;
-                x = state.rng.rnd(width) as usize;
-                y = state.rng.rnd(height) as usize;
-                // If there is not already a bomb at that position, place a bomb there
-                if !state.board_cells[x][y].bomb {
-                    break;
-                }
-            }
-            state.board_cells[x][y].bomb = true;
-            bombs -= 1;
-        }
-
-        state.bombs_left = state.prefs.mines;
-        state.boxes_visited = 0;
-        state.boxes_to_win =
-            (state.prefs.width * state.prefs.height) as u16 - state.prefs.mines as u16;
-        state.game_status = StatusFlag::Play;
-
-        state
-            .grafix
-            .draw_bomb_count(self.wnd.hwnd().GetDC()?.deref(), state.prefs.mines)?;
-
-        // Drop the write lock before calling `adjust_window` since it also needs to acquire a write lock to update the board state for redrawing.
-        drop(state);
+        let f_adjust = self.state.write().start_game(&self.wnd.hwnd().GetDC()?)?;
 
         self.adjust_window(f_adjust)?;
 
