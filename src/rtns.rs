@@ -10,13 +10,13 @@ use strum_macros::VariantArray;
 use winsafe::co::{MK, WM};
 use winsafe::guard::ReleaseDCGuard;
 use winsafe::msg::WndMsg;
-use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT, prelude::*};
+use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT};
 
 use crate::grafix::{ButtonSprite, GrafixState};
 use crate::pref::{CCH_NAME_MAX, GameType, Pref};
 use crate::sound::Sound;
 use crate::util::Rng;
-use crate::winmine::{NEW_RECORD_DLG, WinMineMainWindow};
+use crate::winmine::NEW_RECORD_DLG;
 
 /// Encoded board values used to track each tile state.
 ///
@@ -876,7 +876,7 @@ impl GameState {
     /// - `Ok(AdjustFlag::ResizeAndRedraw)` - If the game was started and the board dimensions changed, indicating that the window should be resized and redrawn.
     /// - `Ok(AdjustFlag::Redraw)` - If the game was started and the board dimensions did not change, indicating that the window should just be redrawn.
     /// - `Err` - If an error occurred while drawing the bomb count.
-    fn start_game(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<AdjustFlag> {
+    pub(crate) fn start_game(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<AdjustFlag> {
         let x_prev = self.board_width + 1;
         let y_prev = self.board_height + 1;
 
@@ -1060,27 +1060,7 @@ impl GameState {
         }
         Ok(())
     }
-}
 
-impl WinMineMainWindow {
-    /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
-    ///
-    /// TODO: Move this function back into winmine.rs
-    /// # Arguments
-    /// - `hwnd` - Handle to the main window.
-    /// # Returns
-    /// - `Ok(())` - If the game was successfully started.
-    /// - `Err` - If an error occurred while resizing or updating the display.
-    pub(crate) fn start_game(&self) -> AnyResult<()> {
-        let f_adjust = self.state.write().start_game(&self.wnd.hwnd().GetDC()?)?;
-
-        self.adjust_window(f_adjust)?;
-
-        Ok(())
-    }
-}
-
-impl GameState {
     /// Track mouse movement over the board and provide visual feedback.
     /// # Arguments
     /// - `hdc` - Handle to the device context to draw on.

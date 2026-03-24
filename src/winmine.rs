@@ -142,6 +142,18 @@ impl WinMineMainWindow {
 
     /* Helper Functions */
 
+    /// Start a new game by resetting globals, randomizing bombs, and resizing the window if the board changed.
+    /// # Returns
+    /// - `Ok(())` - If the game was successfully started.
+    /// - `Err` - If an error occurred while resizing or updating the display.
+    fn start_game(&self) -> AnyResult<()> {
+        let f_adjust = self.state.write().start_game(&self.wnd.hwnd().GetDC()?)?;
+
+        self.adjust_window(f_adjust)?;
+
+        Ok(())
+    }
+
     /// Adjusts the main window size and position based on the current board and menu state.
     /// This function is called whenever the board or menu state changes to ensure
     /// that the main window is appropriately sized and positioned on the screen.
