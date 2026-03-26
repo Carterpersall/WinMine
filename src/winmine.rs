@@ -774,27 +774,38 @@ impl PrefDialog {
             let self2 = self.clone();
             move || -> AnyResult<()> {
                 let hwnd = self2.dlg.hwnd();
+
                 // Retrieve and validate user input from the dialog controls
-                let height = hwnd
+                let Ok(height) = hwnd
                     // Get a handle to the dialog item
                     .GetDlgItem(ResourceId::HeightEdit as u16)
                     // Retrieve the integer value from the dialog item
                     .and_then(|dlg| dlg.GetWindowText())?
                     // Parse the retrieved text into an `u32`
-                    .parse::<u32>()?
+                    .parse::<u32>()
                     // Clamp the parsed value to be within the valid range
-                    .clamp(MINHEIGHT, MAXHEIGHT);
-                let width = hwnd
+                    .map(|v| v.clamp(MINHEIGHT, MAXHEIGHT))
+                else {
+                    // If parsing fails, typically due to an empty input, keep the dialog open and do not save changes
+                    return Ok(());
+                };
+                let Ok(width) = hwnd
                     .GetDlgItem(ResourceId::WidthEdit as u16)
                     .and_then(|dlg| dlg.GetWindowText())?
-                    .parse::<u32>()?
-                    .clamp(MINWIDTH, MAXWIDTH);
+                    .parse::<u32>()
+                    .map(|v| v.clamp(MINWIDTH, MAXWIDTH))
+                else {
+                    return Ok(());
+                };
                 let max_mines = min(MAXMINES, (height - 1) * (width - 1));
-                let mines = hwnd
+                let Ok(mines) = hwnd
                     .GetDlgItem(ResourceId::MinesEdit as u16)
                     .and_then(|dlg| dlg.GetWindowText())?
-                    .parse::<u32>()?
-                    .clamp(MINMINES, max_mines);
+                    .parse::<u32>()
+                    .map(|v| v.clamp(MINMINES, max_mines))
+                else {
+                    return Ok(());
+                };
 
                 // Update preferences with the new settings
                 {
