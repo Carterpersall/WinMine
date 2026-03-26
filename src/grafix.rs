@@ -426,6 +426,11 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the bomb count was drawn successfully.
     /// - `Err` - If drawing the bomb count LEDs failed.
+    /// # Notes
+    /// - This function calls `SetLayout` to temporarily disable mirroring when the system is in RTL mode,
+    ///   since the bomb counter should always be left-aligned. It restores the original layout before returning.
+    ///   However, if the function fails before restoring the layout, it may leave the DC in a non-mirrored state,
+    ///   which could cause drawing issues. Any future error handling for this function should account for this.
     pub(crate) fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
         // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
         let layout = unsafe { GetLayout(hdc.ptr()) };
@@ -467,6 +472,11 @@ impl GrafixState {
     /// # Returns
     /// - `Ok(())` - If the timer was drawn successfully.
     /// - `Err` - If drawing the timer LEDs failed.
+    /// # Notes
+    /// - This function calls `SetLayout` to temporarily disable mirroring when the system is in RTL mode,
+    ///   since the timer should always be left-aligned. It restores the original layout before returning.
+    ///   However, if the function fails before restoring the layout, it may leave the DC in a non-mirrored state,
+    ///   which could cause drawing issues. Any future error handling for this function should account for this.
     pub(crate) fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
         // The timer uses the same mirroring trick as the bomb counter.
         let layout = unsafe { GetLayout(hdc.ptr()) };
@@ -557,9 +567,19 @@ fn create_resampled_bitmap(
     dst_w: i32,
     dst_h: i32,
 ) -> AnyResult<DeleteObjectGuard<HBITMAP>> {
+    // Validate input dimensions to prevent invalid operations
+    if src_w <= 0 || src_h <= 0 || dst_w <= 0 || dst_h <= 0 {
+        return Err(format!(
+            "Invalid bitmap dimensions:\n
+            \tsrc_w: {src_w}, src_h: {src_h}, dst_w: {dst_w}, dst_h: {dst_h}"
+        )
+        .into());
+    }
+
     // 1. Prepare BITMAPINFO
     let mut bmi_header = BITMAPINFOHEADER::default();
     bmi_header.biWidth = src_w;
+    // Negative height for top-down bitmap
     bmi_header.biHeight = -src_h;
     bmi_header.biPlanes = 1;
     bmi_header.biBitCount = 32;
@@ -570,7 +590,14 @@ fn create_resampled_bitmap(
     };
 
     // 2. Read Source Bits
-    let mut src_buf = vec![0u8; (src_w * src_h * 4) as usize];
+    // Calculate the buffer size needed for the source bitmap (width * height * 4 bytes per pixel for 32bpp)
+    let src_buf_len: usize = src_w
+        .checked_mul(src_h)
+        .and_then(|v| v.checked_mul(4))
+        .ok_or("Source bitmap dimensions are too large")?
+        .try_into()
+        .map_err(|e| format!("Failed to convert source buffer length to usize: {e}"))?;
+    let mut src_buf = vec![0u8; src_buf_len];
     unsafe {
         hdc.GetDIBits(
             src_bmp,
@@ -583,25 +610,19 @@ fn create_resampled_bitmap(
     }?;
 
     // 3. Prepare Destination
-    let mut dst_buf = vec![0u8; (dst_w * dst_h * 4) as usize];
+    // Calculate the buffer size needed for the destination bitmap (width * height * 4 bytes per pixel for 32bpp)
+    let dst_buf_len: usize = dst_w
+        .checked_mul(dst_h)
+        .and_then(|v| v.checked_mul(4))
+        .ok_or("Destination bitmap dimensions are too large")?
+        .try_into()
+        .map_err(|e| format!("Failed to convert destination buffer length to usize: {e}"))?;
+    let mut dst_buf = vec![0u8; dst_buf_len];
 
     // Scaling factors (Destination / Source) -> How many dst pixels per src pixel?
     // Actually, we usually want (Source / Destination) -> How much source does one dst pixel cover?
     let scale_x = dst_w as f32 / src_w as f32;
     let scale_y = dst_h as f32 / src_h as f32;
-
-    // Helper to read source pixel safely
-    let get_src = |cx: i32, cy: i32| -> (f32, f32, f32) {
-        if cx < 0 || cx >= src_w || cy < 0 || cy >= src_h {
-            return (0.0, 0.0, 0.0);
-        }
-        let idx = ((cy * src_w + cx) * 4) as usize;
-        (
-            f32::from(src_buf[idx + 2]), // R
-            f32::from(src_buf[idx + 1]), // G
-            f32::from(src_buf[idx]),     // B
-        )
-    };
 
     // 4. Area Averaging Loop
     for y in 0..dst_h {
@@ -635,7 +656,19 @@ fn create_resampled_bitmap(
                     let weight = dx * dy;
 
                     if weight > 0.0 {
-                        let (r, g, b) = get_src(ix, iy);
+                        // Read the source pixel color, treating out-of-bounds as black
+                        let (r, g, b) = {
+                            if ix < 0 || ix >= src_w || iy < 0 || iy >= src_h {
+                                (0.0, 0.0, 0.0)
+                            } else {
+                                let idx = ((iy * src_w + ix) * 4) as usize;
+                                (
+                                    f32::from(src_buf[idx + 2]), // R
+                                    f32::from(src_buf[idx + 1]), // G
+                                    f32::from(src_buf[idx]),     // B
+                                )
+                            }
+                        };
                         r_acc += r * weight;
                         g_acc += g * weight;
                         b_acc += b * weight;
@@ -662,6 +695,7 @@ fn create_resampled_bitmap(
     // 5. Create and Set Bitmap
     let dst_bmp = hdc.CreateCompatibleBitmap(dst_w, dst_h)?;
     bmi.bmiHeader.biWidth = dst_w;
+    // Negative height for top-down bitmap
     bmi.bmiHeader.biHeight = -dst_h;
 
     hdc.SetDIBits(&dst_bmp, 0, dst_h as u32, &dst_buf, &bmi, DIB::RGB_COLORS)?;
