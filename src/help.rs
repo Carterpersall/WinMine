@@ -4,6 +4,7 @@
 //! - `HtmlHelp` leaks a `DC` whenever the popup help menu is displayed and leaks a `HBRUSH`
 //!   when opening the help window. This is likely a bug in the Win32 API itself.
 
+use std::io::Write as _;
 use std::os::windows::ffi::OsStrExt as _;
 use std::sync::LazyLock;
 
@@ -88,14 +89,26 @@ impl Help {
             // Get the path to %TEMP%\winmine.chm and check if it already exists
             let mut path = std::env::temp_dir();
             path.push("winmine.chm");
-            if !path.exists() {
-                // If the file doesn't exist, write the embedded CHM data to the temp directory
-                // Note: Errors are logged but not propagated since help is a non-essential feature and may fail due to a variety of reasons
-                std::fs::write(&path, EMBEDDED_CHM)
-                    .map_err(|e| {
+
+            // Attempt to create the file if it doesn't currently exist
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    // If the file doesn't exist, write the embedded CHM data to the temp directory
+                    // Note: Errors are logged but not propagated since help is a non-essential feature
+                    if let Err(e) = file.write_all(EMBEDDED_CHM) {
                         eprintln!("Failed to write embedded help file to temp directory: {e}");
-                    })
-                    .ok();
+                    };
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    // If the file already exists, we assume it's the correct help file and do nothing
+                }
+                Err(e) => {
+                    eprintln!("Failed to create help file in temp directory: {e}");
+                }
             }
 
             // Ensure that the path is less than 245 characters
