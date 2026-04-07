@@ -215,12 +215,14 @@ impl Pref {
     /// # Arguments
     /// - `handle` - Open registry key handle
     /// - `key` - Preference key to read
+    /// - `max_len` - Maximum length of the string to read
     /// # Returns
-    /// - `String` - The retrieved string, or the default name on failure
-    fn read_sz(handle: &HKEY, key: PrefKey) -> String {
+    /// - `String` - The retrieved string, truncated to `max_len` characters if necessary
+    /// - `DEFAULT_PLAYER_NAME` - If the preference key is invalid or if the registry value is not a string
+    fn read_sz(handle: &HKEY, key: PrefKey, max_len: usize) -> String {
         // Attempt to read the string value from the registry, returning the default if it fails
         match handle.RegQueryValueEx(key.string()) {
-            Ok(Sz(value) | RegistryValue::ExpandSz(value)) => value,
+            Ok(Sz(value) | RegistryValue::ExpandSz(value)) => value.chars().take(max_len).collect(),
             _ => DEFAULT_PLAYER_NAME.to_owned(),
         }
     }
@@ -283,9 +285,9 @@ impl Pref {
         self.expert_time = Self::read_int(&key_guard, PrefKey::Time3)
             .unwrap_or(999)
             .clamp(0, 999) as u16;
-        self.beginner_name = Self::read_sz(&key_guard, PrefKey::Name1);
-        self.inter_name = Self::read_sz(&key_guard, PrefKey::Name2);
-        self.expert_name = Self::read_sz(&key_guard, PrefKey::Name3);
+        self.beginner_name = Self::read_sz(&key_guard, PrefKey::Name1, CCH_NAME_MAX);
+        self.inter_name = Self::read_sz(&key_guard, PrefKey::Name2, CCH_NAME_MAX);
+        self.expert_name = Self::read_sz(&key_guard, PrefKey::Name3, CCH_NAME_MAX);
 
         // Determine whether to favor color assets (NUMCOLORS may return -1 on true color displays).
         let default_color = match HWND::GetDesktopWindow().GetDC() {

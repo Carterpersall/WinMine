@@ -959,8 +959,9 @@ impl GrafixState {
             )?;
 
             let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
-                create_resampled_bitmap(&hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h)
-                    .unwrap_or(base_bmp)
+                create_resampled_bitmap(
+                    &hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h,
+                )?
             } else {
                 base_bmp
             };
@@ -1011,8 +1012,7 @@ impl GrafixState {
                     DY_BUTTON_96,
                     dst_btn_w,
                     dst_btn_h,
-                )
-                .unwrap_or(base_bmp)
+                )?
             } else {
                 base_bmp
             };

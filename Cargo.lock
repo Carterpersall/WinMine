@@ -26,9 +26,9 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "embed-resource"
-version = "3.0.7"
+version = "3.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47ec73ddcf6b7f23173d5c3c5a32b5507dc0a734de7730aa14abc5d5e296bb5f"
+checksum = "63a1d0de4f2249aa0ff5884d7080814f446bb241a559af6c170a41e878ed2d45"
 dependencies = [
  "cc",
  "memchr",
@@ -365,4 +365,4 @@ dependencies = [
 [[package]]
 name = "winsafe"
 version = "0.0.27"
-source = "git+https://github.com/rodrigocfd/winsafe.git?rev=702aeeab0334e03226b6df885ad1fc818c15901a#702aeeab0334e03226b6df885ad1fc818c15901a"
+source = "git+https://github.com/rodrigocfd/winsafe.git?rev=9c94c5b2c1ae5bb3de5fc8646d57d8b1f6c4f3eb#9c94c5b2c1ae5bb3de5fc8646d57d8b1f6c4f3eb"

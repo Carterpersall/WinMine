@@ -313,6 +313,8 @@ impl Rng {
     /// - `rnd_max` - Upper bound (exclusive) for the random number
     /// # Returns
     /// - A pseudo-random number in the [0, `rnd_max`) range
+    /// # Panics
+    /// - If `rnd_max` is 0, this function will panic due to division by zero in the modulus operation.
     pub(crate) const fn rnd(&mut self, rnd_max: u32) -> u32 {
         self.rand() % rnd_max
     }
