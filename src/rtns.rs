@@ -632,6 +632,8 @@ impl GameState {
                 // If the right button or the shift key is also down, start a chord operation
                 self.chord_active = true;
             }
+
+            // If the game is active, start a drag operation and handle the initial mouse move to update the cursor position
             if self.game_status.contains(StatusFlag::Play) {
                 self.begin_primary_button_drag(&hwnd.GetDC()?)?;
                 self.handle_mouse_move(hwnd, vkey, point)?;
@@ -845,6 +847,9 @@ impl GameState {
         if win {
             self.bombs_left = 0;
 
+            // Update the bomb count display to show 0 bombs left
+            self.grafix.draw_bomb_count(&hdc, self.bombs_left)?;
+
             // If this win is a new personal best, update the best time and show the new record dialog
             if match self.prefs.game_type {
                 GameType::Begin => self.timer.elapsed < self.prefs.beginner_time,
@@ -939,8 +944,10 @@ impl GameState {
             let visits = self.boxes_visited;
             if visits == 0 {
                 // Ensure that the first clicked square is never a bomb
-                for y_t in 0..=self.board_height {
-                    for x_t in 0..=self.board_width {
+                // Note: The original code excludes the last row and column when searching for a non-bomb square to swap with.
+                //       This behavior is preserved here.
+                for y_t in 0..self.board_height {
+                    for x_t in 0..self.board_width {
                         if !self.board_cells[x_t][y_t].bomb {
                             self.board_cells[x][y].bomb = false;
                             self.board_cells[x_t][y_t].bomb = true;

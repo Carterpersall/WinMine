@@ -608,6 +608,8 @@ impl WinMineMainWindow {
                 // Show the preferences dialog
                 PrefDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)?;
 
+                // Note: This differs from the original behavior, which always started a custom game after the preferences dialog was closed,
+                //       even if the user had not changed any settings or had cancelled out of the dialog.
                 if self2.state.read().prefs.game_type == GameType::Other {
                     // If a custom game was configured, start it
                     self2.set_menu_bar()?;
@@ -787,6 +789,7 @@ impl PrefDialog {
                     .map(|v| v.clamp(MINHEIGHT, MAXHEIGHT))
                 else {
                     // If parsing fails, typically due to an empty input, keep the dialog open and do not save changes
+                    // Note: The original behavior was to treat invalid input as 0, which would be clamped to the minimum value.
                     return Ok(());
                 };
                 let Ok(width) = hwnd

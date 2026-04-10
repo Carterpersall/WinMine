@@ -267,6 +267,7 @@ impl Pref {
         self.mines = Self::read_int(&key_guard, PrefKey::Mines)
             .unwrap_or(10)
             .clamp(MINMINES, MAXMINES) as i16;
+        // Note: The original code clamps the window position to 0..1024, but that does not account for modern displays.
         self.wnd_pos = POINT {
             x: Self::read_int(&key_guard, PrefKey::Xpos).unwrap_or(80) as i32,
             y: Self::read_int(&key_guard, PrefKey::Ypos).unwrap_or(80) as i32,
