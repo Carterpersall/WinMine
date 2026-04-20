@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
 
-use winsafe::co::{BN, DLGID, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
+use winsafe::co::{BN, CS, DLGID, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, INITCOMMONCONTROLSEX,
@@ -85,6 +85,8 @@ impl WinMineMainWindow {
             title: GAME_NAME,
             class_icon: gui::Icon::Id(ResourceId::Icon as u16),
             class_cursor: gui::Cursor::Idc(IDC::ARROW),
+            // `class_style` defaults to CS::DBLCLKS, and we don't want double-click support, so we set it to 0
+            class_style: unsafe { CS::from_raw(0) },
             class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
             style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
             menu: menu.leak(),
@@ -162,6 +164,9 @@ impl WinMineMainWindow {
     /// # Returns
     /// - `Ok(())` - If the window adjustment was successful.
     /// - `Err` - If an error occurred while adjusting the window.
+    /// # Notes
+    /// - The original code also accounted for the possibility of the menu bar taking up two rows,
+    ///   but this implementation assumes a single-row menu bar.
     pub(crate) fn adjust_window(&self, mut f_adjust: AdjustFlag) -> AnyResult<()> {
         // Calculate desired window size based on board dimensions and DPI scaling
         let (dx_window, dy_window) = {
@@ -413,17 +418,6 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_r_button_dbl_clk({
-            let self2 = self.clone();
-            move |r_btn| {
-                self2.state.write().handle_rbutton_down(
-                    self2.wnd.hwnd(),
-                    r_btn.vkey_code,
-                    r_btn.coords,
-                )
-            }
-        });
-
         self.wnd.on().wm_r_button_up({
             let self2 = self.clone();
             move |r_btn| {
@@ -450,17 +444,6 @@ impl WinMineMainWindow {
             }
         });
 
-        self.wnd.on().wm_m_button_dbl_clk({
-            let self2 = self.clone();
-            move |m_btn| {
-                self2.state.write().handle_mbutton_down(
-                    self2.wnd.hwnd(),
-                    m_btn.vkey_code,
-                    m_btn.coords,
-                )
-            }
-        });
-
         self.wnd.on().wm_m_button_up({
             let self2 = self.clone();
             move |_m_btn| {
@@ -472,17 +455,6 @@ impl WinMineMainWindow {
         });
 
         self.wnd.on().wm_l_button_down({
-            let self2 = self.clone();
-            move |l_btn| {
-                self2.state.write().handle_lbutton_down(
-                    self2.wnd.hwnd(),
-                    l_btn.vkey_code,
-                    l_btn.coords,
-                )
-            }
-        });
-
-        self.wnd.on().wm_l_button_dbl_clk({
             let self2 = self.clone();
             move |l_btn| {
                 self2.state.write().handle_lbutton_down(
