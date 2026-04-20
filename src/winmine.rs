@@ -360,6 +360,7 @@ impl WinMineMainWindow {
             let self2 = self.clone();
             move |key| {
                 // TODO: Some more key bindings could be added here
+                // Note: F1 and F2 are bound to menu items in the resource file
                 match key.vkey_code {
                     code if code == VK::F4 => {
                         // Toggle sound on/off when F4 is pressed
@@ -368,6 +369,7 @@ impl WinMineMainWindow {
                         // Update the menu bar to reflect the new sound state
                         self2.set_menu_bar()?;
                     }
+                    // TODO: Add F5 and F6 bindings for disabling/enabling the menu bar
                     code if code == VK::SHIFT => self2.state.write().toggle_xyzzy(),
                     _ => self2.state.write().handle_xyzzys_input(key.vkey_code),
                 }
@@ -539,7 +541,10 @@ impl WinMineMainWindow {
         self.wnd.on().wm_command_acc_menu(ResourceId::NewGame, {
             let self2 = self.clone();
             move || {
-                self2.start_game()?;
+                // Don't start a new game if a drag operation is in progress
+                if !self2.state.read().drag_active {
+                    self2.start_game()?;
+                }
                 Ok(())
             }
         });

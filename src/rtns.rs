@@ -265,7 +265,7 @@ pub(crate) struct GameState {
     /// - Shift is held _then_ left button is held down
     chord_active: bool,
     /// Indicates whether a drag operation is currently active
-    drag_active: bool,
+    pub drag_active: bool,
     /// Current progress of the XYZZY cheat code sequence.
     ///
     /// The value represents how many correct keys in a row have been entered, with the expected sequence being "XYZZY".
@@ -558,11 +558,12 @@ impl GameState {
         if !replace(&mut self.ignore_next_click, false)
             && self.game_status.contains(StatusFlag::Play)
         {
+            // If the left and right buttons are both down, and the middle button is not down, start a chord operation
             if btn & (MK::LBUTTON | MK::RBUTTON | MK::MBUTTON) == MK::LBUTTON | MK::RBUTTON {
-                // If the left and right buttons are both down, and the middle button is not down, start a chord operation
-                self.chord_active = true;
+                // Pop up the cell at the current cursor position by setting the cursor to a location off the board
                 self.handle_cell_drag(&hwnd.GetDC()?, usize::MAX - 3, usize::MAX - 3)?;
-                self.begin_primary_button_drag(&hwnd.GetDC()?)?;
+                self.chord_active = true;
+                // Update the cells around the cursor to show the chord state
                 self.handle_mouse_move(hwnd, btn, point)?;
             } else {
                 // Regular right-click: Cycle through blank -> flag -> question mark states depending on preferences
@@ -663,6 +664,9 @@ impl GameState {
                 // However, if a chord is already active, end the chord instead
                 self.chord_active = !self.chord_active;
             }
+
+            // TODO: Implement `SetCapture`/`ReleaseCapture` to allow dragging outside the window.
+            //       Implementation is waiting on a fix in winsafe
 
             // Is the game is active, start a drag operation
             if self.game_status.contains(StatusFlag::Play) {

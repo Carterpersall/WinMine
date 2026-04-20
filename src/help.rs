@@ -86,6 +86,7 @@ impl Help {
     fn get_help_path() -> &'static Vec<u16> {
         static EMBEDDED_CHM: &[u8] = include_bytes!("../help/winmine.chm");
         static HELP_PATH: LazyLock<Vec<u16>> = LazyLock::new(|| {
+            // TODO: Compare the bytes of the existing file with the embedded bytes to ensure it's the correct help file
             // Get the path to %TEMP%\winmine.chm and check if it already exists
             let mut path = std::env::temp_dir();
             path.push("winmine.chm");
