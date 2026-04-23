@@ -629,13 +629,13 @@ impl GameState {
     ) -> AnyResult<()> {
         // If the next click should be ignored of if the click was on the button and was handled, do nothing else
         if !self.ignore_next_click && !self.btn_click_handler(&hwnd.GetDC()?, point)? {
-            if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
-                // If the right button or the shift key is also down, start a chord operation
-                self.chord_active = true;
-            }
-
             // If the game is active, start a drag operation and handle the initial mouse move to update the cursor position
             if self.game_status.contains(StatusFlag::Play) {
+                if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
+                    // If the right button or the shift key is also down, start a chord operation
+                    self.chord_active = true;
+                }
+
                 self.begin_primary_button_drag(&hwnd.GetDC()?)?;
                 self.handle_mouse_move(hwnd, vkey, point)?;
             }
@@ -659,17 +659,16 @@ impl GameState {
     ) -> AnyResult<()> {
         // Ignore middle-clicks if the next click is to be ignored
         if !replace(&mut self.ignore_next_click, false) {
-            if vkey.has(MK::MBUTTON) {
-                // If the middle button is pressed, start a chord operation
-                // However, if a chord is already active, end the chord instead
-                self.chord_active = !self.chord_active;
-            }
-
-            // TODO: Implement `SetCapture`/`ReleaseCapture` to allow dragging outside the window.
-            //       Implementation is waiting on a fix in winsafe
-
             // Is the game is active, start a drag operation
             if self.game_status.contains(StatusFlag::Play) {
+                if vkey.has(MK::MBUTTON) {
+                    // If the middle button is pressed, start a chord operation
+                    self.chord_active = true;
+                }
+
+                // TODO: Implement `SetCapture`/`ReleaseCapture` to allow dragging outside the window.
+                //       Implementation is waiting on a fix in winsafe
+
                 self.begin_primary_button_drag(&hwnd.GetDC()?)?;
                 self.handle_mouse_move(hwnd, vkey, point)?;
             }
