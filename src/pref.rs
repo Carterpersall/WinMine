@@ -235,6 +235,9 @@ impl Pref {
     /// - Preferences are clamped to valid ranges where applicable.
     /// - If an error occurs while reading some specific preference,
     ///   the default value for that preference will be used instead.
+    /// - The original game also migrates preferences from older pre-registry versions of Windows,
+    ///   but this is not implemented here since that migration would only be relevant for users
+    ///   upgrading from a 16-bit version of Windows.
     pub(crate) fn read_preferences(&mut self) -> SysResult<()> {
         /// Default board height used if not set in the registry.
         const DEFHEIGHT: u32 = 9;

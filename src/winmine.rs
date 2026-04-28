@@ -395,6 +395,7 @@ impl WinMineMainWindow {
                 self2.wnd.hwnd().KillTimer(ID_TIMER)?;
 
                 // Write preferences if they have changed
+                // Note: This behavior differs from the original game
                 self2.state.write().prefs.write_preferences()?;
 
                 unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };

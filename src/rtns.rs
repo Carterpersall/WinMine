@@ -535,6 +535,8 @@ impl GameState {
             }
         } else if self.timer.elapsed > 0 {
             // If the user is not dragging but the game is active, track the mouse position for the XYZZY cheat code
+            // Note: The original game tracks mouse movement for the cheat code even if the game is not active,
+            //       but this causes incorrect results. So we only show the cheat if the game is active.
             self.handle_xyzzys_mouse(key, point)?;
         }
         Ok(())
