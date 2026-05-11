@@ -140,6 +140,9 @@ impl WinMineMainWindow {
                 .draw_button(self.wnd.hwnd().GetDC()?.deref(), state.btn_face_state)?;
         }
 
+        // Release mouse capture if it is currently held
+        self.state.write().mouse_capture = None;
+
         Ok(())
     }
 

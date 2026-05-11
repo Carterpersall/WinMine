@@ -8,7 +8,7 @@ use core::ops::Deref as _;
 use bitflags::bitflags;
 use strum_macros::VariantArray;
 use winsafe::co::{MK, WM};
-use winsafe::guard::ReleaseDCGuard;
+use winsafe::guard::{ReleaseCaptureGuard, ReleaseDCGuard};
 use winsafe::msg::WndMsg;
 use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT};
 
@@ -266,6 +266,8 @@ pub(crate) struct GameState {
     chord_active: bool,
     /// Indicates whether a drag operation is currently active
     pub drag_active: bool,
+    /// Stores the mouse capture guard when the mouse is captured during button drags.
+    pub mouse_capture: Option<ReleaseCaptureGuard>,
     /// Current progress of the XYZZY cheat code sequence.
     ///
     /// The value represents how many correct keys in a row have been entered, with the expected sequence being "XYZZY".
@@ -305,6 +307,7 @@ impl GameState {
             ignore_next_click: false,
             chord_active: false,
             drag_active: false,
+            mouse_capture: None,
             xyzzy_progress: 0,
             board_cells: [[BlockInfo {
                 bomb: false,
@@ -387,13 +390,13 @@ impl GameState {
 
     /// Handles clicks on the smiley face button.
     /// # Arguments
-    /// - `hdc`: Handle to the device context to draw on.
+    /// - `hwnd`: Handle to the window.
     /// - `point`: The coordinates of the mouse cursor.
     /// # Returns
     /// - `Ok(true)` - If the click was on the button and handled.
     /// - `Ok(false)` - If the click was not on the button.
     /// - `Err` - If an error occurred while handling the click.
-    fn btn_click_handler(&mut self, hdc: &ReleaseDCGuard, point: POINT) -> AnyResult<bool> {
+    fn btn_click_handler(&mut self, hwnd: &HWND, point: POINT) -> AnyResult<bool> {
         let rc = {
             RECT {
                 left: (self.grafix.wnd_pos.x - self.grafix.dims.button.cx) / 2,
@@ -406,8 +409,12 @@ impl GameState {
             return Ok(false);
         }
 
+        // Start capturing mouse input to track the button press even if the cursor moves outside the window
+        self.mouse_capture = Some(hwnd.SetCapture());
+
         self.btn_face_pressed = true;
-        self.grafix.draw_button(hdc, ButtonSprite::Down)?;
+        self.grafix
+            .draw_button(hwnd.GetDC()?.deref(), ButtonSprite::Down)?;
 
         Ok(true)
     }
@@ -441,16 +448,19 @@ impl GameState {
 
     /// Begins a primary button drag operation.
     /// # Arguments
-    /// - `hdc` - Handle to the device context, used to draw the button in the "caution" state to indicate the drag has started.
+    /// - `hwnd` - Handle to the window, used to set the mouse capture and draw the button.
     /// # Returns
     /// - `Ok(())` - If the drag operation was successfully initiated and the button was drawn.
     /// - `Err` - If an error occurred while getting the device context.
-    fn begin_primary_button_drag(&mut self, hdc: &ReleaseDCGuard) -> AnyResult<()> {
+    fn begin_primary_button_drag(&mut self, hwnd: &HWND) -> AnyResult<()> {
+        // Capture the mouse to track the drag operation even if the cursor moves outside the window
+        self.mouse_capture = Some(hwnd.SetCapture());
         self.drag_active = true;
         // Set the cursor position to a location off the board to prevent the previous click position from also registering
         self.cursor_x = usize::MAX - 1;
         self.cursor_y = usize::MAX - 1;
-        self.grafix.draw_button(hdc, ButtonSprite::Caution)?;
+        self.grafix
+            .draw_button(hwnd.GetDC()?.deref(), ButtonSprite::Caution)?;
         Ok(())
     }
 
@@ -467,6 +477,10 @@ impl GameState {
         }
 
         self.drag_active = false;
+
+        // Release mouse capture if it is currently held
+        self.mouse_capture = None;
+
         if self.game_status.contains(StatusFlag::Play) {
             // Check if the cursor is within the valid range of the board
             if self.in_range(self.cursor_x, self.cursor_y) {
@@ -630,7 +644,7 @@ impl GameState {
         point: POINT,
     ) -> AnyResult<()> {
         // If the next click should be ignored of if the click was on the button and was handled, do nothing else
-        if !self.ignore_next_click && !self.btn_click_handler(&hwnd.GetDC()?, point)? {
+        if !self.ignore_next_click && !self.btn_click_handler(hwnd, point)? {
             // If the game is active, start a drag operation and handle the initial mouse move to update the cursor position
             if self.game_status.contains(StatusFlag::Play) {
                 if vkey.has(MK::RBUTTON) || vkey.has(MK::SHIFT) {
@@ -638,7 +652,7 @@ impl GameState {
                     self.chord_active = true;
                 }
 
-                self.begin_primary_button_drag(&hwnd.GetDC()?)?;
+                self.begin_primary_button_drag(hwnd)?;
                 self.handle_mouse_move(hwnd, vkey, point)?;
             }
         }
@@ -668,10 +682,7 @@ impl GameState {
                     self.chord_active = true;
                 }
 
-                // TODO: Implement `SetCapture`/`ReleaseCapture` to allow dragging outside the window.
-                //       Implementation is waiting on a fix in winsafe
-
-                self.begin_primary_button_drag(&hwnd.GetDC()?)?;
+                self.begin_primary_button_drag(hwnd)?;
                 self.handle_mouse_move(hwnd, vkey, point)?;
             }
         }
