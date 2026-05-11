@@ -633,7 +633,7 @@ impl WinMineMainWindow {
                 self2
                     .state
                     .read()
-                    .draw_screen(&*self2.wnd.hwnd().GetDC()?)?;
+                    .draw_screen(self2.wnd.hwnd().GetDC()?.deref())?;
                 self2.set_menu_bar()?;
                 Ok(())
             }

@@ -86,7 +86,6 @@ impl Help {
     fn get_help_path() -> &'static Vec<u16> {
         static EMBEDDED_CHM: &[u8] = include_bytes!("../help/winmine.chm");
         static HELP_PATH: LazyLock<Vec<u16>> = LazyLock::new(|| {
-            // TODO: Compare the bytes of the existing file with the embedded bytes to ensure it's the correct help file
             // Get the path to %TEMP%\winmine.chm and check if it already exists
             let mut path = std::env::temp_dir();
             path.push("winmine.chm");
@@ -105,7 +104,24 @@ impl Help {
                     };
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // If the file already exists, we assume it's the correct help file and do nothing
+                    // If the file already exists, check if it's the correct help file and replace it if it isn't
+                    match std::fs::read(&path) {
+                        Ok(existing_bytes) => {
+                            if existing_bytes != EMBEDDED_CHM {
+                                eprintln!(
+                                    "Existing help file in temp directory does not match embedded help file. Overwriting."
+                                );
+                                if let Err(err) = std::fs::write(&path, EMBEDDED_CHM) {
+                                    eprintln!(
+                                        "Failed to overwrite help file in temp directory: {err}"
+                                    );
+                                }
+                            }
+                        }
+                        Err(err) => {
+                            eprintln!("Failed to read existing help file in temp directory: {err}");
+                        }
+                    }
                 }
                 Err(e) => {
                     eprintln!("Failed to create help file in temp directory: {e}");

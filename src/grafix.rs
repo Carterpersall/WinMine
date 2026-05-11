@@ -560,7 +560,7 @@ impl GrafixState {
 /// - `Ok(DeleteObjectGuard<HBITMAP>)` - A guard containing the newly created resampled bitmap, which will be automatically deleted when dropped.
 /// - `Err` - If any step of the bitmap creation or resampling process fails.
 fn create_resampled_bitmap(
-    hdc: &HDC,
+    hdc: &ReleaseDCGuard,
     src_bmp: &HBITMAP,
     src_w: i32,
     src_h: i32,
@@ -1152,7 +1152,7 @@ impl GrafixState {
     /// - This function is about 3x slower than the native `SetDIBitsToDevice` (6µs vs 20µs).
     /// - If performance becomes an issue, open an issue in WinSafe asking for a safe wrapper around `SetDIBitsToDevice`.
     fn set_dib_bits_to_device(
-        hdc: &HDC,
+        hdc: &ReleaseDCGuard,
         hbm: &HBITMAP,
         resource: &[u8],
         pixel_offset: usize,
