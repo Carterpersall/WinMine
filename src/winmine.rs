@@ -85,9 +85,7 @@ impl WinMineMainWindow {
             title: GAME_NAME,
             class_icon: gui::Icon::Id(ResourceId::Icon as u16),
             class_cursor: gui::Cursor::Idc(IDC::ARROW),
-            // `class_style` defaults to CS::DBLCLKS, and we don't want double-click support, so we set it to 0
-            // TODO: Make an issue in WinSafe about the lack of a way to safely specify no class styles
-            class_style: unsafe { CS::from_raw(0) },
+            class_style: CS::NoValue,
             class_bg_brush: gui::Brush::Handle(HBRUSH::GetStockObject(STOCK_BRUSH::LTGRAY)?),
             style: WS::OVERLAPPED | WS::MINIMIZEBOX | WS::CAPTION | WS::SYSMENU,
             menu: menu.leak(),

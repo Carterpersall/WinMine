@@ -23,7 +23,7 @@ strum_macros = "0.28"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "e3c8dad6223ab4db72b5348c9ac9e24ef107b2a5"
+rev = "99bf1d4387ba47ec5a6c34f18223480b5cd68ead"
 features = [
 	"advapi",
 	"comctl",
