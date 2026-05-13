@@ -84,16 +84,22 @@ pub(crate) enum ResourceId {
     /// Main application icon.
     Icon = 100,
     /// Bitmap resource for colored blocks.
+    #[expect(unused)]
     BlocksBmp = 410,
     /// Bitmap resource for black-and-white blocks.
+    #[expect(unused)]
     BWBlocksBmp = 411,
     /// Bitmap resource for colored LED display.
+    #[expect(unused)]
     LedBmp = 420,
     /// Bitmap resource for black-and-white LED display.
+    #[expect(unused)]
     BWLedBmp = 421,
     /// Bitmap resource for colored buttons.
+    #[expect(unused)]
     ButtonBmp = 430,
     /// Bitmap resource for black-and-white buttons.
+    #[expect(unused)]
     BWButtonBmp = 431,
     /// Sound resource for tick sound.
     TuneTick = 432,

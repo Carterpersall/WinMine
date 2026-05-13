@@ -284,7 +284,9 @@ impl WinMineMainWindow {
 
                     // Initialize graphics resources based on the current DPI and color settings
                     let color = state.prefs.color;
-                    state.grafix.load_bitmaps(self2.wnd.hwnd(), color)?;
+                    state
+                        .grafix
+                        .load_bitmaps(&self2.wnd.hwnd().GetDC()?, color)?;
 
                     // Reset the game board to a blank state
                     state.clear_field();
@@ -314,7 +316,7 @@ impl WinMineMainWindow {
                     .state
                     .write()
                     .grafix
-                    .load_bitmaps(self2.wnd.hwnd(), color)?;
+                    .load_bitmaps(&self2.wnd.hwnd().GetDC()?, color)?;
 
                 // Adjust the window size and position based on the new DPI
                 self2.adjust_window(AdjustFlag::ResizeAndRedraw)?;
@@ -625,7 +627,7 @@ impl WinMineMainWindow {
                     .state
                     .write()
                     .grafix
-                    .load_bitmaps(self2.wnd.hwnd(), color)?;
+                    .load_bitmaps(&self2.wnd.hwnd().GetDC()?, color)?;
 
                 // Repaint immediately so toggling color off updates without restarting.
                 self2

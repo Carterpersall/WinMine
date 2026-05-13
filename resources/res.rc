@@ -3,13 +3,6 @@
 
 ID_ICON_MAIN    ICON bmp\winmine.ico
 
-ID_BMP_BLOCKS BITMAP bmp\blocks.bmp
-ID_BAW_BLOCKS BITMAP bmp\blocksbw.bmp
-ID_BMP_LED    BITMAP bmp\led.bmp
-ID_BAW_LED    BITMAP bmp\ledbw.bmp
-ID_BMP_BUTTON BITMAP bmp\button.bmp
-ID_BAW_BUTTON BITMAP bmp\buttonbw.bmp
-
 ID_TUNE_TICK  WAVE   bmp\tick.wav
 ID_TUNE_WON   WAVE   bmp\win.wav
 ID_TUNE_LOST  WAVE   bmp\explode.wav

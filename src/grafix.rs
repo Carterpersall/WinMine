@@ -6,16 +6,16 @@ use core::ops::Index;
 use strum_macros::VariantArray;
 use windows_sys::Win32::Graphics::Gdi::{GDI_ERROR, GetLayout, SetLayout};
 
-use winsafe::co::{BI, DIB, LAYOUT, PS, ROP, RT, STRETCH_MODE};
+use winsafe::co::{BI, DIB, LAYOUT, PS, ROP, STRETCH_MODE};
 use winsafe::guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard, SelectObjectGuard};
 use winsafe::{
-    AnyResult, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HINSTANCE, HPEN, HRSRC,
-    HRSRCMEM, HWND, IdStr, POINT, RGBQUAD, RtStr, SIZE,
+    AnyResult, BITMAPFILEHEADER, BITMAPINFO, BITMAPINFOHEADER, COLORREF, HBITMAP, HDC, HPEN, POINT,
+    RGBQUAD, SIZE,
 };
 
 use crate::globals::BASE_DPI;
 use crate::rtns::{BlockCell, BlockInfo, MAX_X_BLKS, MAX_Y_BLKS};
-use crate::util::{ResourceId, impl_index_enum};
+use crate::util::impl_index_enum;
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.
@@ -547,6 +547,99 @@ impl GrafixState {
     }
 }
 
+/// Parsed data for a bitmap sprite sheet.
+struct BmpSheet {
+    /// The DIB data starting at the BITMAPINFOHEADER, which contains the header, color table (if present), and pixel data.
+    dib: &'static [u8],
+    /// Byte offset from the start of the DIB to the pixel data, which is used to locate the pixel data within the DIB slice.
+    pixel_offset: usize,
+    /// Number of bits per pixel for the bitmap, which is used to calculate the size of each sprite and the offsets to individual sprites within the DIB.
+    bit_count: u16,
+}
+
+/// A single entry in a bitmap's color palette.
+struct PaletteEntry {
+    /// The red component of the color.
+    red: u8,
+    /// The green component of the color.
+    green: u8,
+    /// The blue component of the color.
+    blue: u8,
+}
+
+impl BmpSheet {
+    /// Converts a bitmap file buffer into a DIB slice and metadata.
+    /// # Arguments
+    /// - `bmp` - A byte slice containing the entire bitmap file data, including the `BITMAPFILEHEADER`, `BITMAPINFOHEADER`, color table (if present), and pixel data.
+    /// # Returns
+    /// - A `BmpSheet` struct containing a slice of the DIB data starting at the `BITMAPINFOHEADER`, the byte offset to the pixel data within that slice, and the bits per pixel of the bitmap.
+    /// # Panics
+    /// - If the bitmap file is too small to contain the required headers.
+    /// - If the bitmap file header does not start with the "BM" signature, indicating it is not a valid bitmap file.
+    /// - If the file size specified in the header is larger than the actual buffer size.
+    /// - If the pixel data offset specified in the header is out of bounds of the buffer.
+    /// - If the DIB header size is smaller than the size of `BITMAPINFOHEADER`.
+    /// - If the DIB header extends beyond the bounds of the DIB slice.
+    /// - If the pixel data offset precedes the end of the DIB header, which would indicate an invalid bitmap structure.
+    const fn from_bytes(bmp: &'static [u8]) -> Self {
+        let file_header_len = size_of::<BITMAPFILEHEADER>();
+        let info_header_len = size_of::<BITMAPINFOHEADER>();
+        if bmp.len() < file_header_len + info_header_len {
+            panic!("BMP file is too small to contain headers");
+        }
+
+        // Verify the BMP signature "BM" at the start of the file header, which indicates a valid BMP file
+        if bmp[0] != b'B' || bmp[1] != b'M' {
+            panic!("BMP file header is missing BM signature");
+        }
+
+        // Get the file size from the header
+        let bf_size = u32::from_le_bytes([bmp[2], bmp[3], bmp[4], bmp[5]]) as usize;
+        // Verify that the file size specified in the header is not larger than the actual buffer size, which would indicate a malformed or truncated BMP file
+        // Note: Some BMP files may set this field to 0, so we only enforce the upper bound if it is non-zero
+        if bf_size != 0 && bf_size > bmp.len() {
+            panic!("BMP file size field is larger than the buffer");
+        }
+
+        // Get the pixel data offset, which indicates where the pixel data starts within the file
+        let bf_off_bits = u32::from_le_bytes([bmp[10], bmp[11], bmp[12], bmp[13]]) as usize;
+        // Verify that the pixel data offset is within the bounds of the buffer and comes after the file header
+        if bf_off_bits < file_header_len || bf_off_bits > bmp.len() {
+            panic!("BMP pixel data offset is out of bounds");
+        }
+
+        // Get the DIB slice starting after the BITMAPINFOHEADER, which contains the header, color table (if present), and pixel data
+        let dib = &bmp.split_at(file_header_len).1;
+        let header_len = u32::from_le_bytes([dib[0], dib[1], dib[2], dib[3]]) as usize;
+        // Validate the DIB header size and structure to ensure it is a well-formed bitmap
+        if header_len < info_header_len {
+            panic!("Bitmap header is smaller than BITMAPINFOHEADER");
+        }
+        if header_len > dib.len() {
+            panic!("Bitmap header extends beyond the DIB data");
+        }
+        if bf_off_bits < file_header_len + header_len {
+            panic!("BMP pixel data offset precedes the header");
+        }
+
+        // Compute the byte offset from the start of the DIB slice to the pixel data, which is used to locate the pixel data within the DIB slice
+        let pixel_offset = bf_off_bits - file_header_len;
+
+        // Get the bits per pixel from the DIB header
+        let bit_count = u16::from_le_bytes([dib[14], dib[15]]);
+        // Bitmaps should only have 1 or 4 bits per pixel in this application
+        if bit_count != 1 && bit_count != 4 {
+            panic!("Unsupported pixel size: bits/pixel must be 1 or 4");
+        }
+
+        Self {
+            dib,
+            pixel_offset,
+            bit_count,
+        }
+    }
+}
+
 /// Create a resampled bitmap using area averaging to avoid aliasing artifacts when using fractional scaling.
 /// This function reads the source bitmap bits, performs area averaging, and creates a new bitmap with the resampled data.
 /// # Arguments
@@ -884,30 +977,38 @@ impl GrafixState {
     }
 
     /// Load the bitmap resources and prepare cached DCs for rendering.
-    ///
-    /// TODO: Should we use `include_bytes!` instead of loading from resources?
     /// # Arguments
-    /// - `hwnd` - Handle to the main window.
+    /// - `hdc` - The device context used for creating compatible DCs and bitmaps.
     /// - `color` - Whether to load color or monochrome resources.
     /// # Returns
     /// - `Ok(())` - If the bitmaps were loaded and cached successfully
     /// - `Err` - If loading any of the bitmap resources or creating cached DCs failed
-    pub(crate) fn load_bitmaps(&mut self, hwnd: &HWND, color: bool) -> AnyResult<()> {
-        let hinst = hwnd.hinstance();
-        let (res_blks, h_blks, res_led, h_led, res_btn, h_btn);
-        if color {
-            (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BlocksBmp)?;
-            (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::LedBmp)?;
-            (res_btn, h_btn) = Self::load_bitmap_resource(&hinst, ResourceId::ButtonBmp)?;
-        } else {
-            (res_blks, h_blks) = Self::load_bitmap_resource(&hinst, ResourceId::BWBlocksBmp)?;
-            (res_led, h_led) = Self::load_bitmap_resource(&hinst, ResourceId::BWLedBmp)?;
-            (res_btn, h_btn) = Self::load_bitmap_resource(&hinst, ResourceId::BWButtonBmp)?;
-        }
+    pub(crate) fn load_bitmaps(&mut self, hdc: &ReleaseDCGuard, color: bool) -> AnyResult<()> {
+        // The bitmaps are stored as BMP files in the binary
+        const BLOCKS_BMP: &[u8] = include_bytes!("../bmp/blocks.bmp");
+        const BLOCKS_BW_BMP: &[u8] = include_bytes!("../bmp/blocksbw.bmp");
+        const LED_BMP: &[u8] = include_bytes!("../bmp/led.bmp");
+        const LED_BW_BMP: &[u8] = include_bytes!("../bmp/ledbw.bmp");
+        const BUTTON_BMP: &[u8] = include_bytes!("../bmp/button.bmp");
+        const BUTTON_BW_BMP: &[u8] = include_bytes!("../bmp/buttonbw.bmp");
 
-        let dib_blks = hinst.LockResource(&res_blks, &h_blks)?;
-        let dib_led = hinst.LockResource(&res_led, &h_led)?;
-        let dib_button = hinst.LockResource(&res_btn, &h_btn)?;
+        // Parse the BMP files into DIB slices and metadata at compile time
+        // and select the appropriate resources based on the color flag
+        let blks = if color {
+            const { BmpSheet::from_bytes(BLOCKS_BMP) }
+        } else {
+            const { BmpSheet::from_bytes(BLOCKS_BW_BMP) }
+        };
+        let leds = if color {
+            const { BmpSheet::from_bytes(LED_BMP) }
+        } else {
+            const { BmpSheet::from_bytes(LED_BW_BMP) }
+        };
+        let buttons = if color {
+            const { BmpSheet::from_bytes(BUTTON_BMP) }
+        } else {
+            const { BmpSheet::from_bytes(BUTTON_BW_BMP) }
+        };
 
         self.h_gray_pen = if color {
             HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(128, 128, 128))?.into()
@@ -917,24 +1018,21 @@ impl GrafixState {
 
         self.h_white_pen = HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(255, 255, 255))?.into();
 
-        let header = size_of::<BITMAPINFOHEADER>() + (if color { 16 } else { 2 }) * 4;
-
-        let cb_blk = Self::cb_bitmap(color, DX_BLK_96, DY_BLK_96);
+        // TODO: Make these const.
+        let cb_blk = Self::cb_bitmap(blks.bit_count, DX_BLK_96, DY_BLK_96);
         for (i, off) in self.rg_dib_off.iter_mut().enumerate() {
-            *off = header + i * cb_blk;
+            *off = blks.pixel_offset + i * cb_blk;
         }
 
-        let cb_led = Self::cb_bitmap(color, DX_LED_96, DY_LED_96);
+        let cb_led = Self::cb_bitmap(leds.bit_count, DX_LED_96, DY_LED_96);
         for (i, off) in self.rg_dib_led_off.iter_mut().enumerate() {
-            *off = header + i * cb_led;
+            *off = leds.pixel_offset + i * cb_led;
         }
 
-        let cb_button = Self::cb_bitmap(color, DX_BUTTON_96, DY_BUTTON_96);
+        let cb_button = Self::cb_bitmap(buttons.bit_count, DX_BUTTON_96, DY_BUTTON_96);
         for (i, off) in self.rg_dib_button_off.iter_mut().enumerate() {
-            *off = header + i * cb_button;
+            *off = buttons.pixel_offset + i * cb_button;
         }
-
-        let hdc = hwnd.GetDC()?;
 
         // Build a dedicated compatible DC + bitmap for every block sprite to speed up drawing.
         //
@@ -950,18 +1048,16 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC
             Self::set_dib_bits_to_device(
-                &hdc,
+                hdc,
                 &base_bmp,
-                dib_blks,
+                blks.dib,
                 self.rg_dib_off[i],
                 cb_blk,
                 DY_BLK_96,
             )?;
 
             let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
-                create_resampled_bitmap(
-                    &hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h,
-                )?
+                create_resampled_bitmap(hdc, &base_bmp, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h)?
             } else {
                 base_bmp
             };
@@ -974,9 +1070,9 @@ impl GrafixState {
             let dc_guard = hdc.CreateCompatibleDC()?;
             let bmp_guard = hdc.CreateCompatibleBitmap(DX_LED_96, DY_LED_96)?;
             Self::set_dib_bits_to_device(
-                &hdc,
+                hdc,
                 &bmp_guard,
-                dib_led,
+                leds.dib,
                 self.rg_dib_led_off[i],
                 cb_led,
                 DY_LED_96,
@@ -996,9 +1092,9 @@ impl GrafixState {
 
             // Paint the sprite into the 96-DPI bitmap before selecting it into the cache DC.
             Self::set_dib_bits_to_device(
-                &hdc,
+                hdc,
                 &base_bmp,
-                dib_button,
+                buttons.dib,
                 self.rg_dib_button_off[i],
                 cb_button,
                 DY_BUTTON_96,
@@ -1006,7 +1102,7 @@ impl GrafixState {
 
             let final_bmp = if dst_btn_w != DX_BUTTON_96 || dst_btn_h != DY_BUTTON_96 {
                 create_resampled_bitmap(
-                    &hdc,
+                    hdc,
                     &base_bmp,
                     DX_BUTTON_96,
                     DY_BUTTON_96,
@@ -1023,20 +1119,6 @@ impl GrafixState {
         Ok(())
     }
 
-    /// Load a bitmap resource from the application resources.
-    /// # Arguments
-    /// - `hinst` - The instance handle of the application, used to access the resources.
-    /// - `id` - The bitmap resource ID to load.
-    /// # Returns
-    /// - `Ok((HRSRC, HRSRCMEM))` - The located resource and loaded resource memory handles.
-    /// - `Err` - If finding or loading the resource fails.
-    fn load_bitmap_resource(hinst: &HINSTANCE, id: ResourceId) -> AnyResult<(HRSRC, HRSRCMEM)> {
-        // The bitmap resources are stored in the application resources as DIBs (Device Independent Bitmaps).
-        let res_info = hinst.FindResource(IdStr::Id(id as u16), RtStr::Rt(RT::BITMAP))?;
-        let res_loaded = hinst.LoadResource(&res_info)?;
-        Ok((res_info, res_loaded))
-    }
-
     /// Compute validated values for `SetDIBitsToDevice` from a locked bitmap resource.
     /// # Arguments
     /// - `resource` - The locked bitmap resource data.
@@ -1045,25 +1127,25 @@ impl GrafixState {
     /// # Returns
     /// - `Ok((bits, bmi_header, palette))`:
     ///     - `bits` - A slice of the raw pixel data for the bitmap, formatted according to the `BITMAPINFOHEADER` and palette.
-    ///     - `bmi_header` - A reference to the `BITMAPINFOHEADER` structure at the start of the resource, containing metadata about the bitmap format.
-    ///     - `palette` - A slice of `RGBQUAD` entries representing the color palette for indexed bitmaps, if applicable. This will be an empty slice for non-indexed bitmaps.
+    ///     - `bmi_header` - A copy of the `BITMAPINFOHEADER` structure at the start of the resource, containing metadata about the bitmap format.
+    ///     - `palette` - A vector of palette entries for indexed bitmaps. This will be empty for non-indexed bitmaps.
     /// - `Err` - If the resource data is invalid, such as being too small to contain the required headers, if the pixel data section is out of bounds, or if the color palette information is inconsistent.
+    ///
+    /// TODO: Can this be evaluated at compile time?
     fn dib_pointers(
         resource: &[u8],
         pixel_offset: usize,
         pixel_len: usize,
-    ) -> AnyResult<(&[u8], &BITMAPINFOHEADER, &[RGBQUAD])> {
+    ) -> AnyResult<(&[u8], BITMAPINFOHEADER, Vec<PaletteEntry>)> {
         // Validate that the resource is large enough to contain the BITMAPINFOHEADER
         if resource.len() < size_of::<BITMAPINFOHEADER>() {
             return Err("Bitmap resource is smaller than BITMAPINFOHEADER".into());
         }
 
-        // SAFETY: We just verified that the resource is large enough to contain a BITMAPINFOHEADER
-        //         and the header is at the start of the resource, so this cast is safe.
-        let bmi_bits = resource.as_ptr().cast::<BITMAPINFOHEADER>();
-        let bmi_header = unsafe { &*bmi_bits };
+        // SAFETY: We just verified that the resource is large enough to contain a BITMAPINFOHEADER.
+        let bmi_header = unsafe { (resource.as_ptr() as *const BITMAPINFOHEADER).read_unaligned() };
 
-        // Determine the palatte length (number of RGBQUAD entries)
+        // Determine the palette length (number of RGBQUAD entries)
         let bit_count = usize::from(bmi_header.biBitCount);
         let palette_len = match bmi_header.biClrUsed {
             0 if bit_count <= 8 => 1usize << bit_count,
@@ -1073,10 +1155,20 @@ impl GrafixState {
             }
         };
 
+        // Compute header length and validate it is within the resource bounds
+        let header_len =
+            u32::from_le_bytes([resource[0], resource[1], resource[2], resource[3]]) as usize;
+        if header_len < size_of::<BITMAPINFOHEADER>() {
+            return Err("Bitmap header is smaller than BITMAPINFOHEADER".into());
+        }
+        if header_len > resource.len() {
+            return Err("Bitmap header extends beyond the DIB data".into());
+        }
+
         // Compute palette byte range and validate it is within the resource bounds
-        let palette_offset = size_of::<BITMAPINFOHEADER>();
+        let palette_offset = header_len;
         let palette_bytes = palette_len
-            .checked_mul(size_of::<RGBQUAD>())
+            .checked_mul(4)
             .ok_or("Bitmap palette size overflow")?;
         let palette_end = palette_offset
             .checked_add(palette_bytes)
@@ -1111,20 +1203,20 @@ impl GrafixState {
         //   following the BITMAPINFOHEADER structure. The color table consists of an array of RGBQUAD values. The size of
         //   the array is given by the biClrUsed member. If biClrUsed is zero, the array contains the maximum number of colors
         //   for the given bitdepth; that is, 2^biBitCount colors.
-        let palette: &[RGBQUAD] = if palette_len == 0 {
-            &[][..] // &[RGBQUAD; 0]
+        let palette = if palette_len == 0 {
+            Vec::new()
         } else {
-            // Convert a pointer to the palette into a safe slice reference (&[RGBQUAD; palette_len])
-            // SAFETY: We just verified that the resource is large enough to contain the palette,
-            //         and the palette starts immediately after the BITMAPINFOHEADER, so this cast should be safe.
-            unsafe {
-                core::slice::from_raw_parts(
-                    resource[palette_offset..palette_end]
-                        .as_ptr()
-                        .cast::<RGBQUAD>(),
-                    palette_len,
-                )
+            let mut entries = Vec::with_capacity(palette_len);
+            let mut cursor = palette_offset;
+            for _ in 0..palette_len {
+                entries.push(PaletteEntry {
+                    red: resource[cursor + 2],
+                    green: resource[cursor + 1],
+                    blue: resource[cursor],
+                });
+                cursor += 4;
             }
+            entries
         };
 
         let bits_slice = &resource[pixel_offset..end];
@@ -1234,7 +1326,7 @@ impl GrafixState {
                         let color = palette
                             .get(idx)
                             .ok_or("Monochrome bitmap palette index out of bounds")?;
-                        (color.rgbBlue, color.rgbGreen, color.rgbRed, 0)
+                        (color.blue, color.green, color.red, 0)
                     }
                     4 => {
                         // For 4bpp, each byte represents 2 pixels, so we need to extract the relevant nibble (4 bits) and use it as an index into the palette
@@ -1245,7 +1337,7 @@ impl GrafixState {
                         let color = palette
                             .get(usize::from(idx))
                             .ok_or("4bpp bitmap palette index out of bounds")?;
-                        (color.rgbBlue, color.rgbGreen, color.rgbRed, 0)
+                        (color.blue, color.green, color.red, 0)
                     }
                     8 => {
                         // For 8bpp, each byte directly represents a pixel and is used as an index into the palette to get the color
@@ -1253,7 +1345,7 @@ impl GrafixState {
                         let color = palette
                             .get(idx)
                             .ok_or("8bpp bitmap palette index out of bounds")?;
-                        (color.rgbBlue, color.rgbGreen, color.rgbRed, 0)
+                        (color.blue, color.green, color.red, 0)
                     }
                     24 => {
                         // For 24bpp, each pixel is represented by 3 bytes in BGR order (blue, green, red), so we can read them directly without a palette
@@ -1301,19 +1393,16 @@ impl GrafixState {
         Ok(scan_lines)
     }
 
-    /// Calculate the byte size of a bitmap given its dimensions and color mode
+    /// Calculate the byte size of a bitmap given its dimensions and bit depth
     /// # Arguments
-    /// - `color_on` - Whether color mode is enabled
+    /// - `bit_count` - Bits per pixel
     /// - `x` - Width of the bitmap in pixels
     /// - `y` - Height of the bitmap in pixels
     /// # Returns
     /// - Size in bytes of the bitmap data
-    const fn cb_bitmap(color_on: bool, x: i32, y: i32) -> usize {
+    const fn cb_bitmap(bit_count: u16, x: i32, y: i32) -> usize {
         // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
-        let mut bits = x;
-        if color_on {
-            bits *= 4;
-        }
+        let bits = x * bit_count as i32;
         let stride = ((bits + 31) >> 5) << 2;
         (y * stride) as usize
     }
