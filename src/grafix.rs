@@ -1018,18 +1018,22 @@ impl GrafixState {
 
         self.h_white_pen = HPEN::CreatePen(PS::SOLID, 1, COLORREF::from_rgb(255, 255, 255))?.into();
 
-        // TODO: Make these const.
-        let cb_blk = Self::cb_bitmap(blks.bit_count, DX_BLK_96, DY_BLK_96);
+        // Calculate the byte offsets to each sprite within the DIB based on the bits per pixel and sprite dimensions.
+        let cb_blk =
+            (DY_BLK_96 * ((((DX_BLK_96 * blks.bit_count as i32) + 31) >> 5) << 2)) as usize;
         for (i, off) in self.rg_dib_off.iter_mut().enumerate() {
             *off = blks.pixel_offset + i * cb_blk;
         }
 
-        let cb_led = Self::cb_bitmap(leds.bit_count, DX_LED_96, DY_LED_96);
+        let cb_led =
+            (DY_LED_96 * ((((DX_LED_96 * leds.bit_count as i32) + 31) >> 5) << 2)) as usize;
         for (i, off) in self.rg_dib_led_off.iter_mut().enumerate() {
             *off = leds.pixel_offset + i * cb_led;
         }
 
-        let cb_button = Self::cb_bitmap(buttons.bit_count, DX_BUTTON_96, DY_BUTTON_96);
+        let cb_button = (DY_BUTTON_96
+            * ((((DX_BUTTON_96 * buttons.bit_count as i32) + 31) >> 5) << 2))
+            as usize;
         for (i, off) in self.rg_dib_button_off.iter_mut().enumerate() {
             *off = buttons.pixel_offset + i * cb_button;
         }
@@ -1130,8 +1134,6 @@ impl GrafixState {
     ///     - `bmi_header` - A copy of the `BITMAPINFOHEADER` structure at the start of the resource, containing metadata about the bitmap format.
     ///     - `palette` - A vector of palette entries for indexed bitmaps. This will be empty for non-indexed bitmaps.
     /// - `Err` - If the resource data is invalid, such as being too small to contain the required headers, if the pixel data section is out of bounds, or if the color palette information is inconsistent.
-    ///
-    /// TODO: Can this be evaluated at compile time?
     fn dib_pointers(
         resource: &[u8],
         pixel_offset: usize,
@@ -1391,19 +1393,5 @@ impl GrafixState {
             return Err("Failed to set DIB bits on destination bitmap".into());
         }
         Ok(scan_lines)
-    }
-
-    /// Calculate the byte size of a bitmap given its dimensions and bit depth
-    /// # Arguments
-    /// - `bit_count` - Bits per pixel
-    /// - `x` - Width of the bitmap in pixels
-    /// - `y` - Height of the bitmap in pixels
-    /// # Returns
-    /// - Size in bytes of the bitmap data
-    const fn cb_bitmap(bit_count: u16, x: i32, y: i32) -> usize {
-        // Converts pixel sizes into the byte counts the SetDIBitsToDevice calls expect.
-        let bits = x * bit_count as i32;
-        let stride = ((bits + 31) >> 5) << 2;
-        (y * stride) as usize
     }
 }
