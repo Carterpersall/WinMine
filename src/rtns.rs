@@ -907,7 +907,7 @@ impl GameState {
         self.board_height = self.prefs.height - 1;
 
         // Reset the board to a blank state
-        self.clear_field();
+        self.board_cells = [[BlockInfo::from(BlockCell::BlankUp); MAX_Y_BLKS]; MAX_X_BLKS];
         self.btn_face_state = ButtonSprite::Happy;
         self.timer.reset();
 
@@ -1057,14 +1057,6 @@ impl GameState {
             BlockCell::Blank => BlockCell::BlankUp,
             _ => blk,
         };
-    }
-
-    /// Reset the game field to its initial blank state.
-    pub(crate) fn clear_field(&mut self) {
-        self.board_cells
-            .iter_mut()
-            .flatten()
-            .for_each(|b| *b = BlockInfo::from(BlockCell::BlankUp));
     }
 
     /// Handle the per-second game timer tick.

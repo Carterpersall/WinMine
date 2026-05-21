@@ -287,9 +287,6 @@ impl WinMineMainWindow {
                     state
                         .grafix
                         .load_bitmaps(&self2.wnd.hwnd().GetDC()?, color)?;
-
-                    // Reset the game board to a blank state
-                    state.clear_field();
                 }
 
                 // Update the menu bar and start a new game
