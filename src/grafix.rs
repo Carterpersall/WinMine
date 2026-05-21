@@ -1026,25 +1026,25 @@ impl GrafixState {
         // `resample_32bpp_buffer` into a cached, DPI-sized bitmap.
         let dst_blk_w = self.dims.block.cx;
         let dst_blk_h = self.dims.block.cy;
-        for i in 0..I_BLK_MAX {
+        for (blk, blk_cache) in blks.iter().zip(self.mem_blk_cache.iter_mut()) {
             let dc_guard = hdc.CreateCompatibleDC()?;
 
             let final_bmp = if dst_blk_w != DX_BLK_96 || dst_blk_h != DY_BLK_96 {
                 let dst_buf =
-                    resample_32bpp_buffer(&blks[i], DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h)?;
+                    resample_32bpp_buffer(blk, DX_BLK_96, DY_BLK_96, dst_blk_w, dst_blk_h)?;
                 create_bitmap_from_32bpp(hdc, dst_blk_w, dst_blk_h, &dst_buf)?
             } else {
-                create_bitmap_from_32bpp(hdc, DX_BLK_96, DY_BLK_96, &blks[i])?
+                create_bitmap_from_32bpp(hdc, DX_BLK_96, DY_BLK_96, blk)?
             };
 
-            self.mem_blk_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &final_bmp)?);
+            *blk_cache = Some(CachedBitmapGuard::new(dc_guard, &final_bmp)?);
         }
 
         // Cache LED digits in compatible bitmaps.
-        for i in 0..I_LED_MAX {
+        for (led, led_cache) in leds.iter().zip(self.mem_led_cache.iter_mut()) {
             let dc_guard = hdc.CreateCompatibleDC()?;
-            let bmp_guard = create_bitmap_from_32bpp(hdc, DX_LED_96, DY_LED_96, &leds[i])?;
-            self.mem_led_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
+            let bmp_guard = create_bitmap_from_32bpp(hdc, DX_LED_96, DY_LED_96, led)?;
+            *led_cache = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
         }
 
         // Cache face button sprites in compatible bitmaps.
@@ -1052,12 +1052,12 @@ impl GrafixState {
         // Like the blocks, the face button looks best when we resample once and cache.
         let dst_btn_w = self.dims.button.cx;
         let dst_btn_h = self.dims.button.cy;
-        for i in 0..BUTTON_SPRITE_COUNT {
+        for (button, button_cache) in buttons.iter().zip(self.mem_button_cache.iter_mut()) {
             let dc_guard = hdc.CreateCompatibleDC()?;
 
             let final_bmp = if dst_btn_w != DX_BUTTON_96 || dst_btn_h != DY_BUTTON_96 {
                 let dst_buf = resample_32bpp_buffer(
-                    &buttons[i],
+                    button,
                     DX_BUTTON_96,
                     DY_BUTTON_96,
                     dst_btn_w,
@@ -1065,10 +1065,10 @@ impl GrafixState {
                 )?;
                 create_bitmap_from_32bpp(hdc, dst_btn_w, dst_btn_h, &dst_buf)?
             } else {
-                create_bitmap_from_32bpp(hdc, DX_BUTTON_96, DY_BUTTON_96, &buttons[i])?
+                create_bitmap_from_32bpp(hdc, DX_BUTTON_96, DY_BUTTON_96, button)?
             };
 
-            self.mem_button_cache[i] = Some(CachedBitmapGuard::new(dc_guard, &final_bmp)?);
+            *button_cache = Some(CachedBitmapGuard::new(dc_guard, &final_bmp)?);
         }
 
         Ok(())
