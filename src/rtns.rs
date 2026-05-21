@@ -97,7 +97,7 @@ pub(crate) struct BlockInfo {
     pub block_type: BlockCell,
 }
 
-impl From<BlockCell> for BlockInfo {
+impl BlockInfo {
     /// Convert a `BlockCell` enum to a `BlockInfo` struct.
     ///
     /// The `bomb` and `visited` fields are set to `false` by default.
@@ -105,7 +105,7 @@ impl From<BlockCell> for BlockInfo {
     /// - `cell` - The `BlockCell` enum to convert.
     /// # Returns
     /// - A `BlockInfo` struct with the `block_type` set to the given `BlockCell`, and `bomb` and `visited` set to `false`.
-    fn from(cell: BlockCell) -> Self {
+    const fn from(cell: BlockCell) -> Self {
         Self {
             bomb: false,
             visited: false,
@@ -309,11 +309,7 @@ impl GameState {
             drag_active: false,
             mouse_capture: None,
             xyzzy_progress: 0,
-            board_cells: [[BlockInfo {
-                bomb: false,
-                visited: false,
-                block_type: BlockCell::BlankUp,
-            }; MAX_Y_BLKS]; MAX_X_BLKS],
+            board_cells: [[BlockInfo::from(BlockCell::BlankUp); MAX_Y_BLKS]; MAX_X_BLKS],
             total_bombs: 0,
             boxes_to_win: 0,
             timer: Timer::default(),
@@ -907,7 +903,8 @@ impl GameState {
         self.board_height = self.prefs.height - 1;
 
         // Reset the board to a blank state
-        self.board_cells = [[BlockInfo::from(BlockCell::BlankUp); MAX_Y_BLKS]; MAX_X_BLKS];
+        self.board_cells =
+            const { [[BlockInfo::from(BlockCell::BlankUp); MAX_Y_BLKS]; MAX_X_BLKS] };
         self.btn_face_state = ButtonSprite::Happy;
         self.timer.reset();
 
