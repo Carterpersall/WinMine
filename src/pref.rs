@@ -7,11 +7,13 @@ use winsafe::{
     AnyResult, HKEY, HWND, POINT, RegistryValue, RegistryValue::Dword, RegistryValue::Sz, SysResult,
 };
 
-use crate::globals::DEFAULT_PLAYER_NAME;
 use crate::sound::Sound;
 
 /// Maximum length (UTF-16 code units) of player names stored in the registry.
 pub(crate) const CCH_NAME_MAX: usize = 32;
+
+/// Default name for records in the best-times dialog.
+pub(crate) const DEFAULT_PLAYER_NAME: &str = "Anonymous";
 
 /// Preference keys used to read and write settings from the registry.
 #[repr(u8)]

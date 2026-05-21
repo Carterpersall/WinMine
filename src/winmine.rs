@@ -13,11 +13,11 @@ use winsafe::{
     IdIdiStr, IdStr, InitCommonControlsEx, POINT, PtInRect, RECT, SIZE, gui, prelude::*,
 };
 
-use crate::globals::{BASE_DPI, DEFAULT_PLAYER_NAME, GAME_NAME, MSG_CREDIT, MSG_VERSION_NAME};
-use crate::grafix::ButtonSprite;
+use crate::grafix::{BASE_DPI, ButtonSprite};
 use crate::help::Help;
 use crate::pref::{
-    CCH_NAME_MAX, GameType, MAXHEIGHT, MAXMINES, MAXWIDTH, MINHEIGHT, MINMINES, MINWIDTH,
+    CCH_NAME_MAX, DEFAULT_PLAYER_NAME, GameType, MAXHEIGHT, MAXMINES, MAXWIDTH, MINHEIGHT,
+    MINMINES, MINWIDTH,
 };
 use crate::rtns::{AdjustFlag, GameState, ID_TIMER, StatusFlag};
 use crate::sound::Sound;
@@ -81,8 +81,8 @@ impl WinMineMainWindow {
 
         // Create the main application window
         let wnd = gui::WindowMain::new(gui::WindowMainOpts {
-            class_name: GAME_NAME,
-            title: GAME_NAME,
+            class_name: "Minesweeper",
+            title: "Minesweeper",
             class_icon: gui::Icon::Id(ResourceId::Icon as u16),
             class_cursor: gui::Cursor::Idc(IDC::ARROW),
             class_style: CS::NoValue,
@@ -690,9 +690,9 @@ impl WinMineMainWindow {
                     .LoadIcon(IdIdiStr::Id(ResourceId::Icon as u16))?;
 
                 self2.wnd.hwnd().ShellAbout(
-                    MSG_VERSION_NAME,
+                    "Minesweeper",
                     None,
-                    Some(MSG_CREDIT),
+                    Some("by Robert Donner and Curt Johnson"),
                     icon.as_opt(),
                 )?;
                 Ok(())

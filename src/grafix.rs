@@ -13,9 +13,11 @@ use winsafe::{
     SIZE,
 };
 
-use crate::globals::BASE_DPI;
 use crate::rtns::{BlockCell, BlockInfo, MAX_X_BLKS, MAX_Y_BLKS};
 use crate::util::impl_index_enum;
+
+/// Base DPI used by Win32 when coordinates are expressed in 1:1 pixels.
+pub(crate) const BASE_DPI: u32 = 96;
 
 /*
     Constants defining pixel dimensions and offsets for various UI elements at 96 DPI.

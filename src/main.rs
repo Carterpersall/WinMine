@@ -43,7 +43,6 @@
 #![warn(unused_qualifications)]
 //#![warn(unused_results)]
 
-mod globals;
 mod grafix;
 mod help;
 mod pref;
