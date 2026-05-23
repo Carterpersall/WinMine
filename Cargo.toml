@@ -14,16 +14,15 @@ codegen-units = 1
 [dependencies]
 windows-sys = { version = "0.61.2", features = [
 	"Win32_Media_Audio",
-	"Win32_Graphics_Gdi",
 	"Win32_Data_HtmlHelp",
 ] }
-bitflags = "2.11.0"
+bitflags = "2.11.1"
 strum = "0.28"
 strum_macros = "0.28"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "99bf1d4387ba47ec5a6c34f18223480b5cd68ead"
+rev = "bf62085b18037db1e756b8052513d616ef819e22"
 features = [
 	"advapi",
 	"comctl",

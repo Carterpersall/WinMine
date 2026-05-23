@@ -4,7 +4,6 @@
 use core::ops::Index;
 
 use strum_macros::VariantArray;
-use windows_sys::Win32::Graphics::Gdi::{GetLayout, SetLayout};
 
 use winsafe::co::{BI, DIB, LAYOUT, PS, ROP, STRETCH_MODE};
 use winsafe::guard::{DeleteDCGuard, DeleteObjectGuard, ReleaseDCGuard, SelectObjectGuard};
@@ -426,13 +425,11 @@ impl GrafixState {
     ///   which could cause drawing issues. Any future error handling for this function should account for this.
     pub(crate) fn draw_bomb_count(&self, hdc: &HDC, bombs: i16) -> AnyResult<()> {
         // Handle when the window is mirrored for RTL languages by temporarily disabling mirroring
-        let layout = unsafe { GetLayout(hdc.ptr()) };
+        let layout = hdc.GetLayout()?;
         // If the previous command succeeded and the RTL bit is set, the system is set to RTL mode
-        let mirrored = (layout & LAYOUT::RTL.raw()) != 0;
+        let mirrored = (layout.raw() & LAYOUT::RTL.raw()) != 0;
         if mirrored {
-            unsafe {
-                SetLayout(hdc.ptr(), 0);
-            }
+            hdc.SetLayout(LAYOUT::LTR)?;
         }
 
         // Draw each of the three digits in sequence
@@ -451,9 +448,7 @@ impl GrafixState {
 
         // Restore the original layout if it was mirrored
         if mirrored {
-            unsafe {
-                SetLayout(hdc.ptr(), layout);
-            }
+            hdc.SetLayout(layout)?;
         }
         Ok(())
     }
@@ -472,12 +467,10 @@ impl GrafixState {
     ///   which could cause drawing issues. Any future error handling for this function should account for this.
     pub(crate) fn draw_timer(&self, hdc: &HDC, time: u16) -> AnyResult<()> {
         // The timer uses the same mirroring trick as the bomb counter.
-        let layout = unsafe { GetLayout(hdc.ptr()) };
-        let mirrored = (layout & LAYOUT::RTL.raw()) != 0;
+        let layout = hdc.GetLayout()?;
+        let mirrored = (layout.raw() & LAYOUT::RTL.raw()) != 0;
         if mirrored {
-            unsafe {
-                SetLayout(hdc.ptr(), 0);
-            }
+            hdc.SetLayout(LAYOUT::LTR)?;
         }
 
         let dx_window = self.wnd_pos.x;
@@ -503,9 +496,7 @@ impl GrafixState {
         )?;
 
         if mirrored {
-            unsafe {
-                SetLayout(hdc.ptr(), layout);
-            }
+            hdc.SetLayout(layout)?;
         }
         Ok(())
     }
@@ -1046,7 +1037,7 @@ impl GrafixState {
         for (led, led_cache) in leds.iter().zip(self.mem_led_cache.iter_mut()) {
             let dc_guard = hdc.CreateCompatibleDC()?;
             // Ensure that the sprite is not mirrored on RTL systems
-            unsafe { SetLayout(dc_guard.ptr(), 0) };
+            dc_guard.SetLayout(LAYOUT::LTR)?;
             let bmp_guard = create_bitmap_from_32bpp(hdc, DX_LED_96, DY_LED_96, led)?;
             *led_cache = Some(CachedBitmapGuard::new(dc_guard, &bmp_guard)?);
         }

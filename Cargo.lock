@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "bitflags"
-version = "2.11.0"
+version = "2.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
+checksum = "c4512299f36f043ab09a583e57bceb5a5aab7a73db1805848e8fef3c9e8c78b3"
 
 [[package]]
 name = "cc"
@@ -365,4 +365,4 @@ dependencies = [
 [[package]]
 name = "winsafe"
 version = "0.0.27"
-source = "git+https://github.com/rodrigocfd/winsafe.git?rev=99bf1d4387ba47ec5a6c34f18223480b5cd68ead#99bf1d4387ba47ec5a6c34f18223480b5cd68ead"
+source = "git+https://github.com/rodrigocfd/winsafe.git?rev=bf62085b18037db1e756b8052513d616ef819e22#bf62085b18037db1e756b8052513d616ef819e22"

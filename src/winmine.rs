@@ -379,7 +379,6 @@ impl WinMineMainWindow {
                         // Update the menu bar to reflect the new sound state
                         self2.set_menu_bar()?;
                     }
-                    // TODO: Add F5 and F6 bindings for disabling/enabling the menu bar
                     code if code == VK::SHIFT => self2.state.write().toggle_xyzzy(),
                     _ => self2.state.write().handle_xyzzys_input(key.vkey_code),
                 }
