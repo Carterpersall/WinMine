@@ -1,4 +1,6 @@
 //! Sound handling for the Minesweeper game, including tune playback and sound state management.
+//! Note: Sound toggling behavior is different from the original game, which only allowed sound
+//!       to be toggled when sound was enabled.
 
 use core::ptr::{null, null_mut};
 
