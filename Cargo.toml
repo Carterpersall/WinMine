@@ -14,15 +14,14 @@ codegen-units = 1
 [dependencies]
 windows-sys = { version = "0.61.2", features = [
 	"Win32_Media_Audio",
-	"Win32_Data_HtmlHelp",
 ] }
-bitflags = "2.11.1"
+bitflags = "2.13.0"
 strum = "0.28"
 strum_macros = "0.28"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "bf62085b18037db1e756b8052513d616ef819e22"
+rev = "d5939db734330f8721dd234e0d22d545686a3ca1"
 features = [
 	"advapi",
 	"comctl",
@@ -31,6 +30,7 @@ features = [
 	"dxgi",
 	"gdi",
 	"gui",
+	"htmlhelp",
 	"kernel",
 	"mf",
 	"ole",
@@ -46,4 +46,4 @@ features = [
 ]
 
 [build-dependencies]
-embed-resource = "3.0.8"
+embed-resource = "3.0.9"

@@ -195,12 +195,12 @@ pub(crate) enum ResourceId {
     /// Color toggle menu item.
     Color = 529,
 
-    /// Help submenu.
-    HelpSubmenu = 590,
-    /// "How to play" menu item.
-    HowToPlay = 591,
-    /// "Help on Help" menu item.
-    HelpOnHelp = 592,
+    /// "Contents" menu item.
+    HelpContents = 590,
+    /// "Search for Help on..." menu item.
+    SearchHelp = 591,
+    /// "Using Help" menu item.
+    UsingHelp = 592,
     /// About dialog menu item.
     About = 593,
 

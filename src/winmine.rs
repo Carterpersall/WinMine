@@ -4,13 +4,12 @@ use core::cmp::{max, min};
 use core::ops::Deref as _;
 use std::rc::Rc;
 
-use windows_sys::Win32::Data::HtmlHelp::{HH_DISPLAY_INDEX, HH_DISPLAY_TOC};
-
-use winsafe::co::{BN, CS, DLGID, HELPW, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
+use winsafe::co::{BN, CS, DLGID, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
 use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
 use winsafe::{
-    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, INITCOMMONCONTROLSEX,
-    IdIdiStr, IdStr, InitCommonControlsEx, POINT, PtInRect, RECT, SIZE, gui, prelude::*,
+    AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, HhCmd,
+    INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, POINT, PtInRect, RECT, SIZE, gui,
+    prelude::*,
 };
 
 use crate::grafix::{BASE_DPI, ButtonSprite};
@@ -652,26 +651,28 @@ impl WinMineMainWindow {
             move || BestDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)
         });
 
-        self.wnd.on().wm_command_acc_menu(ResourceId::HelpSubmenu, {
+        self.wnd
+            .on()
+            .wm_command_acc_menu(ResourceId::HelpContents, {
+                let self2 = self.clone();
+                move || {
+                    Help::do_help(self2.wnd.hwnd(), HhCmd::DisplayToc);
+                    Ok(())
+                }
+            });
+
+        self.wnd.on().wm_command_acc_menu(ResourceId::SearchHelp, {
             let self2 = self.clone();
             move || {
-                Help::do_help(self2.wnd.hwnd(), HELPW::INDEX, HH_DISPLAY_TOC);
+                Help::do_help(self2.wnd.hwnd(), HhCmd::DisplayIndex(""));
                 Ok(())
             }
         });
 
-        self.wnd.on().wm_command_acc_menu(ResourceId::HowToPlay, {
+        self.wnd.on().wm_command_acc_menu(ResourceId::UsingHelp, {
             let self2 = self.clone();
             move || {
-                Help::do_help(self2.wnd.hwnd(), HELPW::CONTEXT, HH_DISPLAY_INDEX);
-                Ok(())
-            }
-        });
-
-        self.wnd.on().wm_command_acc_menu(ResourceId::HelpOnHelp, {
-            let self2 = self.clone();
-            move || {
-                Help::do_help(self2.wnd.hwnd(), HELPW::HELPONHELP, HH_DISPLAY_TOC);
+                Help::do_help_on_help(self2.wnd.hwnd());
                 Ok(())
             }
         });
@@ -828,7 +829,10 @@ impl PrefDialog {
             move |context_menu| {
                 // Apply context-sensitive help to all controls except the dialog itself
                 if context_menu.hwnd.GetDlgCtrlID() != Ok(0) {
-                    Help::apply_help_to_control(&context_menu.hwnd, &Help::PREF_HELP_IDS);
+                    Help::do_help(
+                        &context_menu.hwnd,
+                        HhCmd::TpHelpContextMenu(&Help::PREF_HELP_IDS),
+                    );
                 } else {
                     // Show a context menu when right clicking the title bar
                     unsafe { self2.dlg.hwnd().DefWindowProc(context_menu) };
@@ -995,7 +999,10 @@ impl BestDialog {
             move |context_menu| -> AnyResult<()> {
                 // Apply context-sensitive help to all controls except the dialog itself
                 if context_menu.hwnd.GetDlgCtrlID() != Ok(0) {
-                    Help::apply_help_to_control(&context_menu.hwnd, &Help::BEST_HELP_IDS);
+                    Help::do_help(
+                        &context_menu.hwnd,
+                        HhCmd::TpHelpContextMenu(&Help::BEST_HELP_IDS),
+                    );
                 } else {
                     // Show a context menu when right clicking the title bar
                     unsafe { self2.dlg.hwnd().DefWindowProc(context_menu) };
