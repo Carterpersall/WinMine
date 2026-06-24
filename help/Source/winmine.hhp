@@ -1,10 +1,13 @@
 [OPTIONS]
 Compatibility=1.1 or later
 Compiled file=winmine.chm
+Contents file=C:\Users\carte\Projects\WinMine\help\Source\winmine.hhc
 Default Window=windefault
 Default topic=topics/mine_object.htm
-Display compile progress=No
+Display compile progress=Yes
+Enhanced decompilation=Yes
 Full-text search=Yes
+Index file=C:\Users\carte\Projects\WinMine\help\Source\winmine.hhk
 Language=0x409 English (United States)
 Title=Minesweeper
 
