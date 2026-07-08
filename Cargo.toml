@@ -12,9 +12,6 @@ lto = true
 codegen-units = 1
 
 [dependencies]
-windows-sys = { version = "0.61.2", features = [
-	"Win32_Media_Audio",
-] }
 bitflags = "2.13.0"
 strum = "0.28"
 strum_macros = "0.28"
@@ -42,6 +39,7 @@ features = [
 	"uxtheme",
 	"version",
 	"wininet",
+	"winmm",
 	"winspool"
 ]
 

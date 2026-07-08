@@ -2,10 +2,7 @@
 //! Note: Sound toggling behavior is different from the original game, which only allowed sound
 //!       to be toggled when sound was enabled.
 
-use core::ptr::{null, null_mut};
-
-use windows_sys::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_PURGE, SND_RESOURCE};
-use winsafe::{HINSTANCE, IdStr};
+use winsafe::{HINSTANCE, IdStr, PlaySound, Snd};
 
 use crate::util::ResourceId;
 
@@ -24,12 +21,15 @@ impl Sound {
     /// # Arguments
     /// - `hinst` - The HINSTANCE of the current process, used to locate the sound resource.
     pub(crate) fn play(self, hinst: &HINSTANCE) {
-        let resource_ptr = IdStr::Id(self as u16).as_ptr();
-        // Playback uses the async flag so the UI thread is never blocked
         // Failures are ignored since sound is a non-essential feature
-        unsafe {
-            PlaySoundW(resource_ptr, hinst.ptr(), SND_RESOURCE | SND_ASYNC);
-        }
+        let _ = PlaySound(Snd::ResAsync {
+            id: IdStr::Id(self as u16),
+            hinst,
+            default: false,
+            stop: false,
+            sentry: false,
+            loops: false,
+        });
     }
 
     /// Reset the sound system by stopping any currently playing sounds.
@@ -38,7 +38,7 @@ impl Sound {
     /// - `false` - If the sound API failed to stop sounds, indicating a potential issue with the sound system.
     pub(crate) fn reset() -> bool {
         // Passing NULL tells PlaySound to purge the current queue.
-        unsafe { PlaySoundW(null(), null_mut(), SND_PURGE) != 0 }
+        PlaySound(Snd::Stop).is_ok()
     }
 
     /// Toggle the sound enabled state in the preferences and reset the sound system.
