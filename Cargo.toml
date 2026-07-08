@@ -21,7 +21,7 @@ strum_macros = "0.28"
 
 [dependencies.winsafe]
 git = "https://github.com/rodrigocfd/winsafe.git"
-rev = "d5939db734330f8721dd234e0d22d545686a3ca1"
+rev = "ac42e6e8e6fe9061c7669c3350087248e97b8ecd"
 features = [
 	"advapi",
 	"comctl",
@@ -46,4 +46,4 @@ features = [
 ]
 
 [build-dependencies]
-embed-resource = "3.0.9"
+embed-resource = "3.0.11"

@@ -5,7 +5,7 @@ use core::ops::Deref as _;
 use std::rc::Rc;
 
 use winsafe::co::{BN, CS, DLGID, ICC, IDC, MK, SM, STOCK_BRUSH, SW, VK, WA, WM, WS};
-use winsafe::msg::{WndMsg, em::SetLimitText, wm::Destroy};
+use winsafe::msg::{EmSetLimitText, Wm, WmDestroy};
 use winsafe::{
     AdjustWindowRectExForDpi, AnyResult, GetSystemMetrics, HBRUSH, HINSTANCE, HhCmd,
     INITCOMMONCONTROLSEX, IdIdiStr, IdStr, InitCommonControlsEx, POINT, PtInRect, RECT, SIZE, gui,
@@ -298,7 +298,7 @@ impl WinMineMainWindow {
 
         self.wnd.on().wm(WM::DPICHANGED, {
             let self2 = self.clone();
-            move |msg: WndMsg| {
+            move |msg: Wm| {
                 // wParam: new DPI in LOWORD/HIWORD (X/Y). lParam: suggested new window rect.
                 let mut dpi = ((msg.wparam) & 0xFFFF) as u32;
                 if dpi == 0 {
@@ -355,7 +355,7 @@ impl WinMineMainWindow {
         // Handle `WM_APP` requests posted from non-UI modules.
         self.wnd.on().wm(WM::APP, {
             let self2 = self.clone();
-            move |msg: WndMsg| {
+            move |msg: Wm| {
                 if msg.wparam == NEW_RECORD_DLG {
                     EnterDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)?;
                     BestDialog::new(Rc::clone(&self2.state)).show_modal(&self2.wnd)?;
@@ -396,7 +396,7 @@ impl WinMineMainWindow {
                 // Note: This behavior differs from the original game
                 self2.state.write().prefs.write_preferences()?;
 
-                unsafe { self2.wnd.hwnd().DefWindowProc(Destroy {}) };
+                unsafe { self2.wnd.hwnd().DefWindowProc(WmDestroy {}) };
                 Ok(())
             }
         });
@@ -1094,7 +1094,7 @@ impl EnterDialog {
                         // Note: The only way to do this without unsafe is for this to be a `WinSafe` `Edit` control,
                         //       which has the `limit_text` function.
                         unsafe {
-                            edit_hwnd.SendMessage(SetLimitText {
+                            edit_hwnd.SendMessage(EmSetLimitText {
                                 max_chars: Some(CCH_NAME_MAX as u32),
                             });
                         };

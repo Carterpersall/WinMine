@@ -9,7 +9,7 @@ use bitflags::bitflags;
 use strum_macros::VariantArray;
 use winsafe::co::{MK, WM};
 use winsafe::guard::{ReleaseCaptureGuard, ReleaseDCGuard};
-use winsafe::msg::WndMsg;
+use winsafe::msg::Wm;
 use winsafe::{AnyResult, HDC, HWND, POINT, PtInRect, RECT};
 
 use crate::grafix::{ButtonSprite, GrafixState};
@@ -878,7 +878,7 @@ impl GameState {
 
                 // Show the new record dialog to enter the player's name for the high score list
                 unsafe {
-                    let _ = hwnd.PostMessage(WndMsg::new(WM::APP, NEW_RECORD_DLG, 0));
+                    let _ = hwnd.PostMessage(Wm::new(WM::APP, NEW_RECORD_DLG, 0));
                 }
             }
         }
